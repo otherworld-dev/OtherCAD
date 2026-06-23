@@ -135,19 +135,13 @@ PartDesign::Body* getBody(
     PartDesign::Body* activeBody = nullptr;
     Gui::MDIView* activeView = Gui::Application::Instance->activeView();
 
-    if (activeView) {
-        auto doc = activeView->getAppDocument();
-        bool singleBodyDocument = doc->countObjectsOfType<PartDesign::Body>() == 1;
-        if (assertModern) {
-            activeBody = activeView->getActiveObject<PartDesign::Body*>(PDBODYKEY, topParent, subname);
-
-            if (!activeBody && singleBodyDocument && autoActivate) {
-                auto bodies = doc->getObjectsOfType(PartDesign::Body::getClassTypeId());
-                App::DocumentObject* body = nullptr;
-                if (bodies.size() == 1) {
-                    body = bodies[0];
-                    activeBody = makeBodyActive(body, doc, topParent, subname);
-                }
+    if (activeView && assertModern) {
+        activeBody = activeView->getActiveObject<PartDesign::Body*>(PDBODYKEY, topParent, subname);
+        if (!activeBody) {
+            auto doc = activeView->getAppDocument();
+            auto bodies = doc->getObjectsOfType(PartDesign::Body::getClassTypeId());
+            if (autoActivate && (bodies.size() == 1)) {
+                activeBody = makeBodyActive(bodies[0], doc, topParent, subname);
             }
             if (!activeBody && messageIfNot && doc->countObjectsOfType<PartDesign::Body>() == 0) {
                 // Fusion has no "make a body first" step: the first feature brings its
