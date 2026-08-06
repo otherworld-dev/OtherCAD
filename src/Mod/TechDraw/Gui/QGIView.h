@@ -138,13 +138,13 @@ public:
     std::string getRefString(std::string originalString);
     /** Methods to ensure that Y-Coordinates are orientated correctly.
      * @{ */
-    inline qreal getY() { return y() * -1; }
+    qreal getY() { return y() * -1; }
     bool isInnerView() const { return m_innerView; }
     void isInnerView(bool state) { m_innerView = state; }
     QGIViewClip* getClipGroup();
     virtual void updatePositionFromFeatureXY();
 
-    bool isSnapping() { return snapping; }
+    bool isSnapping() const { return snapping; }
     void snapPosition(QPointF& position);
     void snapSectionView(const TechDraw::DrawViewSection* sectionView,
                          QPointF& newPosition);
@@ -217,7 +217,6 @@ protected:
     virtual QRectF customChildrenBoundingRect() const;
     virtual QRectF frameRect() const;
     void dumpRect(const char* text, QRectF rect);
-    bool m_isHovered;
 
     virtual void updateFrameVisibility();
     bool shouldShowFromViewProvider() const;
@@ -255,7 +254,7 @@ private:
     double m_lockWidth;
     double m_lockHeight;
     int m_zOrder{0};
-
+    bool m_isHovered;
     bool m_snapped{false};
 
     void layoutDecorations(const QRectF& contentArea,
