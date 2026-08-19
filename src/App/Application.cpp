@@ -2372,6 +2372,8 @@ void Application::initTypes()
     App::PropertyFrequency                  ::init();
     App::PropertyForce                      ::init();
     App::PropertyHeatFlux                   ::init();
+    App::PropertyMassMomentOfInertia        ::init();
+    App::PropertyAreaMomentOfInertia        ::init();
     App::PropertyInverseArea                ::init();
     App::PropertyInverseLength              ::init();
     App::PropertyInverseVolume              ::init();
