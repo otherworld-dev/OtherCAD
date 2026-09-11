@@ -2876,7 +2876,7 @@ Base::BoundBox3d ViewProviderSketch::_getBoundingBox(
 
     // Apply the accumulated transformation
     if (bbox.IsValid()) {
-        bbox.Transformed(m);
+        bbox = bbox.Transformed(m);
     }
 
     return bbox;
