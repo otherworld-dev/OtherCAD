@@ -1807,7 +1807,7 @@ void ViewProviderSketch::editDoubleClicked()
         }
 
         if (textConstrId != -1) {
-            EditTextDialog editTextDialog(this, textConstrId);
+            EditTextDialog editTextDialog(this, textConstrId, Gui::getMainWindow());
             editTextDialog.exec();
             setSketchMode(STATUS_NONE);
         }
@@ -1838,7 +1838,7 @@ void ViewProviderSketch::editDoubleClicked()
                 }
             }
             else if (Constr->Type == Sketcher::Text) {
-                EditTextDialog editTextDialog(this, id);
+                EditTextDialog editTextDialog(this, id, Gui::getMainWindow());
                 editTextDialog.exec();
             }
         }
