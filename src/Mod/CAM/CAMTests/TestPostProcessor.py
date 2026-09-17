@@ -525,6 +525,7 @@ class TestPostProcessorClassification(unittest.TestCase):
 
         class TestPostProcessor(PostProcessor):
             def __init__(self):
+                super().__init__(None, tooltip=None, tooltipargs=None, units=None)
                 self.values = {}
 
         processor = TestPostProcessor()
@@ -539,6 +540,7 @@ class TestPostProcessorClassification(unittest.TestCase):
 
         class TestPostProcessor(PostProcessor):
             def __init__(self):
+                super().__init__(None, tooltip=None, tooltipargs=None, units=None)
                 self.values = {}
 
             def _broken_check(self, job):
@@ -1136,11 +1138,9 @@ class TestSpindleSpeedSanityCheck(unittest.TestCase):
 
         class SpindleTestPP(PostProcessor):
             def __init__(self):
-                # Skip super().__init__() — only the limit and check methods
-                # are exercised here
+                super().__init__(None, tooltip=None, tooltipargs=None, units=None)
+                # Only the limit and check methods are exercised here
                 self.values = {}
-                self._machine = None
-                self._job = None
 
         pp = SpindleTestPP()
         pp._machine = Machine.create_3axis_config()
