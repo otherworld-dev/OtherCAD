@@ -254,7 +254,7 @@ private:
     double m_lockWidth;
     double m_lockHeight;
     int m_zOrder{0};
-    bool m_isHovered;
+    bool m_isHovered{false};
     bool m_snapped{false};
 
     void layoutDecorations(const QRectF& contentArea,
