@@ -25,6 +25,7 @@
 #include <cstring>
 #include <QAbstractButton>
 #include <QSignalBlocker>
+#include <gp_Pln.hxx>
 
 #include <App/Document.h>
 #include <App/DocumentObject.h>
@@ -141,6 +142,11 @@ void TaskRevolutionParameters::setupDialog()
     auto revolved = getObject<PartDesign::Revolved>();
     ui->checkBoxMidplane->hide();
     ui->checkBoxReversed->setChecked(propReversed->getValue());
+    ui->checkBoxProjectAxis->setChecked(revolved->ProjectAxis.getValue());
+    gp_Pln profilePlane;
+    ui->checkBoxProjectAxis->setEnabled(
+        revolved->getTopoShapeVerifiedFace(true).findPlane(profilePlane)
+    );
     ui->lineStartReference->setPlaceholderText(tr("No start reference selected"));
     ui->startOffsetEdit->setToolTip(tr("Angular offset from the profile or selected start reference"));
     ui->startMode->setCurrentIndex(revolved->StartType.getValue());
@@ -451,6 +457,8 @@ void TaskRevolutionParameters::connectSignals()
             this, &TaskRevolutionParameters::onAngle2Changed);
     connect(ui->axis, qOverload<int>(&QComboBox::activated),
             this, &TaskRevolutionParameters::onAxisChanged);
+    connect(ui->checkBoxProjectAxis, &QCheckBox::toggled,
+            this, &TaskRevolutionParameters::onProjectAxisChanged);
     connect(ui->checkBoxReversed, &QCheckBox::toggled,
             this, &TaskRevolutionParameters::onReversed);
     connect(ui->startMode, qOverload<int>(&QComboBox::currentIndexChanged),
@@ -858,6 +866,15 @@ void TaskRevolutionParameters::onSidesModeChanged(int index)
     setGizmoPositions();
 }
 
+void TaskRevolutionParameters::onProjectAxisChanged(bool on)
+{
+    if (auto revolved = getObject<PartDesign::Revolved>()) {
+        revolved->ProjectAxis.setValue(on);
+        recomputeFeature();
+        setGizmoPositions();
+    }
+}
+
 void TaskRevolutionParameters::onReversed(bool on)
 {
     if (getObject()) {
@@ -970,6 +987,7 @@ void TaskRevolutionParameters::apply()
     auto tobj = getObject();
     FCMD_OBJ_CMD(tobj, "ReferenceAxis = " << axis);
     FCMD_OBJ_CMD(tobj, "Operation = " << ui->operationMode->currentIndex());
+    FCMD_OBJ_CMD(tobj, "ProjectAxis = " << (ui->checkBoxProjectAxis->isChecked() ? 1 : 0));
     FCMD_OBJ_CMD(tobj, "SideType = " << getSidesMode());
     FCMD_OBJ_CMD(tobj, "Reversed = " << (getReversed() ? 1 : 0));
     FCMD_OBJ_CMD(tobj, "Type = " << getMode());
