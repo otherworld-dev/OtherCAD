@@ -8,6 +8,13 @@ from upstream FreeCAD merges are not listed, only the work done in this fork.
 
 ## [Unreleased]
 
+### Fixed
+
+- The New body operation of Extrude, Revolve, Sweep, Loft, Coil and the primitives now
+  makes a new body. Before, the body the feature was made in lost everything that came
+  before it and no new body appeared. On OK the feature moves into a body of its own,
+  which becomes the active one, and the whole thing is one undo step.
+
 ## [26.4.0] - 2026-09-25
 
 The first FuCadUp release. It carries on from FuCad 26.3.2 with a new name, a reworked

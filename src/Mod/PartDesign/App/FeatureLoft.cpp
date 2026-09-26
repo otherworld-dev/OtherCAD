@@ -329,6 +329,10 @@ App::DocumentObjectExecReturn* Loft::execute()
             result = shapes.front();
         }
 
+        if (keepBaseForNewBody(base)) {
+            return App::DocumentObject::StdReturn;
+        }
+
         if (base.isNull() || !combinesWithBase()) {
             if (!isSingleSolidRuleSatisfied(result.getShape())) {
                 return new App::DocumentObjectExecReturn(QT_TRANSLATE_NOOP(

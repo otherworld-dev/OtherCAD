@@ -801,8 +801,13 @@ App::DocumentObjectExecReturn* FeatureExtrude::buildExtrusion(ExtrudeOptions opt
         // set the additive shape property for later usage in e.g. pattern
         this->AddSubShape.setValue(prism);
 
-        // NewBody keeps only the extrusion itself, mirroring Fusion's "New Body" operation
-        const bool combineWithBase = getOperationType() != OperationType::NewBody;
+        if (fuse && keepBaseForNewBody(base)) {
+            updateProperties();
+            return App::DocumentObject::StdReturn;
+        }
+
+        // NewBody with nothing before it is the extrusion alone, the start of its own body
+        const bool combineWithBase = combinesWithBase();
 
         if (base.shapeType(true) <= TopAbs_SOLID && fuse && combineWithBase) {
             prism.Tag = -this->getID();

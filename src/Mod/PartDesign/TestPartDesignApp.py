@@ -41,6 +41,7 @@ from PartDesignTests.TestPipe import TestPipe
 from PartDesignTests.TestLoft import TestLoft
 from PartDesignTests.TestPrimitive import TestPrimitive
 from PartDesignTests.TestHelix import TestHelix
+from PartDesignTests.TestNewBody import TestNewBody
 
 # transformations and boolean
 from PartDesignTests.TestMirrored import TestMirrored

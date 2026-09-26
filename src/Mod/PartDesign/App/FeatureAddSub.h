@@ -65,6 +65,9 @@ public:
 
     /// Whether the feature shape has to be combined with the preceding solid at all
     bool combinesWithBase() const;
+    /// With New body the solid starts another body, so a preceding solid passes through
+    /// unchanged. Sets Shape to base and returns true when that applies.
+    bool keepBaseForNewBody(const Part::TopoShape& base);
     /// Part::OpCodes maker matching Operation; throws for operations without a boolean
     const char* getBooleanOpCode() const;
     /// Upstream's name for getBooleanOpCode(), so FreeCAD's feature classes merge cleanly

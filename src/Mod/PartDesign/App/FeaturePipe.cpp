@@ -526,6 +526,10 @@ App::DocumentObjectExecReturn* Pipe::execute()
             result = shapes.front();
         }
 
+        if (keepBaseForNewBody(base)) {
+            return App::DocumentObject::StdReturn;
+        }
+
         if (base.isNull() || !combinesWithBase()) {
             if (getAddSubType() == FeatureAddSub::Type::Subtractive) {
                 return new App::DocumentObjectExecReturn(
@@ -556,12 +560,7 @@ App::DocumentObjectExecReturn* Pipe::execute()
         //                        because you would expect this to be set to the feature's shape,
         //                        but boolOp is the topoShape that is actually being copied
 
-        boolOp.makeElementBoolean(
-            getBooleanOpCode(),
-            {base, result},
-            nullptr,
-            FuzzyTolerance.getValue()
-        );
+        boolOp.makeElementBoolean(getBooleanOpCode(), {base, result}, nullptr, FuzzyTolerance.getValue());
 
         if (boolOp.countSubShapes(TopAbs_SOLID) == 0) {
             return new App::DocumentObjectExecReturn(

@@ -121,5 +121,8 @@ std::vector<App::DocumentObject*> collectMovableDependencies(
 );
 /// Relink sketches and datums to target body's origin
 void relinkToOrigin(App::DocumentObject* feature, PartDesign::Body* body);
+/// Give a feature made with the New body operation a body of its own and make that body
+/// active. Runs as commands, so it belongs inside the transaction of the edit.
+void moveNewBodyFeature(App::DocumentObject* feature);
 
 }  // namespace PartDesignGui

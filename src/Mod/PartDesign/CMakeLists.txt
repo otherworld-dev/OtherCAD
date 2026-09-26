@@ -10,6 +10,7 @@ endif(BUILD_GUI)
 set(PartDesign_Scripts
     __init__.py
     Init.py
+    PartDesignNewBody.py
     TestPartDesignApp.py
 )
 
@@ -43,6 +44,7 @@ set(PartDesign_TestScripts
     PartDesignTests/TestPad.py
     PartDesignTests/TestPocket.py
     PartDesignTests/TestOperationMigration.py
+    PartDesignTests/TestNewBody.py
     PartDesignTests/TestHelix.py
     PartDesignTests/TestHole.py
     PartDesignTests/TestRevolve.py

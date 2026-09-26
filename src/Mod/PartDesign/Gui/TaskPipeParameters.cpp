@@ -639,6 +639,8 @@ bool TaskPipeParameters::accept()
         if (!getObject()->isValid()) {
             throw Base::RuntimeError(getObject()->getStatusString());
         }
+        // Before resetEdit(), which commits the edit's transaction
+        PartDesignGui::moveNewBodyFeature(pipe);
         Gui::cmdGuiDocument(pipe, "resetEdit()");
         pipe->getDocument()->commitTransaction();
 

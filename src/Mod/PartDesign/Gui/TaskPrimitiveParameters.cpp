@@ -45,6 +45,7 @@
 
 #include "TaskPrimitiveParameters.h"
 #include "ui_TaskPrimitiveParameters.h"
+#include "Utils.h"
 
 
 using namespace PartDesignGui;
@@ -1244,6 +1245,8 @@ bool TaskDlgPrimitiveParameters::accept()
         return primitiveOK;
     }
     Gui::Command::doCommand(Gui::Command::Doc, "App.ActiveDocument.recompute()");
+    // Before resetEdit(), which commits the edit's transaction
+    PartDesignGui::moveNewBodyFeature(vp_prm->getObject());
     Gui::Command::doCommand(Gui::Command::Gui, "Gui.activeDocument().resetEdit()");
 
     return true;

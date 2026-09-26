@@ -144,8 +144,7 @@ void FeatureAddSub::migrateForeignOperation()
         return;
     }
 
-    const OperationType operation =
-        restored.empty()
+    const OperationType operation = restored.empty()
         ? (addSubType == Type::Subtractive ? OperationType::Cut : OperationType::Join)
         : operationFromName(Operation.getValueAsString());
 
@@ -163,6 +162,18 @@ FeatureAddSub::OperationType FeatureAddSub::getOperationType() const
 bool FeatureAddSub::combinesWithBase() const
 {
     return getOperationType() != OperationType::NewBody;
+}
+
+bool FeatureAddSub::keepBaseForNewBody(const TopoShape& base)
+{
+    // The GUI moves the feature into a body of its own (PartDesignNewBody.py), where it has
+    // no base. Until then the body it was made in must not lose what came before it.
+    if (combinesWithBase() || base.isNull()) {
+        return false;
+    }
+    rawShape = base;
+    Shape.setValue(base);
+    return true;
 }
 
 const char* FeatureAddSub::getBooleanOpCode() const

@@ -41,6 +41,7 @@
 
 #include "TaskFeatureParameters.h"
 #include "TaskSketchBasedParameters.h"
+#include "Utils.h"
 
 using namespace PartDesignGui;
 using namespace Gui;
@@ -278,6 +279,8 @@ bool TaskDlgFeatureParameters::accept()
             }
         }
 
+        // Before resetEdit(), which commits the edit's transaction
+        moveNewBodyFeature(feature);
         Gui::cmdGuiDocument(feature, "resetEdit()");
         feature->getDocument()->commitTransaction();
     }

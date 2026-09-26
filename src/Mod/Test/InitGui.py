@@ -112,6 +112,7 @@ FreeCAD.__unit_test__ += [
     "TestWorkbenchSwitcher",
     "TestFusionShortcuts",
     "TestExtrudeFlip",
+    "TestNewBodyGui",
     "TestGizmoValueLabels",
     "TestPatternPanel",
     "TestViewportProjection",

@@ -709,4 +709,27 @@ void relinkToOrigin(App::DocumentObject* feat, PartDesign::Body* targetbody)
     }
 }
 
+void moveNewBodyFeature(App::DocumentObject* feature)
+{
+    // The feature passes its body's solid through until it has a body of its own
+    auto addSub = freecad_cast<PartDesign::FeatureAddSub*>(feature);
+    if (!addSub || addSub->combinesWithBase() || !addSub->BaseFeature.getValue()) {
+        return;
+    }
+
+    Gui::Command::doCommand(Gui::Command::Doc, "import PartDesignNewBody");
+    Gui::Command::doCommand(
+        Gui::Command::Doc,
+        "_newBody = PartDesignNewBody.moveToNewBody(%s)",
+        Gui::Command::getObjectCmd(feature).c_str()
+    );
+    Gui::Command::doCommand(
+        Gui::Command::Gui,
+        "if _newBody:\n"
+        "    Gui.ActiveDocument.ActiveView.setActiveObject('%s', _newBody)\n"
+        "del _newBody",
+        PDBODYKEY
+    );
+}
+
 }  // namespace PartDesignGui
