@@ -14,6 +14,9 @@ from upstream FreeCAD merges are not listed, only the work done in this fork.
   makes a new body. Before, the body the feature was made in lost everything that came
   before it and no new body appeared. On OK the feature moves into a body of its own,
   which becomes the active one, and the whole thing is one undo step.
+- Select Other on the ribbon, in a menu or from the command palette did nothing, as it
+  looked under the pointer while the pointer was on the button. It now waits for a click
+  in the 3D view and opens its menu there. Esc stops it waiting.
 
 ## [26.4.0] - 2026-09-25
 
