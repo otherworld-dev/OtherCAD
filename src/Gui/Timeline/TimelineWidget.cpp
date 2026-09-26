@@ -231,7 +231,8 @@ void TimelineWidget::connectDocumentSignals()
             const char* name = prop.getName();
             const bool structural = name != nullptr
                 && (std::strcmp(name, "Group") == 0 || std::strcmp(name, "Tip") == 0
-                    || std::strcmp(name, "BaseFeature") == 0);
+                    || std::strcmp(name, "BaseFeature") == 0
+                    || std::strcmp(name, "Transformations") == 0);
             if (structural) {
                 scheduleRebuild();
             }
@@ -246,9 +247,7 @@ void TimelineWidget::connectDocumentSignals()
     connActivateView = app->signalActivateView.connect([this](const Gui::MDIView*) {
         scheduleRebuild();
     });
-    connCloseView = app->signalCloseView.connect([this](const Gui::MDIView*) {
-        scheduleRebuild();
-    });
+    connCloseView = app->signalCloseView.connect([this](const Gui::MDIView*) { scheduleRebuild(); });
 }
 
 void TimelineWidget::trackDocument(Gui::Document* doc)
@@ -537,8 +536,9 @@ void TimelineWidget::collectBodyFeatures(
         App::DocumentObject* origin = originProp->getValue();
         if (origin) {
             skipped.insert(origin);
-            auto* originGroup
-                = freecad_cast<App::PropertyLinkList*>(origin->getPropertyByName("Group"));
+            auto* originGroup = freecad_cast<App::PropertyLinkList*>(
+                origin->getPropertyByName("Group")
+            );
             if (originGroup) {
                 for (App::DocumentObject* child : originGroup->getValues()) {
                     if (child) {
@@ -559,6 +559,20 @@ void TimelineWidget::collectBodyFeatures(
 
     auto* groupProp = freecad_cast<App::PropertyLinkList*>(body->getPropertyByName("Group"));
     if (groupProp) {
+        // The steps of a MultiTransform are edited through it and make no shape of their own,
+        // the way the tree shows them under it. As markers they would be solids the playhead
+        // could stop on, and rolling to one would make it the body's tip.
+        for (App::DocumentObject* child : groupProp->getValues()) {
+            auto* steps = child
+                ? freecad_cast<App::PropertyLinkList*>(child->getPropertyByName("Transformations"))
+                : nullptr;
+            if (steps) {
+                for (App::DocumentObject* step : steps->getValues()) {
+                    skipped.insert(step);
+                }
+            }
+        }
+
         for (App::DocumentObject* child : groupProp->getValues()) {
             if (child && child->isAttachedToDocument() && skipped.count(child) == 0) {
                 features.push_back(child);
@@ -773,8 +787,7 @@ bool TimelineWidget::event(QEvent* event)
     // the first refusal through this event: claiming the key here is what hands the press
     // to the strip instead of the camera, and only while the strip holds the focus, so the
     // command keeps Home everywhere else.
-    if (event->type() == QEvent::ShortcutOverride
-        && keyAction(static_cast<QKeyEvent*>(event))) {
+    if (event->type() == QEvent::ShortcutOverride && keyAction(static_cast<QKeyEvent*>(event))) {
         event->accept();
         return true;
     }
@@ -786,8 +799,7 @@ bool TimelineWidget::eventFilter(QObject* watched, QEvent* event)
 {
     // A focused marker or step button is offered the key before the strip is, so the
     // claim has to be made here as well as in event() above.
-    if (event->type() == QEvent::ShortcutOverride
-        && keyAction(static_cast<QKeyEvent*>(event))) {
+    if (event->type() == QEvent::ShortcutOverride && keyAction(static_cast<QKeyEvent*>(event))) {
         event->accept();
         return true;
     }
@@ -935,8 +947,7 @@ void TimelineWidget::renameFeature(const std::string& name)
     }
 
     try {
-        const int tid
-            = Gui::Command::openActiveDocumentCommand(std::string("Rename timeline feature"));
+        const int tid = Gui::Command::openActiveDocumentCommand(std::string("Rename timeline feature"));
         Gui::Command::doCommand(
             Gui::Command::Doc,
             "%s.Label = u'%s'",
@@ -1054,8 +1065,7 @@ bool TimelineWidget::rollTo(int index)
             // CmdPartDesignMoveTip walks the body's Group, which the base feature is not
             // part of, so the base feature is left showing here too.
             App::DocumentObject* baseFeature = nullptr;
-            auto* baseProp
-                = freecad_cast<App::PropertyLink*>(body->getPropertyByName("BaseFeature"));
+            auto* baseProp = freecad_cast<App::PropertyLink*>(body->getPropertyByName("BaseFeature"));
             if (baseProp) {
                 baseFeature = baseProp->getValue();
             }

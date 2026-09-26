@@ -435,6 +435,31 @@ class TestTimeline(unittest.TestCase):
         self.assertTrue(self.sketch2.Visibility)
         self.assertEqual(self._hidden_by_rollback(), [])
 
+    def test_the_steps_of_a_multitransform_are_not_markers(self):
+        """The steps are edited through the MultiTransform and make no shape of their own,
+        so the playhead must never stop on one and make it the tip."""
+
+        # A MultiTransform with no originals yet passes for one of its own steps, so it
+        # only becomes the body's next solid once it has them.
+        multi = self.doc.addObject("PartDesign::MultiTransform", "MultiTransform")
+        multi.Originals = [self.pad2]
+        self.body.addObject(multi)
+        step = self.body.newObject("PartDesign::LinearPattern", "LinearPattern")
+        step.Direction = (self.sketch2, ["H_Axis"])
+        step.Length = 30.0
+        step.Occurrences = 2
+        multi.Transformations = [step]
+        self.doc.recompute()
+        self.assertIs(self.body.Tip, multi)
+
+        self.assertTrue(self._wait_for_markers(FEATURE_COUNT + 1))
+        self.assertIsNone(self._marker_for("LinearPattern"))
+
+        self._press(QtCore.Qt.Key_Left)
+        self.assertIs(self.body.Tip, self.pad2)
+        self._press(QtCore.Qt.Key_Right)
+        self.assertIs(self.body.Tip, multi)
+
     def test_arrow_keys_roll_the_history(self):
         """Left and right step one feature, Home and End run to the ends of the strip."""
 
