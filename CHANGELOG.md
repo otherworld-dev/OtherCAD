@@ -17,6 +17,10 @@ from upstream FreeCAD merges are not listed, only the work done in this fork.
 - Select Other on the ribbon, in a menu or from the command palette did nothing, as it
   looked under the pointer while the pointer was on the button. It now waits for a click
   in the 3D view and opens its menu there. Esc stops it waiting.
+- A sketch dimension that would over-constrain the sketch is added as a driven dimension,
+  as in Fusion, with a note in the status bar. Before, it went in as a driving one, and
+  typing a different value into it left the sketch in conflict with none of its
+  dimensions editable.
 
 ## [26.4.0] - 2026-09-25
 

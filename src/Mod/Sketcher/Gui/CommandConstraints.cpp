@@ -363,6 +363,52 @@ bool isCreateConstraintActive(Gui::Document* doc)
     return false;
 }
 
+// A dimension placed on geometry that is already fixed over-constrains the sketch. It is
+// measured from the geometry, so it agrees with the rest and nothing looks wrong, but the
+// solver counts it as redundant, and typing any other value makes it conflict, after which
+// no dimension of the sketch can be edited. Like Fusion, such a dimension is made a driven
+// one instead. Returns whether any of the given constraints was changed.
+bool makeOverConstrainingDimensionsDriven(Sketcher::SketchObject* sketch,
+                                          const std::vector<int>& indexes)
+{
+    sketch->solve();
+
+    // The solver numbers constraints from 1
+    auto listed = [](const std::vector<int>& list, int index) {
+        return std::find(list.begin(), list.end(), index + 1) != list.end();
+    };
+
+    std::vector<int> overConstraining;
+    const std::vector<Sketcher::Constraint*>& constraints = sketch->Constraints.getValues();
+    for (int index : indexes) {
+        if (index < 0 || index >= static_cast<int>(constraints.size())) {
+            continue;
+        }
+        const Sketcher::Constraint* constr = constraints[index];
+        if (!constr->isDimensional() || !constr->isDriving) {
+            continue;
+        }
+        if (listed(sketch->getLastConflicting(), index)
+            || listed(sketch->getLastRedundant(), index)) {
+            overConstraining.push_back(index);
+        }
+    }
+
+    if (overConstraining.empty()) {
+        return false;
+    }
+
+    for (int index : overConstraining) {
+        Gui::cmdAppObjectArgs(sketch, "setDriving(%d,%s)", index, "False");
+    }
+    sketch->solve();
+    Gui::getMainWindow()->showMessage(
+        QObject::tr("The dimension would over-constrain the sketch, so it was added as a "
+                    "driven dimension"),
+        5000);
+    return true;
+}
+
 // Utility method to avoid repeating the same code over and over again
 void finishDatumConstraint(Gui::Command* cmd,
                            Sketcher::SketchObject* sketch,
@@ -371,6 +417,17 @@ void finishDatumConstraint(Gui::Command* cmd,
 {
     ParameterGrp::handle hGrp = App::GetApplication().GetParameterGroupByPath(
         "User parameter:BaseApp/Preferences/Mod/Sketcher");
+
+    if (isDriving) {
+        std::vector<int> added;
+        int count = static_cast<int>(sketch->Constraints.getSize());
+        for (int i = count - static_cast<int>(numberofconstraints); i < count; ++i) {
+            added.push_back(i);
+        }
+        if (makeOverConstrainingDimensionsDriven(sketch, added)) {
+            isDriving = false;
+        }
+    }
 
     // Get the latest constraint
     const std::vector<Sketcher::Constraint*>& ConStr = sketch->Constraints.getValues();
@@ -2948,6 +3005,8 @@ protected:
             resetTool();
             return;
         }
+
+        makeOverConstrainingDimensionsDriven(Obj, cstrIndexes);
 
         // Ask for the value of datum constraints
         ParameterGrp::handle hGrp = App::GetApplication().GetParameterGroupByPath("User parameter:BaseApp/Preferences/Mod/Sketcher");
