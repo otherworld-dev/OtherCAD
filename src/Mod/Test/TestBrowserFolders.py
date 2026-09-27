@@ -714,6 +714,17 @@ class TestFolderEyeAndExpansion(TreeFoldersBase):
         self.assertTrue(self.sketch.Visibility)
         self.assertTrue(self.free_sketch.Visibility)
 
+    def test_folder_eye_leaves_an_open_transaction_open(self):
+        # A task dialog keeps one open until OK or Cancel; the eye must not commit it
+        before = self.doc.UndoCount
+        self.doc.openTransaction("pending")
+        self.pad.Length = 20.0
+        self._eye_click(self._folder("Sketches"))
+        self.doc.abortTransaction()
+        _process_events(200)
+        self.assertEqual(self.pad.Length.Value, 10.0)
+        self.assertEqual(self.doc.UndoCount, before)
+
     def test_folder_eye_shows_all_when_all_are_hidden(self):
         self.sketch.Visibility = False
         self.free_sketch.Visibility = False

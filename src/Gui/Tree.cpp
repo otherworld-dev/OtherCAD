@@ -7540,26 +7540,45 @@ void FolderItem::toggleVisibility()
     }
     const bool show = !anyVisible();
     App::Document* doc = owner->object()->getObject()->getDocument();
-    doc->openTransaction(
-        show ? QT_TRANSLATE_NOOP("Command", "Show folder")
-             : QT_TRANSLATE_NOOP("Command", "Hide folder")
-    );
-    for (auto* oi : objectItems()) {
-        auto& visibility = oi->object()->getObject()->Visibility;
-        if (visibility.getValue() == show) {
-            continue;
-        }
-        // Visibility is NoModify, which never opens the transaction booked above, so the
-        // folder's writes would all go unrecorded. Lifted for the write, the first one opens
-        // it and the rest land in it: one undo step for the whole folder.
-        Base::ObjectStatusLocker<App::Property::Status, App::Property> guard(
-            App::Property::NoModify,
-            &visibility,
-            false
+
+    // A task dialog keeps a transaction open, or booked, until its OK or Cancel. Opening one
+    // here would commit it under the dialog, so the writes join it instead, and its Cancel
+    // takes them back with the rest.
+    const bool ownTransaction = !doc->hasPendingTransaction()
+        && doc->getBookedTransactionID() == App::NullTransaction;
+    if (ownTransaction) {
+        doc->openTransaction(
+            show ? QT_TRANSLATE_NOOP("Command", "Show folder")
+                 : QT_TRANSLATE_NOOP("Command", "Hide folder")
         );
-        visibility.setValue(show);
     }
-    doc->commitTransaction();
+    try {
+        for (auto* oi : objectItems()) {
+            auto& visibility = oi->object()->getObject()->Visibility;
+            if (visibility.getValue() == show) {
+                continue;
+            }
+            // Visibility is NoModify, which never opens a booked transaction, so the folder's
+            // writes would all go unrecorded. Lifted for the write, the first one opens it
+            // and the rest land in it: one undo step for the whole folder.
+            Base::ObjectStatusLocker<App::Property::Status, App::Property> guard(
+                App::Property::NoModify,
+                &visibility,
+                false
+            );
+            visibility.setValue(show);
+        }
+    }
+    catch (const Base::Exception& e) {
+        if (ownTransaction) {
+            doc->abortTransaction();
+        }
+        e.reportException();
+        return;
+    }
+    if (ownTransaction) {
+        doc->commitTransaction();
+    }
 }
 
 QList<DocumentObjectItem*> FolderItem::objectItems() const
