@@ -29,6 +29,7 @@ To run tests:
     FreeCAD -t TestBrowserFolders
 """
 
+import importlib
 import time
 import unittest
 
@@ -37,6 +38,16 @@ import FreeCADGui
 import Part
 import Sketcher
 from PySide import QtCore, QtGui, QtWidgets
+
+# FreeCAD's PySide shim does not re-export QtTest (see TestFusionShortcuts). Only the Qt6
+# binding is tried, and whatever a candidate throws means it is not usable.
+QtTest = None
+for _binding in ("PySide6.QtTest", "PySide.QtTest"):
+    try:
+        QtTest = importlib.import_module(_binding)
+        break
+    except Exception:  # pragma: no cover - depends on which binding is installed
+        continue
 
 TREE_PARAMS = "User parameter:BaseApp/Preferences/TreeView"
 DOCUMENT_TYPE = 1000
@@ -370,3 +381,222 @@ class TestFolderDragAndDrop(TreeFoldersBase):
         # GUIApplication::notify turns the bad read into a reported exception, not a crash
         self.assertNotIn("Unhandled", report.toPlainText()[before:])
         self.assertEqual([t for _, t in self._rows(self._folder("History"))], [self.pad.Label])
+
+
+class TestFolderInteraction(TreeFoldersBase):
+    """Selection, editing, search and drops around folder rows."""
+
+    def _point_on(self, item):
+        """A point on the item's row near the right end of the label column, or a skip.
+
+        The right end keeps clear of the row's icons, whose clicks toggle visibility.
+        """
+        if QtTest is None:
+            self.skipTest("QtTest is not available in this build")
+        self.tree.scrollToItem(item)
+        _process_events()
+        rect = self.tree.visualItemRect(item)
+        header = self.tree.header()
+        column_end = header.sectionViewportPosition(0) + header.sectionSize(0)
+        pos = QtCore.QPoint(min(rect.right(), column_end) - 4, rect.center().y())
+        hit = self._hold(self.tree.itemAt(pos)) if self.tree.isVisible() else None
+        if hit is None or hit.type() != item.type() or hit.text(0) != item.text(0):
+            self.skipTest("The row is not on screen in this test environment")
+        return pos
+
+    def _click(self, item):
+        pos = self._point_on(item)
+        QtTest.QTest.mouseClick(
+            self.tree.viewport(), QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, pos
+        )
+        _process_events(200)
+
+    def test_selecting_the_sketch_in_the_document_highlights_its_folder_row(self):
+        FreeCADGui.Selection.addSelection(
+            self.doc.Name, self.body.Name, self.free_sketch.Name + "."
+        )
+        _process_events(300)
+        row = self._item_of(self.free_sketch, self._folder("Sketches"))
+        self.assertTrue(row.isSelected())
+
+    def test_clicking_a_sketch_row_selects_body_dot_sketch(self):
+        row = self._item_of(self.free_sketch, self._folder("Sketches"))
+        self._click(row)
+        sel = FreeCADGui.Selection.getSelectionEx("", 0)
+        self.assertEqual(len(sel), 1)
+        self.assertEqual(sel[0].Object.Name, self.body.Name)
+        self.assertEqual(list(sel[0].SubElementNames), [self.free_sketch.Name + "."])
+
+    def test_clicking_a_folder_selects_nothing(self):
+        FreeCADGui.Selection.addSelection(self.doc.Name, self.pad.Name)
+        _process_events()
+        folder = self._folder("Construction")
+        self._click(folder)
+        self.assertFalse(folder.isSelected())
+        self.assertEqual(FreeCADGui.Selection.getSelection(), [])
+
+    def test_a_folder_cannot_be_renamed_or_dragged(self):
+        folder = self._folder("Sketches")
+        flags = folder.flags()
+        self.assertFalse(flags & QtCore.Qt.ItemIsSelectable)
+        self.assertFalse(flags & QtCore.Qt.ItemIsDragEnabled)
+        self.assertFalse(flags & QtCore.Qt.ItemIsEditable)
+        self.tree.setCurrentItem(folder)
+        self.tree.editItem(folder)  # what F2 ends up calling
+        # The tree's own Rename action, as its context menu would run it
+        for action in self.tree.findChildren(QtGui.QAction):
+            if action.text() == "Rename":
+                action.trigger()
+        _process_events()
+        self.assertEqual(self.tree.state(), QtWidgets.QAbstractItemView.NoState)
+        self.assertEqual(folder.text(0), "Sketches (2)")
+
+    def test_double_click_toggles_a_folder(self):
+        folder = self._folder("Construction")
+        self.assertFalse(folder.isExpanded())
+        pos = self._point_on(folder)
+        QtTest.QTest.mouseDClick(
+            self.tree.viewport(), QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, pos
+        )
+        _process_events(200)
+        self.assertTrue(folder.isExpanded())
+
+    def test_search_finds_an_object_inside_a_folder(self):
+        # The tree only opens rows to a new selection while it syncs with the selection
+        saved_sync = self.params.GetBool("SyncSelection", True)
+        self.params.SetBool("SyncSelection", True)
+        self.addCleanup(self.params.SetBool, "SyncSelection", saved_sync)
+        folder = self._folder("Construction")
+        folder.setExpanded(False)
+        body = self._item_of(self.body)
+        body.setExpanded(False)
+        _process_events()
+        FreeCADGui.Selection.addSelection(self.doc.Name, self.body.Name, self.plane.Name + ".")
+        _process_events(300)
+        # showItem has to open the folder and the body above it to reveal the row
+        self.assertTrue(folder.isExpanded())
+        self.assertTrue(body.isExpanded())
+
+    def test_expanding_the_path_to_a_row_in_a_folder_opens_its_body(self):
+        # Unlike the selection, this reaches showItem with no scroll to open the rows after it
+        folder = self._folder("Construction")
+        folder.setExpanded(False)
+        body = self._item_of(self.body)
+        body.setExpanded(False)
+        _process_events()
+        FreeCADGui.getDocument(self.doc.Name).toggleTreeItem(self.body, 2, self.plane.Name + ".")
+        _process_events()
+        self.assertTrue(body.isExpanded())
+        self.assertTrue(folder.isExpanded())
+
+    def test_select_all_on_a_folder_child_selects_its_siblings(self):
+        row = self._item_of(self.sketch, self._folder("Sketches"))
+        self.tree.setCurrentItem(row)
+        FreeCADGui.Selection.addSelection(self.doc.Name, self.body.Name, self.sketch.Name + ".")
+        _process_events()
+        self.tree.selectAll()
+        _process_events(200)
+        names = {o.Name for o in FreeCADGui.Selection.getSelection()}
+        # The body's other children too, not only the ones in the same folder
+        self.assertIn(self.free_sketch.Name, names)
+        self.assertIn(self.plane.Name, names)
+        self.assertIn(self.pad.Name, names)
+
+    def test_select_all_on_a_folder_selects_its_rows(self):
+        # A row first, so the tree's selection changes and forgets any earlier select-all
+        self.tree.setCurrentItem(self._item_of(self.sketch, self._folder("Sketches")))
+        _process_events()
+        folder = self._folder("Construction")
+        self.tree.setCurrentItem(folder)
+        _process_events()
+        self.tree.selectAll()
+        _process_events(200)
+        names = {o.Name for o in FreeCADGui.Selection.getSelection()}
+        self.assertEqual(names, {self.plane.Name, self.binder.Name})
+
+    def _send_drop(self, pos):
+        """A drag entering, moving and dropping at pos, as QDrag would deliver them."""
+        viewport = self.tree.viewport()
+        mime = QtCore.QMimeData()
+        mime.setData(self.tree.model().mimeTypes()[0], QtCore.QByteArray())
+        app = QtWidgets.QApplication.instance()
+        buttons, mods = QtCore.Qt.LeftButton, QtCore.Qt.NoModifier
+        try:
+            app.sendEvent(
+                viewport, QtGui.QDragEnterEvent(pos, QtCore.Qt.MoveAction, mime, buttons, mods)
+            )
+            app.sendEvent(
+                viewport, QtGui.QDragMoveEvent(pos, QtCore.Qt.MoveAction, mime, buttons, mods)
+            )
+            app.sendEvent(
+                viewport,
+                QtGui.QDropEvent(QtCore.QPointF(pos), QtCore.Qt.MoveAction, mime, buttons, mods),
+            )
+        finally:
+            # The tree's drag key filter and dragging state are only reset by a real QDrag
+            app.removeEventFilter(self.tree)
+            app.sendEvent(viewport, QtGui.QDragLeaveEvent())
+            _process_events(300)
+
+    def test_dropping_on_a_folder_moves_into_its_body(self):
+        other = self.doc.addObject("PartDesign::Body", "Body001")
+        loose = other.newObject("Sketcher::SketchObject", "Loose")
+        self.doc.recompute()
+        _process_events(300)
+        self.assertTrue(self.body.ViewObject.canDropObject(loose))
+        source = self._item_of(loose, self._item_of(other))
+        self.tree.setCurrentItem(source)
+        _process_events()
+        target = self._folder("Sketches")
+        pos = self._point_on(target)
+        self.assertTrue(source.isSelected())
+        self._send_drop(pos)
+        self.doc.recompute()
+        _process_events(300)
+        self.assertIn(loose, self.body.Group)
+        self.assertNotIn(loose, other.Group)
+
+    def test_body_inside_a_part_keeps_the_full_subname(self):
+        # Review Focus 1
+        part = self.doc.addObject("App::Part", "Part")
+        part.addObject(self.body)
+        self.doc.recompute()
+        _process_events(300)
+        FreeCADGui.Selection.addSelection(
+            self.doc.Name, part.Name, self.body.Name + "." + self.free_sketch.Name + "."
+        )
+        _process_events(300)
+        body_row = self._item_of(self.body, self._item_of(part))
+        body_row.setExpanded(True)
+        _process_events()
+        sketches = None
+        for i in range(body_row.childCount()):
+            child = body_row.child(i)
+            if child.type() == FOLDER_TYPE and child.text(0).startswith("Sketches"):
+                sketches = self._hold(child)
+        self.assertIsNotNone(sketches)
+        row = self._item_of(self.free_sketch, sketches)
+        self.assertTrue(row.isSelected())
+
+    def test_a_link_to_a_body_shows_its_children_flat(self):
+        # Review Focus 3
+        link = self.doc.addObject("App::Link", "BodyLink")
+        link.LinkedObject = self.body
+        self.doc.recompute()
+        _process_events(300)
+        rows = self._rows(self._item_of(link))
+        self.assertNotIn(FOLDER_TYPE, [k for k, _ in rows])
+
+    def test_deleting_a_body_with_a_current_open_folder_is_safe(self):
+        # Review Focus 4
+        folder = self._folder("Construction")
+        folder.setExpanded(True)
+        self.tree.setCurrentItem(folder)
+        _process_events()
+        name = self.doc.Name
+        self.body.removeObjectsFromDocument()
+        self.doc.removeObject(self.body.Name)
+        _process_events(300)
+        FreeCAD.closeDocument(name)
+        _process_events(300)
+        self.assertNotIn(name, FreeCAD.listDocuments())

@@ -574,8 +574,6 @@ public:
     int isParentGroup() const;
 
     DocumentObjectItem* getParentItem() const;
-    DocumentObjectItem* getNextSibling() const;
-    DocumentObjectItem* getPreviousSibling() const;
     TreeWidget* getTree() const;
 
 private:
