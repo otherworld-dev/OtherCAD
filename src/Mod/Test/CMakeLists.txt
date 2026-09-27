@@ -45,6 +45,7 @@ SET(Test_SRCS
     TestExtrudeFlip.py
     TestNewBodyGui.py
     TestSelectOther.py
+    TestProfileRegions.py
     TestGizmoValueLabels.py
     TestPatternPanel.py
     TestViewportProjection.py

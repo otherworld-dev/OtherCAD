@@ -114,6 +114,7 @@ FreeCAD.__unit_test__ += [
     "TestExtrudeFlip",
     "TestNewBodyGui",
     "TestSelectOther",
+    "TestProfileRegions",
     "TestGizmoValueLabels",
     "TestPatternPanel",
     "TestViewportProjection",

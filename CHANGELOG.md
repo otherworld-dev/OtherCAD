@@ -28,6 +28,10 @@ from upstream FreeCAD merges are not listed, only the work done in this fork.
   dimensions editable.
 - The steps of a MultiTransform no longer show on the timeline as features of their own.
   Stepping the history could stop on one and make it the body's tip.
+- Extrude and the other profile tools open ready to pick regions only when the sketch
+  cannot be used whole, where the region they start on is just a stand-in. A sketch
+  such as a square with a hole no longer opens in picking mode, and editing a feature
+  no longer sets the first click to replace the regions picked before.
 
 ## [26.4.0] - 2026-09-25
 
