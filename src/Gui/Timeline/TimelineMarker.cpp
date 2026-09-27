@@ -23,6 +23,7 @@
 #include <QContextMenuEvent>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPen>
 #include <QPixmap>
 #include <QPalette>
 #include <QRect>
@@ -33,6 +34,7 @@
 #include <App/Application.h>
 #include <App/Document.h>
 #include <App/DocumentObject.h>
+#include <App/SuppressibleExtension.h>
 #include <Gui/Application.h>
 #include <Gui/BitmapFactory.h>
 #include <Gui/ViewProvider.h>
@@ -67,10 +69,8 @@ QString stateName(TimelineMarker::State state)
 
 const QPixmap& errorBadge()
 {
-    static const QPixmap badge = Gui::BitmapFactory().pixmapFromSvg(
-        "overlay_error",
-        QSizeF(badgeExtent, badgeExtent)
-    );
+    static const QPixmap badge
+        = Gui::BitmapFactory().pixmapFromSvg("overlay_error", QSizeF(badgeExtent, badgeExtent));
     return badge;
 }
 }  // namespace
@@ -139,6 +139,8 @@ void TimelineMarker::refresh()
     if (obj) {
         caption = QString::fromUtf8(obj->Label.getValue());
         error = obj->isError();
+        auto* suppressible = obj->getExtensionByType<App::SuppressibleExtension>(true);
+        suppressed = suppressible && suppressible->Suppressed.getValue();
 
         Gui::ViewProvider* provider = Gui::Application::Instance
             ? Gui::Application::Instance->getViewProvider(obj)
@@ -147,7 +149,8 @@ void TimelineMarker::refresh()
             featureIcon = provider->getIcon();
         }
 
-        const QString status = QString::fromUtf8(obj->getStatusString());
+        const QString status = suppressed ? tr("Suppressed")
+                                          : QString::fromUtf8(obj->getStatusString());
         setToolTip(status.isEmpty() ? caption : QStringLiteral("%1\n%2").arg(caption, status));
     }
 
@@ -159,6 +162,7 @@ void TimelineMarker::restyle()
     setProperty("timelineState", stateName(markerState));
     setProperty("timelineTip", tip);
     setProperty("timelineError", error);
+    setProperty("timelineSuppressed", suppressed);
 
     style()->unpolish(this);
     style()->polish(this);
@@ -175,14 +179,23 @@ void TimelineMarker::paintEvent(QPaintEvent* event)
     QPainter painter(this);
     style()->drawPrimitive(QStyle::PE_Widget, &opt, &painter, this);
 
-    const QRect content
-        = rect().adjusted(markerPadding, markerPadding, -markerPadding, -markerPadding);
+    const QRect content = rect().adjusted(markerPadding, markerPadding, -markerPadding, -markerPadding);
 
     QRect iconRect(0, 0, iconExtent, iconExtent);
     iconRect.moveCenter(content.center());
 
-    const QIcon::Mode mode = markerState == State::RolledBack ? QIcon::Disabled : QIcon::Normal;
+    const QIcon::Mode mode = markerState == State::RolledBack || suppressed ? QIcon::Disabled
+                                                                            : QIcon::Normal;
     featureIcon.paint(&painter, iconRect, Qt::AlignCenter, mode, QIcon::Off);
+
+    if (suppressed) {
+        // Struck through, the way Fusion shows a suppressed feature
+        QPen pen(palette().color(QPalette::WindowText));
+        pen.setWidthF(1.5);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(pen);
+        painter.drawLine(iconRect.bottomLeft(), iconRect.topRight());
+    }
 
     if (error) {
         const QPixmap& badge = errorBadge();

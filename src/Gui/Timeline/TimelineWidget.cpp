@@ -53,6 +53,7 @@
 #include <App/Property.h>
 #include <App/PropertyLinks.h>
 #include <App/PropertyStandard.h>
+#include <App/SuppressibleExtension.h>
 #include <Base/Exception.h>
 #include <Base/Tools.h>
 #include <Base/Type.h>
@@ -863,6 +864,13 @@ void TimelineWidget::onMarkerMenu(const QString& feature, const QPoint& globalPo
     QAction* editAction = menu.addAction(tr("Edit"));
     QAction* renameAction = menu.addAction(tr("Rename"));
     QAction* deleteAction = menu.addAction(tr("Delete"));
+    QAction* suppressAction = nullptr;
+    auto* suppressible = resolve(name)->getExtensionByType<App::SuppressibleExtension>(true);
+    if (suppressible && !suppressible->Suppressed.testStatus(App::Property::Hidden)) {
+        suppressAction = menu.addAction(tr("Suppress"));
+        suppressAction->setCheckable(true);
+        suppressAction->setChecked(suppressible->Suppressed.getValue());
+    }
     QAction* rollAction = nullptr;
     if (!bodyName.empty() && index >= 0) {
         menu.addSeparator();
@@ -884,6 +892,9 @@ void TimelineWidget::onMarkerMenu(const QString& feature, const QPoint& globalPo
     }
     else if (chosen == deleteAction) {
         deleteFeature(name);
+    }
+    else if (chosen == suppressAction) {
+        toggleSuppressed(name);
     }
     else if (chosen == rollAction) {
         moveTo(index);
@@ -979,6 +990,38 @@ void TimelineWidget::deleteFeature(const std::string& name)
     }
 
     app->commandManager().runCommandByName("Std_Delete");
+}
+
+void TimelineWidget::toggleSuppressed(const std::string& name)
+{
+    App::DocumentObject* obj = resolve(name);
+    auto* suppressible = obj ? obj->getExtensionByType<App::SuppressibleExtension>(true) : nullptr;
+    if (!suppressible) {
+        return;
+    }
+
+    int tid = App::NullTransaction;
+    try {
+        tid = Gui::Command::openActiveDocumentCommand(std::string("Toggle suppress"));
+        Gui::Command::doCommand(
+            Gui::Command::Doc,
+            "App.getDocument('%s').getObject('%s').Suppressed = %s",
+            obj->getDocument()->getName(),
+            obj->getNameInDocument(),
+            suppressible->Suppressed.getValue() ? "False" : "True"
+        );
+        // Everything after it changes, so it is rebuilt now rather than on the next edit
+        Gui::Command::doCommand(
+            Gui::Command::Doc,
+            "App.getDocument('%s').recompute()",
+            obj->getDocument()->getName()
+        );
+        Gui::Command::commitCommand(tid);
+    }
+    catch (const Base::Exception& e) {
+        Gui::Command::abortCommand(tid);
+        e.reportException();
+    }
 }
 
 void TimelineWidget::moveTo(int index)

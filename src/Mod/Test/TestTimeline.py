@@ -583,6 +583,97 @@ class TestTimeline(unittest.TestCase):
         for button in buttons:
             self.assertEqual(button.focusPolicy(), QtCore.Qt.TabFocus)
 
+    def _choose_from_marker_menu(self, label, text):
+        """Right-click a marker and pick an entry of its menu.
+
+        The menu runs an event loop of its own, so the pick is made from a timer that
+        keeps looking until it is open. Returns whether the entry was checked.
+        """
+
+        # A popup of an application in the background can close as soon as it opens
+        self.window.raise_()
+        self.window.activateWindow()
+        # A menu that is still closing would take the right-click for itself
+        deadline = time.monotonic() + 2.0
+        while QtWidgets.QApplication.activePopupWidget() and time.monotonic() < deadline:
+            self._process_events(50)
+
+        marker = self._marker_for(label)
+        self.assertIsNotNone(marker, f"Expected a marker for {label}")
+        chosen = []
+        offered = []
+        timer = QtCore.QTimer()
+        timer.setInterval(50)
+        deadline = time.monotonic() + 5.0
+
+        def pick():
+            menu = QtWidgets.QApplication.activePopupWidget()
+            if menu is not None:
+                timer.stop()
+                offered.extend(action.text() for action in menu.actions())
+                for action in menu.actions():
+                    if action.text() == text:
+                        chosen.append(action.isChecked())
+                        # Enter on the highlighted entry, as trigger() alone is not
+                        # what exec() hands back
+                        menu.setActiveAction(action)
+                        for kind in (QtCore.QEvent.KeyPress, QtCore.QEvent.KeyRelease):
+                            QtWidgets.QApplication.sendEvent(
+                                menu,
+                                QtGui.QKeyEvent(kind, QtCore.Qt.Key_Return, QtCore.Qt.NoModifier),
+                            )
+                        break
+                else:
+                    menu.close()
+            elif time.monotonic() > deadline:
+                timer.stop()
+
+        timer.timeout.connect(pick)
+        timer.start()
+        centre = marker.rect().center()
+        event = QtGui.QContextMenuEvent(
+            QtGui.QContextMenuEvent.Mouse, centre, marker.mapToGlobal(centre)
+        )
+        QtWidgets.QApplication.instance().sendEvent(marker, event)
+        self._process_events(600)
+        timer.stop()
+        if not offered and QtWidgets.QApplication.activeWindow() is None:
+            self.skipTest(
+                "This machine did not hand the application the foreground, "
+                "so the menu closed as soon as it opened"
+            )
+        self.assertEqual(len(chosen), 1, f"the menu of {label} had no {text} entry: {offered}")
+        return chosen[0]
+
+    def test_suppress_from_the_marker_menu(self):
+        full = self.body.Shape.Volume
+
+        was_checked = self._choose_from_marker_menu("Pad001", "Suppress")
+        self._settle()
+
+        self.assertFalse(was_checked)
+        self.assertTrue(self.pad2.Suppressed)
+        self.assertAlmostEqual(self.body.Shape.Volume, 10.0 * 6.0 * 10.0, places=3)
+        self.assertIn("Suppressed", self._marker_for("Pad001").toolTip())
+
+        was_checked = self._choose_from_marker_menu("Pad001", "Suppress")
+        self._settle()
+
+        self.assertTrue(was_checked)
+        self.assertFalse(self.pad2.Suppressed)
+        self.assertAlmostEqual(self.body.Shape.Volume, full, places=3)
+
+    def test_suppress_is_one_undo_step(self):
+        self.doc.UndoMode = 1
+        self._choose_from_marker_menu("Pad001", "Suppress")
+        self._settle()
+
+        self.doc.undo()
+        self.doc.recompute()
+        self._settle()
+
+        self.assertFalse(self.pad2.Suppressed)
+
     def test_right_clicking_a_marker_leaves_the_selection_alone(self):
         """The menu belongs to the marker under the cursor, not to the selection."""
 

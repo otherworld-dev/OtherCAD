@@ -8,6 +8,11 @@ from upstream FreeCAD merges are not listed, only the work done in this fork.
 
 ## [Unreleased]
 
+### Added
+
+- Features can be suppressed from the timeline's right-click menu. A suppressed feature
+  is drawn greyed out and struck through, and its tooltip says so.
+
 ### Fixed
 
 - The New body operation of Extrude, Revolve, Sweep, Loft, Coil and the primitives now
@@ -21,6 +26,8 @@ from upstream FreeCAD merges are not listed, only the work done in this fork.
   as in Fusion, with a note in the status bar. Before, it went in as a driving one, and
   typing a different value into it left the sketch in conflict with none of its
   dimensions editable.
+- The steps of a MultiTransform no longer show on the timeline as features of their own.
+  Stepping the history could stop on one and make it the body's tip.
 
 ## [26.4.0] - 2026-09-25
 

@@ -47,8 +47,8 @@ namespace Timeline
 {
 
 /**
- * One entry of the timeline strip: the icon of a modelling feature above a
- * short label, drawn as a fixed size tile.
+ * One entry of the timeline strip: the icon of a modelling feature, drawn as
+ * a fixed size tile, with its label in the tooltip.
  *
  * A marker never owns nor keeps a pointer to the feature it stands for. It
  * remembers the document and the internal name and resolves the object on
@@ -108,6 +108,7 @@ private:
     State markerState {State::Normal};
     bool tip {false};
     bool error {false};
+    bool suppressed {false};
 
     Q_DISABLE_COPY(TimelineMarker)
 };

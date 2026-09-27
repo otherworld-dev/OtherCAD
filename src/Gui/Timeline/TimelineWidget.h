@@ -128,14 +128,8 @@ private:
     App::DocumentObject* resolve(const std::string& name) const;
     App::DocumentObject* activeBody(Gui::Document* guiDoc) const;
 
-    void collectBodyFeatures(
-        App::DocumentObject* body,
-        std::vector<App::DocumentObject*>& features
-    ) const;
-    void collectDocumentFeatures(
-        App::Document* doc,
-        std::vector<App::DocumentObject*>& features
-    ) const;
+    void collectBodyFeatures(App::DocumentObject* body, std::vector<App::DocumentObject*>& features) const;
+    void collectDocumentFeatures(App::Document* doc, std::vector<App::DocumentObject*>& features) const;
 
     int markerIndexAt(const QPoint& stripPos) const;
     int indexOfFeature(const std::string& name) const;
@@ -158,6 +152,7 @@ private:
     void editFeature(const std::string& name);
     void renameFeature(const std::string& name);
     void deleteFeature(const std::string& name);
+    void toggleSuppressed(const std::string& name);
 
     void positionPlayhead();
     void moveTo(int index);
