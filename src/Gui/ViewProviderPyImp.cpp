@@ -517,6 +517,29 @@ PyObject* ViewProviderPy::claimChildrenRecursive(PyObject* args) const
     return Py::new_reference_to(ret);
 }
 
+PyObject* ViewProviderPy::claimChildrenFolders(PyObject* args) const
+{
+    if (!PyArg_ParseTuple(args, "")) {
+        return nullptr;
+    }
+
+    Py::List ret;
+    for (const auto& folder : getViewProviderPtr()->claimChildrenFolders()) {
+        Py::List objects;
+        for (auto* obj : folder.objects) {
+            if (obj) {
+                objects.append(Py::asObject(obj->getPyObject()));
+            }
+        }
+        Py::Tuple entry(3);
+        entry.setItem(0, Py::String(folder.key));
+        entry.setItem(1, Py::String(folder.label.toStdString()));
+        entry.setItem(2, objects);
+        ret.append(entry);
+    }
+    return Py::new_reference_to(ret);
+}
+
 PyObject* ViewProviderPy::partialRender(PyObject* args)
 {
     PyObject* value = Py_None;

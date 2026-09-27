@@ -128,6 +128,9 @@ void TreeParams::onItemBackgroundChanged()
     refreshTreeViews();
 }
 
+void TreeParams::onBodyFoldersChanged()
+{}
+
 //////////////////////////////////////////////////////////////////////////////////////
 
 using DocumentObjectItems = std::set<DocumentObjectItem*>;

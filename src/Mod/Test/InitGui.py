@@ -136,6 +136,7 @@ FreeCAD.__unit_test__ += [
     "TestSketchPlanePick",
     "TestMarkingMenu",
     "TestTimeline",
+    "TestBrowserFolders",
     "TestPartDesignDialogTitles",
     "TestRibbonStrings",
     "TestSketchStatusChip",

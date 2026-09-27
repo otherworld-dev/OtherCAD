@@ -28,6 +28,7 @@
 #include <vector>
 #include <memory>
 #include <QIcon>
+#include <QString>
 #include <fastsignals/signal.h>
 #include <boost/intrusive_ptr.hpp>
 
@@ -195,6 +196,24 @@ public:
  * @sa https://bitbucket.org/Coin3D/coin/pull-requests/119/fix-sochildlist-auditing/diff
  */
 void GuiExport coinRemoveAllChildren(SoGroup* node);
+
+/** A named group of an object's tree children, shown under a folder row.
+ *
+ * Purely visual: the objects stay children of the object that returns the folder,
+ * for selection, subnames and drag and drop alike.
+ */
+struct GuiExport TreeFolder
+{
+    /// Stable id, [A-Za-z0-9_] only. The tree saves a folder's expansion under it.
+    std::string key;
+    QString label;
+    QIcon icon;
+    /// Append " (n)" to the label.
+    bool showCount {false};
+    /// Open when there is no saved state for it.
+    bool expandedByDefault {false};
+    std::vector<App::DocumentObject*> objects;
+};
 
 /** General interface for all visual stuff in FreeCAD
  * This class is used to generate and handle all around
@@ -445,6 +464,14 @@ public:
      */
     virtual std::vector<App::DocumentObject*> claimChildren() const;
     //@}
+
+    /** Folders the tree groups some of this object's children into.
+     *
+     * Objects in a folder are shown under its row even if claimChildren() leaves them out
+     * because another child claims them. Children that are in no folder stay direct
+     * children. Empty (the default) shows the children flat.
+     */
+    virtual std::vector<TreeFolder> claimChildrenFolders() const;
 
     /** deliver the children belonging to this object recursively.
      */

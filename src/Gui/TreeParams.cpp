@@ -83,6 +83,7 @@ public:
     long ColumnSize3;
     bool TreeToolTipIcon;
     bool VisibilityIcon;
+    bool BodyFolders;
 
     // Auto generated code (Tools/params_utils.py:245)
     TreeParamsP()
@@ -170,6 +171,8 @@ public:
         funcs["TreeToolTipIcon"] = &TreeParamsP::updateTreeToolTipIcon;
         VisibilityIcon = handle->GetBool("VisibilityIcon", true);
         funcs["VisibilityIcon"] = &TreeParamsP::updateVisibilityIcon;
+        BodyFolders = handle->GetBool("BodyFolders", true);
+        funcs["BodyFolders"] = &TreeParamsP::updateBodyFolders;
     }
 
     // Auto generated code (Tools/params_utils.py:263)
@@ -463,6 +466,15 @@ public:
         if (self->VisibilityIcon != v) {
             self->VisibilityIcon = v;
             TreeParams::onVisibilityIconChanged();
+        }
+    }
+    // Auto generated code (Tools/params_utils.py:296)
+    static void updateBodyFolders(TreeParamsP* self)
+    {
+        auto v = self->handle->GetBool("BodyFolders", true);
+        if (self->BodyFolders != v) {
+            self->BodyFolders = v;
+            TreeParams::onBodyFoldersChanged();
         }
     }
 };
@@ -1732,6 +1744,42 @@ void TreeParams::setVisibilityIcon(const bool& v)
 void TreeParams::removeVisibilityIcon()
 {
     instance()->handle->RemoveBool("VisibilityIcon");
+}
+
+// Auto generated code (Tools/params_utils.py:350)
+const char* TreeParams::docBodyFolders()
+{
+    return QT_TRANSLATE_NOOP(
+        "TreeParams",
+        "Show a body's sketches, construction geometry and feature history under folder rows "
+        "instead of one flat list."
+    );
+}
+
+// Auto generated code (Tools/params_utils.py:358)
+const bool& TreeParams::getBodyFolders()
+{
+    return instance()->BodyFolders;
+}
+
+// Auto generated code (Tools/params_utils.py:366)
+const bool& TreeParams::defaultBodyFolders()
+{
+    const static bool def = true;
+    return def;
+}
+
+// Auto generated code (Tools/params_utils.py:375)
+void TreeParams::setBodyFolders(const bool& v)
+{
+    instance()->handle->SetBool("BodyFolders", v);
+    instance()->BodyFolders = v;
+}
+
+// Auto generated code (Tools/params_utils.py:384)
+void TreeParams::removeBodyFolders()
+{
+    instance()->handle->RemoveBool("BodyFolders");
 }
 //[[[end]]]
 

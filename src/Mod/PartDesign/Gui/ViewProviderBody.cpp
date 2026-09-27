@@ -34,10 +34,14 @@
 #include <Base/Console.h>
 #include <Gui/ActionFunction.h>
 #include <Gui/Application.h>
+#include <Gui/BitmapFactory.h>
 #include <Gui/Command.h>
 #include <Gui/Document.h>
 #include <Gui/MDIView.h>
+#include <Gui/TreeParams.h>
 #include <Gui/ViewProviderDatum.h>
+#include <Mod/Part/App/DatumFeature.h>
+#include <Mod/Part/App/Part2DObject.h>
 #include <Mod/Part/App/PropertyTopoShape.h>
 #include <Mod/PartDesign/App/Body.h>
 #include <Mod/PartDesign/App/FeatureSketchBased.h>
@@ -334,6 +338,47 @@ bool ViewProviderBody::onDelete(const std::vector<std::string>&)
     // TODO May be do it conditionally? (2015-09-05, Fat-Zer)
     FCMD_OBJ_CMD(getObject(), "removeObjectsFromDocument()");
     return true;
+}
+
+std::vector<Gui::TreeFolder> ViewProviderBody::claimChildrenFolders() const
+{
+    if (!Gui::TreeParams::getBodyFolders()) {
+        return {};
+    }
+
+    auto* body = getObject<PartDesign::Body>();
+    if (!body) {
+        return {};
+    }
+
+    QIcon folderIcon = Gui::BitmapFactory().iconFromTheme("folder");
+    Gui::TreeFolder sketches {"Sketches", tr("Sketches"), folderIcon, true, true, {}};
+    Gui::TreeFolder construction {"Construction", tr("Construction"), folderIcon, false, false, {}};
+    Gui::TreeFolder history {"History", tr("History"), folderIcon, true, false, {}};
+
+    for (auto* obj : body->Group.getValues()) {
+        if (!obj || !obj->isAttachedToDocument()) {
+            continue;
+        }
+        if (obj->isDerivedFrom<Part::Part2DObject>()) {
+            sketches.objects.push_back(obj);
+        }
+        else if (obj->isDerivedFrom<Part::Datum>() || obj->isDerivedFrom<PartDesign::ShapeBinder>()
+                 || obj->isDerivedFrom<PartDesign::SubShapeBinder>()) {
+            construction.objects.push_back(obj);
+        }
+        else {
+            history.objects.push_back(obj);
+        }
+    }
+
+    std::vector<Gui::TreeFolder> folders;
+    for (auto* folder : {&sketches, &construction, &history}) {
+        if (!folder->objects.empty()) {
+            folders.push_back(std::move(*folder));
+        }
+    }
+    return folders;
 }
 
 void ViewProviderBody::updateData(const App::Property* prop)

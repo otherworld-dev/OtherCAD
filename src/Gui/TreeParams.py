@@ -138,6 +138,13 @@ Params = [
         title="Show visibility icon",
         doc="Displays an eye icon in front of the tree view items, showing the items visibility status. When clicked the visibility is toggled",
     ),
+    ParamBool(
+        "BodyFolders",
+        True,
+        on_change=True,
+        title="Group body contents into folders",
+        doc="Show a body's sketches, construction geometry and feature history under folder rows instead of one flat list.",
+    ),
 ]
 
 

@@ -988,6 +988,11 @@ std::vector<App::DocumentObject*> ViewProvider::claimChildren() const
     return vec;
 }
 
+std::vector<TreeFolder> ViewProvider::claimChildrenFolders() const
+{
+    return {};
+}
+
 std::vector<App::DocumentObject*> ViewProvider::claimChildrenRecursive() const
 {
     std::vector<App::DocumentObject*> children = claimChildren();

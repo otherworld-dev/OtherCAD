@@ -67,6 +67,7 @@ SET(Test_SRCS
     TestSketchPlanePick.py
     TestMarkingMenu.py
     TestTimeline.py
+    TestBrowserFolders.py
     TestPartDesignDialogTitles.py
     TestGridUnits.py
     TestRibbonStrings.py
