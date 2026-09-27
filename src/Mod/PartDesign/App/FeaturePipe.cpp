@@ -575,11 +575,6 @@ App::DocumentObjectExecReturn* Pipe::execute()
             ));
         }
 
-        // store shape before refinement
-        this->rawShape = boolOp;
-        boolOp = refineShapeIfActive(boolOp);
-        Shape.setValue(getSolid(boolOp));
-
         TopoShape solid = getSolid(boolOp);
         // lets check if the result is a solid
         if (solid.isNull()) {
