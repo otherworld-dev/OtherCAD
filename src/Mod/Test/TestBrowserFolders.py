@@ -78,6 +78,8 @@ class BrowserFoldersBase(unittest.TestCase):
         self.saved_pref = self.params.GetBool("BodyFolders", True)
         self.params.SetBool("BodyFolders", True)
         self.doc = FreeCAD.newDocument(self.doc_name)
+        if self.doc.UndoMode == 0:
+            self.doc.UndoMode = 1
         FreeCADGui.ActiveDocument = FreeCADGui.getDocument(self.doc.Name)
         self._build_body()
         _process_events(200)
@@ -165,3 +167,151 @@ class TestBodyFolderContents(BrowserFoldersBase):
         self.doc.recompute()
         self.assertEqual(box.ViewObject.claimChildrenFolders(), [])
         self.assertEqual(part.ViewObject.claimChildrenFolders(), [])
+
+
+def _tree():
+    """The model tree, preferring one on screen.
+
+    The tree can be momentarily hidden while its overlay panel is folded away. Its rows are
+    kept up to date all the same, so a hidden tree still serves.
+    """
+    trees = [
+        tree
+        for tree in FreeCADGui.getMainWindow().findChildren(QtWidgets.QTreeWidget)
+        if tree.metaObject().className() == "Gui::TreeWidget"
+    ]
+    for tree in trees:
+        if tree.isVisible():
+            return tree
+    return trees[0] if trees else None
+
+
+class TreeFoldersBase(BrowserFoldersBase):
+    def setUp(self):
+        # Before the document is built, so a skip leaves nothing behind for tearDown
+        self.tree = _tree()
+        if self.tree is None:
+            raise unittest.SkipTest("No model tree in this test environment")
+        # PySide ties the wrapper of a row got through child() to its parent row's wrapper,
+        # and marks it deleted once the parent's is freed. Every row walked is held here.
+        self._held = []
+        super().setUp()
+
+    def tearDown(self):
+        self._held = []
+        super().tearDown()
+
+    def _hold(self, item):
+        self._held.append(item)
+        return item
+
+    def _doc_item(self):
+        for i in range(self.tree.topLevelItemCount()):
+            top = self.tree.topLevelItem(i)
+            if top.type() == DOCUMENT_TYPE and top.text(0) == self.doc.Label:
+                return self._hold(top)
+        self.fail("No tree row for the test document")
+
+    def _item_of(self, obj, root=None):
+        """First row (depth first) whose text is the object's label."""
+        stack = [root or self._doc_item()]
+        while stack:
+            item = self._hold(stack.pop(0))
+            for i in range(item.childCount()):
+                child = item.child(i)
+                if child.type() == OBJECT_TYPE and child.text(0) == obj.Label:
+                    return self._hold(child)
+                stack.append(child)
+        return None
+
+    def _rows(self, item):
+        """(type, text) of every direct child row."""
+        item.setExpanded(True)
+        _process_events()
+        return [(item.child(i).type(), item.child(i).text(0)) for i in range(item.childCount())]
+
+    def _folder(self, key_label):
+        body = self._item_of(self.body)
+        body.setExpanded(True)
+        _process_events()
+        for i in range(body.childCount()):
+            child = body.child(i)
+            if child.type() == FOLDER_TYPE and child.text(0).split(" (")[0] == key_label:
+                return self._hold(child)
+        return None
+
+
+class TestFolderRows(TreeFoldersBase):
+    def test_body_rows_are_origin_then_three_folders(self):
+        rows = self._rows(self._item_of(self.body))
+        self.assertEqual(rows[0][0], OBJECT_TYPE)
+        self.assertEqual(rows[0][1], self.body.Origin.Label)
+        self.assertEqual(
+            rows[1:],
+            [
+                (FOLDER_TYPE, "Sketches (2)"),
+                (FOLDER_TYPE, "Construction"),
+                (FOLDER_TYPE, "History (1)"),
+            ],
+        )
+
+    def test_folders_hold_their_objects(self):
+        self.assertEqual(
+            [t for _, t in self._rows(self._folder("Sketches"))], ["Sketch", "Sketch001"]
+        )
+        self.assertEqual(
+            [t for _, t in self._rows(self._folder("Construction"))], ["DatumPlane", "ShapeBinder"]
+        )
+        self.assertEqual([t for _, t in self._rows(self._folder("History"))], ["Pad"])
+
+    def test_history_keeps_the_sketch_under_its_feature(self):
+        pad = self._item_of(self.pad, self._folder("History"))
+        self.assertEqual([t for _, t in self._rows(pad)], ["Sketch"])
+
+    def test_the_tip_has_no_row_of_its_own_at_body_level(self):
+        texts = [t for _, t in self._rows(self._item_of(self.body))]
+        self.assertNotIn(self.pad.Label, texts)
+
+    def test_default_expansion(self):
+        self.assertTrue(self._folder("Sketches").isExpanded())
+        self.assertFalse(self._folder("Construction").isExpanded())
+        self.assertFalse(self._folder("History").isExpanded())
+
+    def test_new_datum_lands_in_construction_live(self):
+        self.body.newObject("PartDesign::Line", "DatumLine")
+        self.doc.recompute()
+        _process_events(300)
+        self.assertIn("DatumLine", [t for _, t in self._rows(self._folder("Construction"))])
+
+    def test_undoing_the_only_construction_objects_removes_the_folder(self):
+        # Review Focus 2
+        self.doc.removeObject(self.binder.Name)
+        self.doc.recompute()
+        self.doc.openTransaction("add plane")
+        self.doc.removeObject(self.plane.Name)
+        self.doc.commitTransaction()
+        self.doc.recompute()
+        _process_events(300)
+        self.assertIsNone(self._folder("Construction"))
+        self.doc.undo()
+        self.doc.recompute()
+        _process_events(300)
+        self.assertIsNotNone(self._folder("Construction"))
+
+    def test_preference_off_gives_the_stock_layout_and_on_restores_it(self):
+        self.params.SetBool("BodyFolders", False)
+        _process_events(300)
+        rows = self._rows(self._item_of(self.body))
+        self.assertNotIn(FOLDER_TYPE, [k for k, _ in rows])
+        self.assertIn(self.pad.Label, [t for _, t in rows])
+        self.params.SetBool("BodyFolders", True)
+        _process_events(300)
+        self.assertIsNotNone(self._folder("Sketches"))
+
+    def test_other_objects_are_unchanged(self):
+        part = self.doc.addObject("App::Part", "Part")
+        box = self.doc.addObject("Part::Box", "Box")
+        part.addObject(box)
+        self.doc.recompute()
+        _process_events(300)
+        self.assertEqual(self._rows(self._item_of(part))[-1], (OBJECT_TYPE, "Box"))

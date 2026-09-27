@@ -48,6 +48,7 @@ class DocumentObjectItem;
 class DocumentObjectData;
 using DocumentObjectDataPtr = std::shared_ptr<DocumentObjectData>;
 class TreeWidgetItemDelegate;
+struct TreeFolder;
 
 class DocumentItem;
 class Command;
@@ -100,6 +101,14 @@ public:
 
     static const int DocumentType;
     static const int ObjectType;
+    static const int FolderType;
+
+    /// The row's parent, skipping folder rows: what the row belongs to in the document.
+    static QTreeWidgetItem* logicalParent(QTreeWidgetItem* item);
+    /// Object rows under an item, looking one level into its folder rows.
+    static QList<DocumentObjectItem*> objectChildren(QTreeWidgetItem* item);
+    /// Re-read every object's folders, after the BodyFolders preference changed.
+    void refreshFolders();
 
     void markItem(const App::DocumentObject* Obj, bool mark);
     void syncView(ViewProviderDocumentObject* vp);
@@ -328,6 +337,7 @@ private:
 
     friend class DocumentItem;
     friend class DocumentObjectItem;
+    friend class FolderItem;
     friend class TreeParams;
     friend class TreeWidgetItemDelegate;
 
@@ -464,6 +474,18 @@ private:
     ExpandInfoPtr _ExpandInfo;
     void restoreItemExpansion(const ExpandInfoPtr&, DocumentObjectItem*);
 
+    void populateFolders(DocumentObjectItem* item, bool checkHidden, bool& updated);
+    bool placeChild(
+        DocumentObjectItem* item,
+        QTreeWidgetItem* container,
+        int index,
+        App::DocumentObject* child,
+        std::unordered_map<App::DocumentObject*, DocumentObjectItem*>& pool,
+        bool checkHidden,
+        bool& updated
+    );
+    static void moveRow(QTreeWidgetItem* row, QTreeWidgetItem* container, int index);
+
     using Connection = fastsignals::connection;
     Connection connectNewObject;
     Connection connectDelObject;
@@ -579,6 +601,32 @@ private:
 
     friend class TreeWidget;
     friend class DocumentItem;
+    friend class FolderItem;
+};
+
+/** A folder row that groups some of an object row's children.
+ *
+ * Owned by the object row it sits under. It is not a document object: it can't be
+ * selected, renamed or dragged. TreeWidget::logicalParent() skips it, so everything
+ * that asks for an object's parent still gets the owner.
+ */
+class FolderItem: public QTreeWidgetItem
+{
+public:
+    explicit FolderItem(std::string key);
+
+    const std::string& key() const
+    {
+        return myKey;
+    }
+    DocumentObjectItem* ownerItem() const;
+    /// Label, count and icon from the view provider's folder
+    void applyFolder(const TreeFolder& folder);
+    QList<DocumentObjectItem*> objectItems() const;
+
+private:
+    std::string myKey;
+    QIcon baseIcon;
 };
 
 class TreePanel: public QWidget
