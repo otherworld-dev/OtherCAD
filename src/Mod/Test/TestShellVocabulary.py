@@ -290,5 +290,17 @@ class TestStartPage(unittest.TestCase):
         )
 
 
+class TestParameterVocabulary(unittest.TestCase):
+    """Parameters are what Fusion calls the named values that drive a model, and it is
+    what a Fusion user types into the command search to find them. The core's editor
+    for its preference store was called Edit Parameters, so that search led there."""
+
+    def test_the_preference_store_is_not_offered_as_parameters(self):
+        info = FreeCADGui.Command.get("Std_DlgParameter").getInfo()
+        for key in ("menuText", "toolTip"):
+            self.assertNotIn("parameter", info[key].lower(), f"{key}: {info[key]!r}")
+        self.assertIn("preference", info["menuText"].lower())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -15,6 +15,11 @@ from upstream FreeCAD merges are not listed, only the work done in this fork.
 - A feature that fails to build has a red border on the timeline as well as its small
   error badge.
 
+### Changed
+
+- The editor for stored preferences is called Edit Stored Preferences instead of Edit
+  Parameters, so searching the commands for parameters no longer leads to it.
+
 ### Fixed
 
 - The New body operation of Extrude, Revolve, Sweep, Loft, Coil and the primitives now

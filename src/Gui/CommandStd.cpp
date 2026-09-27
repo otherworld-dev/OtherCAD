@@ -434,9 +434,14 @@ StdCmdDlgParameter::StdCmdDlgParameter()
     : Command("Std_DlgParameter")
 {
     sGroup = "Tools";
-    sMenuText = QT_TR_NOOP("E&dit Parameters");
+    // Upstream calls this Edit Parameters, which is what a Fusion user searches for to find
+    // model parameters. It is the store of every preference instead, so it says so.
+    sMenuText = QT_TR_NOOP("E&dit Stored Preferences");
 
-    sToolTipText = QT_TR_NOOP("Opens a dialog to edit the parameters");
+    sToolTipText = QT_TR_NOOP(
+        "Opens the editor for every stored preference, including ones the Preferences "
+        "dialog does not show"
+    );
     sWhatsThis = "Std_DlgParameter";
     sStatusTip = sToolTipText;
     sPixmap = "Std_DlgParameter";
@@ -813,7 +818,8 @@ void StdCmdReportBug::activated(int iMsg)
     ParameterGrp::handle hURLGrp = App::GetApplication().GetParameterGroupByPath(
         "User parameter:BaseApp/Preferences/Websites"
     );
-    std::string url = hURLGrp->GetASCII("IssuesPage", "https://github.com/otherworld-dev/FuCadUp/issues");
+    std::string url
+        = hURLGrp->GetASCII("IssuesPage", "https://github.com/otherworld-dev/FuCadUp/issues");
     hURLGrp->SetASCII("IssuesPage", url.c_str());
     OpenURLInBrowser(url.c_str());
 }
@@ -892,9 +898,8 @@ StdCmdCommandPalette::StdCmdCommandPalette()
 {
     sGroup = "Tools";
     sMenuText = QT_TR_NOOP("Command Palette");
-    sToolTipText = QT_TR_NOOP(
-        "Opens a searchable palette of pinned, recent and all commands. Press S anywhere in the 3D view."
-    );
+    sToolTipText
+        = QT_TR_NOOP("Opens a searchable palette of pinned, recent and all commands. Press S anywhere in the 3D view.");
     sWhatsThis = "Std_CommandPalette";
     sStatusTip = sToolTipText;
     sPixmap = "Std_CommandPalette";
