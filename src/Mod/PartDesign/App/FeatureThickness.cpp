@@ -169,7 +169,9 @@ App::DocumentObjectExecReturn* Thickness::execute()
     }
 
     std::map<int, std::vector<TopoShape>> closeFaces;
-    for (const auto& it : subStrings) {
+    const std::vector<std::string>& picked = Base.getSubValues();
+    for (std::size_t i = 0; i < subStrings.size(); ++i) {
+        const std::string& it = subStrings[i];
         TopoDS_Shape face;
         try {
             face = TopShape.getSubShape(it.c_str());
@@ -178,7 +180,7 @@ App::DocumentObjectExecReturn* Thickness::execute()
         }
         if (face.IsNull()) {
             return new App::DocumentObjectExecReturn(
-                QT_TRANSLATE_NOOP("Exception", "Invalid face reference")
+                missingReferenceMessage(i < picked.size() ? picked[i] : it)
             );
         }
         // We found the sub element (face) so let's get its history index in our shape

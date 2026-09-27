@@ -65,6 +65,10 @@ public:
     std::vector<TopoShape> getContinuousEdges(const TopoShape& shape);
 
     std::vector<TopoShape> getFaces(const TopoShape& shape);
+
+    /// What to tell the user when the element a reference names has gone, which happens
+    /// when an earlier feature is changed. Takes the reference as Base stores it.
+    std::string missingReferenceMessage(std::string element) const;
     void getAddSubShape(Part::TopoShape& addShape, Part::TopoShape& subShape) override;
     void updatePreviewShape() override;
 

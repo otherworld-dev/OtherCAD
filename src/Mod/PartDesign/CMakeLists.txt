@@ -45,6 +45,7 @@ set(PartDesign_TestScripts
     PartDesignTests/TestPocket.py
     PartDesignTests/TestOperationMigration.py
     PartDesignTests/TestNewBody.py
+    PartDesignTests/TestMissingReference.py
     PartDesignTests/TestHelix.py
     PartDesignTests/TestHole.py
     PartDesignTests/TestRevolve.py

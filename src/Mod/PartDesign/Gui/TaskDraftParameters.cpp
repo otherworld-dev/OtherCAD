@@ -79,7 +79,7 @@ TaskDraftParameters::TaskDraftParameters(ViewProviderDressUp* DressUpView, QWidg
 
     std::vector<std::string> strings = pcDraft->Base.getSubValues();
     for (const auto& string : strings) {
-        ui->listWidgetReferences->addItem(QString::fromStdString(string));
+        addReferenceItem(ui->listWidgetReferences, string);
     }
 
     QMetaObject::connectSlotsByName(this);

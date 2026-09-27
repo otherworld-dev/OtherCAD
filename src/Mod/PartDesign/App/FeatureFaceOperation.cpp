@@ -45,7 +45,10 @@ std::vector<TopoDS_Face> FaceOperation::selectedFaces(const Part::TopoShape& sha
 {
     std::vector<TopoDS_Face> faces;
 
-    for (const std::string& name : Base.getSubValues(true)) {
+    const std::vector<std::string> names = Base.getSubValues(true);
+    const std::vector<std::string>& picked = Base.getSubValues();
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        const std::string& name = names[i];
         TopoDS_Shape sub;
         try {
             sub = shape.getSubShape(name.c_str());
@@ -55,7 +58,10 @@ std::vector<TopoDS_Face> FaceOperation::selectedFaces(const Part::TopoShape& sha
         catch (const Base::Exception&) {
         }
 
-        if (sub.IsNull() || sub.ShapeType() != TopAbs_FACE) {
+        if (sub.IsNull()) {
+            throw Base::ValueError(missingReferenceMessage(i < picked.size() ? picked[i] : name));
+        }
+        if (sub.ShapeType() != TopAbs_FACE) {
             throw Base::ValueError("Invalid face reference");
         }
 

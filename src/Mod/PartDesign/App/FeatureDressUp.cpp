@@ -37,12 +37,28 @@
 #include "FeatureDressUp.h"
 #include <Base/Console.h>
 #include <App/Document.h>
+#include <App/ElementNamingUtils.h>
 #include <Base/Exception.h>
 #include "Mod/Part/App/TopoShapeMapper.h"
 
 FC_LOG_LEVEL_INIT("PartDesign", true, true)
 
 using namespace PartDesign;
+
+std::string DressUp::missingReferenceMessage(std::string element) const
+{
+    // Named the way it was picked, not by the internal name the shape keeps for it
+    const std::string missing(Data::MISSING_PREFIX);
+    if (element.rfind(missing, 0) == 0) {
+        element.erase(0, missing.size());
+    }
+    if (const char* name = Data::findElementName(element.c_str())) {
+        element = name;
+    }
+    const App::DocumentObject* base = Base.getValue();
+    return element + " of " + (base ? base->Label.getValue() : "its base")
+        + " no longer exists. Edit " + Label.getValue() + " to remove it or pick another.";
+}
 
 namespace PartDesign
 {
@@ -212,12 +228,16 @@ std::vector<TopoShape> DressUp::getContinuousEdges(const TopoShape& shape)
         ret.push_back(subshape);
     };
 
-    for (const auto& v : Base.getShadowSubs()) {
+    const auto& shadows = Base.getShadowSubs();
+    const auto& picked = Base.getSubValues();
+    for (std::size_t i = 0; i < shadows.size(); ++i) {
+        const auto& v = shadows[i];
         TopoDS_Shape subshape;
         const auto& ref = v.newName.size() ? v.newName : v.oldName;
         subshape = shape.getSubShape(ref.c_str(), true);
         if (subshape.IsNull()) {
-            FC_THROWM(Base::CADKernelError, "Invalid edge link: " << ref);
+            FC_WARN(getFullName() << ": invalid edge link " << ref);
+            throw Base::CADKernelError(missingReferenceMessage(i < picked.size() ? picked[i] : ref));
         }
 
         if (subshape.ShapeType() == TopAbs_EDGE) {
@@ -258,8 +278,8 @@ std::vector<TopoShape> DressUp::getFaces(const TopoShape& shape)
         }
 
         if (subshape.isNull()) {
-            FC_ERR(getFullName() << ": invalid face reference '" << ref << "'");
-            throw Part::NullShapeException("Invalid Invalid face link");
+            FC_WARN(getFullName() << ": invalid face reference '" << ref << "'");
+            throw Part::NullShapeException(missingReferenceMessage(val));
         }
 
         if (subshape.shapeType() != TopAbs_FACE) {

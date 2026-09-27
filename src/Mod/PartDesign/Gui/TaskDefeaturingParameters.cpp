@@ -50,7 +50,7 @@ TaskDefeaturingParameters::TaskDefeaturingParameters(ViewProviderDressUp* DressU
 
     std::vector<std::string> strings = pcDefeaturing->Base.getSubValues();
     for (const auto& string : strings) {
-        ui->listWidgetReferences->addItem(QString::fromStdString(string));
+        addReferenceItem(ui->listWidgetReferences, string);
     }
 
     // clang-format off

@@ -117,6 +117,7 @@ FreeCAD.__unit_test__ += [
     "TestProfileRegions",
     "TestMoveFeatureGui",
     "TestProfilePick",
+    "TestMissingReferenceGui",
     "TestGizmoValueLabels",
     "TestPatternPanel",
     "TestViewportProjection",

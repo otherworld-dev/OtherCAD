@@ -14,6 +14,10 @@ from upstream FreeCAD merges are not listed, only the work done in this fork.
   is drawn greyed out and struck through, and its tooltip says so.
 - A feature that fails to build has a red border on the timeline as well as its small
   error badge.
+- When an edge or face a Fillet, Chamfer, Draft, Shell or face tool used has gone after
+  an earlier feature was changed, the feature says which one and what to do, for example
+  "Edge5 of Pad no longer exists. Edit Fillet to remove it or pick another.", and its
+  panel lists the reference as missing so it can be removed and picked again.
 
 ### Changed
 

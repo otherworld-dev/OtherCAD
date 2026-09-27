@@ -26,6 +26,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QColor>
 #include <QKeyEvent>
 #include <QListWidget>
 #include <QListWidgetItem>
@@ -35,6 +36,7 @@
 #include <App/Application.h>
 #include <App/Document.h>
 #include <App/DocumentObject.h>
+#include <App/ElementNamingUtils.h>
 #include <App/Transactions.h>
 #include <Gui/BitmapFactory.h>
 #include <Gui/Command.h>
@@ -407,6 +409,25 @@ const std::vector<std::string> TaskDressUpParameters::getReferences() const
 }
 
 // TODO: This code is identical with TaskTransformedParameters::removeItemFromListWidget()
+void TaskDressUpParameters::addReferenceItem(QListWidget* widget, const std::string& sub)
+{
+    const std::string missing(Data::MISSING_PREFIX);
+    if (sub.rfind(missing, 0) != 0) {
+        widget->addItem(QString::fromStdString(sub));
+        return;
+    }
+
+    // The row still stands for the reference, so removing it works as for any other
+    const QString element = QString::fromStdString(sub.substr(missing.size()));
+    auto* item = new QListWidgetItem(tr("%1 (missing)").arg(element), widget);
+    item->setForeground(QColor(0xd9, 0x30, 0x25));
+    item->setToolTip(
+        tr("%1 no longer exists, most likely after an earlier feature was changed. Remove it, "
+           "then pick the element this feature should use instead.")
+            .arg(element)
+    );
+}
+
 void TaskDressUpParameters::removeItemFromListWidget(QListWidget* widget, const char* itemstr)
 {
     QList<QListWidgetItem*> items = widget->findItems(QString::fromLatin1(itemstr), Qt::MatchExactly);
