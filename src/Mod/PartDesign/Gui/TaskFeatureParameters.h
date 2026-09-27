@@ -32,6 +32,8 @@
 
 #include "ViewProvider.h"
 
+class QLabel;
+
 namespace PartDesignGui
 {
 
@@ -81,6 +83,10 @@ public:
 
     void recomputeFeature();
 
+    /// Shows why the feature cannot be built at the top of the panel, or hides the message
+    /// again for an empty text
+    void showError(const QString& text);
+
     bool isUpdateBlocked() const
     {
         return blockUpdate;
@@ -97,6 +103,8 @@ protected Q_SLOTS:
 private:
     /** Notifies when the object is about to be removed. */
     void slotDeletedObject(const Gui::ViewProviderDocumentObject& Obj) override;
+
+    QLabel* errorLabel {nullptr};
 
 protected:
     template<typename T = PartDesignGui::ViewProvider>

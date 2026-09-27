@@ -24,6 +24,8 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QLabel>
+#include <QVBoxLayout>
 #include <QMessageBox>
 
 
@@ -204,7 +206,31 @@ void TaskFeatureParameters::recomputeFeature()
 
         feature->recomputeFeature();
         feature->recomputePreview();
+
+        // Said here as the value is typed, the way Fusion does, rather than only in the
+        // Report view once OK is pressed
+        showError(feature->isError() ? QString::fromUtf8(feature->getStatusString()) : QString());
     }
+}
+
+void TaskFeatureParameters::showError(const QString& text)
+{
+    if (text.isEmpty()) {
+        if (errorLabel) {
+            errorLabel->hide();
+        }
+        return;
+    }
+
+    if (!errorLabel) {
+        errorLabel = new QLabel(this);
+        errorLabel->setObjectName(QStringLiteral("FeatureErrorLabel"));
+        errorLabel->setWordWrap(true);
+        errorLabel->setStyleSheet(QStringLiteral("color: #d93025;"));
+        groupLayout()->insertWidget(0, errorLabel);
+    }
+    errorLabel->setText(text);
+    errorLabel->show();
 }
 
 /*********************************************************************
@@ -302,6 +328,12 @@ bool TaskDlgFeatureParameters::accept()
             }
         }
         Base::Console().error("%s\n", errorText.toUtf8().constData());
+        for (QWidget* wgt : Content) {
+            if (auto* param = qobject_cast<TaskFeatureParameters*>(wgt)) {
+                param->showError(errorText);
+                break;
+            }
+        }
         return false;
     }
     return true;

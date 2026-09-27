@@ -18,6 +18,8 @@ from upstream FreeCAD merges are not listed, only the work done in this fork.
   an earlier feature was changed, the feature says which one and what to do, for example
   "Edge5 of Pad no longer exists. Edit Fillet to remove it or pick another.", and its
   panel lists the reference as missing so it can be removed and picked again.
+- A feature panel says at its top why the feature cannot be built while a value is
+  wrong, and again if OK is pressed on it, instead of only in the Report view.
 
 ### Changed
 
