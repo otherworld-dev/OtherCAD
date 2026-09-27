@@ -180,6 +180,12 @@ class TestFusionShortcuts(unittest.TestCase):
         self.assertEqual(self._shortcut_of("Sketcher_ConstrainSymmetric"), "K, M")
         self.assertEqual(self._shortcut_of("Sketcher_CreateCircle"), "C")
 
+    def test_l_draws_lines_one_after_another(self):
+        # Fusion's Line carries on from the end of each segment until Esc, which is the
+        # polyline here. The single line keeps its upstream chord.
+        self.assertEqual(self._shortcut_of("Sketcher_CreatePolyline"), "L")
+        self.assertEqual(self._shortcut_of("Sketcher_CreateLine"), "G, L")
+
     def test_part_selection_filters_use_the_free_u_prefix(self):
         """The four Part selection filters answer to U rather than to a Fusion letter."""
 

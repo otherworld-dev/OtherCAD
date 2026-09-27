@@ -629,7 +629,7 @@
                 {
                     "caption": "CREATE",
                     "items": [
-                        { "command": "Sketcher_CreateLine", "label": "Line" },
+                        { "command": "Sketcher_CreatePolyline", "label": "Line" },
                         { "command": "Sketcher_CompCreateRectangles", "label": "Rectangle" },
                         {
                             "command": "Sketcher_CreateCircle",
@@ -653,8 +653,8 @@
                         { "command": "Sketcher_CompExternal", "label": "Project" }
                     ],
                     "menu": [
-                        { "command": "Sketcher_CreateLine", "label": "Line" },
-                        { "command": "Sketcher_CreatePolyline", "label": "Polyline" },
+                        { "command": "Sketcher_CreatePolyline", "label": "Line" },
+                        { "command": "Sketcher_CreateLine", "label": "Single Line" },
                         { "command": "Sketcher_CompCreateRectangles", "label": "Rectangle" },
                         {
                             "command": "Sketcher_CreateCircle",
