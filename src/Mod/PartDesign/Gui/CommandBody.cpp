@@ -23,6 +23,9 @@
  ***************************************************************************/
 
 
+#include <algorithm>
+#include <sstream>
+
 #include <QApplication>
 #include <QInputDialog>
 #include <QMessageBox>
@@ -938,17 +941,35 @@ void CmdPartDesignMoveFeature::activated(int iMsg)
 
     openCommand(QT_TRANSLATE_NOOP("Command", "Move an object"));
 
-    std::stringstream stream;
-    stream << "features_ = [" << getObjectCmd(features.back());
-    features.pop_back();
-
-    for (auto feat : features) {
-        stream << ", " << getObjectCmd(feat);
+    // In the order they had in the source body, so a sketch still comes before the feature
+    // built from it
+    if (auto sourceBody = freecad_cast<PartDesign::Body*>(source_body)) {
+        const std::vector<App::DocumentObject*>& order = sourceBody->Group.getValues();
+        auto position = [&order](App::DocumentObject* obj) {
+            return std::find(order.begin(), order.end(), obj) - order.begin();
+        };
+        std::stable_sort(features.begin(), features.end(), [&](auto* left, auto* right) {
+            return position(left) < position(right);
+        });
     }
 
+    std::stringstream stream;
+    stream << "features_ = [";
+    for (std::size_t i = 0; i < features.size(); ++i) {
+        stream << (i ? ", " : "") << getObjectCmd(features[i]);
+    }
     stream << "]";
     runCommand(Doc, stream.str().c_str());
-    FCMD_OBJ_CMD(source_body, "removeObjects(features_)");
+
+    // One at a time: only the Body's own removeObject() keeps its tip and base features in
+    // order. removeObjects() is GeoFeatureGroup's, which takes everything the objects link
+    // to out with them, and that is the rest of the body's history.
+    if (source_body) {
+        std::stringstream remove;
+        remove << "for _feature in features_:\n    " << getObjectCmd(source_body)
+               << ".removeObject(_feature)";
+        runCommand(Doc, remove.str().c_str());
+    }
     FCMD_OBJ_CMD(target, "addObjects(features_)");
     /*
 

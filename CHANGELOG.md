@@ -39,6 +39,8 @@ from upstream FreeCAD merges are not listed, only the work done in this fork.
   cannot be used whole, where the region they start on is just a stand-in. A sketch
   such as a square with a hole no longer opens in picking mode, and editing a feature
   no longer sets the first click to replace the regions picked before.
+- Moving a body's first feature to another body (Move object to other body in the tree)
+  no longer empties the body it came from.
 
 ## [26.4.0] - 2026-09-25
 
