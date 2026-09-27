@@ -119,6 +119,7 @@ FreeCAD.__unit_test__ += [
     "TestProfilePick",
     "TestMissingReferenceGui",
     "TestFeaturePanelErrors",
+    "TestOverlayPanelWidth",
     "TestGizmoValueLabels",
     "TestPatternPanel",
     "TestViewportProjection",

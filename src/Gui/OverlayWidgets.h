@@ -169,6 +169,8 @@ public:
 
     /// Set geometry of this tab widget
     void setRect(QRect rect);
+    /// The rectangle the overlay takes on screen for \a rect, big enough for its panels
+    QRect shownRect(QRect rect) const;
 
     /// Get the geometry of this tab widget
     const QRect& getRect();

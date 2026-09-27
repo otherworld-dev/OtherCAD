@@ -59,6 +59,9 @@ from upstream FreeCAD merges are not listed, only the work done in this fork.
   no longer sets the first click to replace the regions picked before.
 - Moving a body's first feature to another body (Move object to other body in the tree)
   no longer empties the body it came from.
+- The Tasks panel on the right-hand overlay is no longer cut off at the edge of the
+  screen when a sketch's panels need more width than the overlay had. The overlay grows
+  while they need it and goes back to its own width afterwards.
 
 ## [26.4.0] - 2026-09-25
 

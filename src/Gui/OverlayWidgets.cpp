@@ -1665,6 +1665,40 @@ void OverlayTabWidget::setSizeDelta(int delta)
     }
 }
 
+QRect OverlayTabWidget::shownRect(QRect rect) const
+{
+    // The panels in the overlay cannot be squeezed below their own minimum, and a task
+    // dialog raises it as it adds boxes. An overlay narrower than its panels clips them
+    // at its far edge, which on the right is the edge of the screen. While they need
+    // more, the overlay grows away from the edge it is docked to; the size the user
+    // chose is still the one kept, for when they need less again.
+    if (!count()) {
+        return rect;
+    }
+    const QSize needed = splitter->minimumSizeHint();
+    switch (dockArea) {
+        case Qt::LeftDockWidgetArea:
+            rect.setWidth(std::max(rect.width(), needed.width()));
+            break;
+        case Qt::RightDockWidgetArea:
+            if (rect.width() < needed.width()) {
+                rect.setLeft(rect.right() - needed.width() + 1);
+            }
+            break;
+        case Qt::TopDockWidgetArea:
+            rect.setHeight(std::max(rect.height(), needed.height()));
+            break;
+        case Qt::BottomDockWidgetArea:
+            if (rect.height() < needed.height()) {
+                rect.setTop(rect.bottom() - needed.height() + 1);
+            }
+            break;
+        default:
+            break;
+    }
+    return rect;
+}
+
 void OverlayTabWidget::setRect(QRect rect)
 {
     if (busy || !parentWidget() || !getMainWindow() || !getMainWindow()->getMdiArea()) {
@@ -1761,7 +1795,7 @@ void OverlayTabWidget::setRect(QRect rect)
         }
     }
     else {
-        setGeometry(rectOverlay.translated(offset));
+        setGeometry(shownRect(rectOverlay).translated(offset));
 
         for (int i = 0, count = splitter->count(); i < count; ++i) {
             splitter->widget(i)->show();
