@@ -12,6 +12,10 @@ from upstream FreeCAD merges are not listed, only the work done in this fork.
 
 - Features can be suppressed from the timeline's right-click menu. A suppressed feature
   is drawn greyed out and struck through, and its tooltip says so.
+- Repeat Last Command, at the top of the right-click menu in the 3D view and in the
+  Edit menu, runs the last modelling command again and is named after it, for example
+  Repeat Extrude.
+- J starts a joint in an assembly, as in Fusion.
 - A feature that fails to build has a red border on the timeline as well as its small
   error badge.
 - When an edge or face a Fillet, Chamfer, Draft, Shell or face tool used has gone after

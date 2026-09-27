@@ -67,6 +67,12 @@ public:
      */
     static void noteCommandUsed(const char* command);
 
+    /// Notes that \a command, one that changes the document, ran at the user's request,
+    /// which makes it the one Repeat runs again.
+    static void noteRepeatable(const char* command);
+    /// The command Repeat runs again, or an empty string before there is one
+    static QString lastRepeatable();
+
     /// Shows the palette at the mouse cursor with the caret in the search field.
     void popUp();
 

@@ -32,6 +32,7 @@
 #include "WorkbenchManipulator.h"
 #include "WorkbenchPy.h"
 #include "Action.h"
+#include "Ribbon/CommandPalette.h"
 #include "Application.h"
 #include "Command.h"
 #include "Control.h"
@@ -655,6 +656,10 @@ void StdWorkbench::setupContextMenu(const char* recipient, MenuItem* item) const
     auto sels = Gui::Selection().getSelection();
 
     if (strcmp(recipient, "View") == 0) {
+        // First, where Fusion keeps it, once there is something to repeat
+        if (!Ribbon::CommandPalette::lastRepeatable().isEmpty()) {
+            *item << "Std_RepeatLastCommand" << "Separator";
+        }
         createLinkMenu(item);
         *item << "Separator";
 
@@ -733,7 +738,8 @@ MenuItem* StdWorkbench::setupMenuBar() const
     // Edit
     auto edit = new MenuItem(menuBar);
     edit->setCommand("&Edit");
-    *edit << "Std_Undo" << "Std_Redo" << "Separator" << "Std_Cut" << "Std_Copy"
+    *edit << "Std_Undo" << "Std_Redo" << "Std_RepeatLastCommand" << "Separator" << "Std_Cut"
+          << "Std_Copy"
           << "Std_Paste" << "Std_DuplicateSelection" << "Separator"
           << "Std_Refresh" << "Std_BoxSelection" << "Std_BoxElementSelection"
           << "Std_SelectAll" << "Std_Delete" << "Std_SendToPythonConsole"

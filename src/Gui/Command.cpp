@@ -467,6 +467,11 @@ void Command::_invoke(int id, bool disablelog)
             // a startup, a macro, or one group command dispatching to its member.
             if (_trigger != TriggerNone) {
                 Ribbon::CommandPalette::noteCommandUsed(sName);
+                // What Repeat offers: a command that works on the model, not one that
+                // only moves the view or the selection around it
+                if ((eType & AlterDoc) != 0) {
+                    Ribbon::CommandPalette::noteRepeatable(sName);
+                }
             }
 
             auto manager = getGuiApplication()->macroManager();
@@ -1616,6 +1621,11 @@ const char* PythonCommand::getPixmap() const
 
 const char* PythonCommand::getAccel() const
 {
+    // The fork's own defaults win here as they do for the C++ commands, where
+    // CommandManager::addCommand() sets them
+    if (const char* accel = defaultShortcutFor(getName())) {
+        return accel;
+    }
     return getResource("Accel");
 }
 
