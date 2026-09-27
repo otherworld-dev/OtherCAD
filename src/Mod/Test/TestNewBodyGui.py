@@ -167,6 +167,52 @@ class TestNewBodyGui(unittest.TestCase):
         self.assertTrue(self.body.Visibility)
         self.assertTrue(self.body.Tip.Visibility)
 
+    def testANewBodyFromARegionOfAUsedSketchShows(self):
+        """The sketch stays behind for the pad already built from it, so the new body gets a
+        binder of the region. Extrude also points at the sketch's normal, which must not
+        become a second, empty binder that leaves the extrusion with nothing to build."""
+
+        shared = self._sketch("Shared", 40.0)
+        shared.addGeometry(
+            Part.LineSegment(FreeCAD.Vector(60, 0, 0), FreeCAD.Vector(70, 0, 0)), False
+        )
+        for start, end in (((70, 0), (70, 10)), ((70, 10), (60, 10)), ((60, 10), (60, 0))):
+            shared.addGeometry(
+                Part.LineSegment(FreeCAD.Vector(*start, 0), FreeCAD.Vector(*end, 0)), False
+            )
+        self.doc.recompute()
+        first = self.body.newObject("PartDesign::Pad", "First")
+        first.Profile = (shared, ["InternalFace1"])
+        first.Length = 10
+        self.doc.recompute()
+        shared.Visibility = False
+        self._process_events()
+
+        FreeCADGui.Selection.clearSelection()
+        FreeCADGui.runCommand("PartDesign_Extrude")
+        self._process_events(150)
+        FreeCADGui.Selection.addSelection(
+            self.doc.Name, self.body.Name, f"{shared.Name}.InternalFace2"
+        )
+        self._process_events(400)
+        operation = self._find_widget("operationMode")
+        if operation is None:
+            self.skipTest("The Extrude task panel did not open in this test environment")
+        operation.setCurrentIndex(NEW_BODY)
+        self._process_events()
+        feature = [obj for obj in self.body.Group if obj.isDerivedFrom("PartDesign::Pad")][-1]
+        FreeCADGui.Control.activeTaskDialog().accept()
+        self._process_events(300)
+        self.doc.recompute()
+        self._process_events()
+
+        newBody = feature.getParentGeoFeatureGroup()
+        self.assertIsNot(newBody, self.body)
+        self.assertTrue(feature.isValid(), feature.getStatusString())
+        self.assertTrue(feature.Visibility)
+        self.assertAlmostEqual(newBody.Shape.Volume, 10.0 * 10.0 * feature.Length.Value, places=3)
+        self.assertIn(shared, self.body.Group, "the sketch stays with the pad built from it")
+
     def testOneUndoTakesItAllBack(self):
         self._extrude_other_as_new_body()
 

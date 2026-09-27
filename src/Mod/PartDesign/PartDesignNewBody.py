@@ -187,6 +187,15 @@ def _bindStaying(feature, name, body, moving, doc):
     if not staying:
         return []
 
+    if name == "ReferenceAxis" and all(
+        any(sub.endswith("N_Axis") for sub in subs) for _obj, subs in staying
+    ):
+        # The sketch's normal, which Extrude points at by default. It is not part of the
+        # sketch's shape, so a binder of it would be empty; with no reference the feature
+        # takes the normal of the profile it is given, which is the same direction.
+        setattr(feature, name, None)
+        return []
+
     binders = []
     relinked = []
     for obj, subs in links:

@@ -187,6 +187,24 @@ class TestNewBody(unittest.TestCase):
         self.assertAlmostEqual(newBody.Shape.Volume, 300.0, places=3)
         self._assertValid()
 
+    def testASharedSketchsNormalIsNoInput(self):
+        """Extrude points ReferenceAxis at the sketch's N_Axis, which a binder cannot hold."""
+        sketch = self._sketch("Shared", [(20, 0, 30, 10)])
+        join = self.Body.newObject("PartDesign::Pad", "JoinPad")
+        join.Profile = sketch
+        join.Length = 5
+        self.Doc.recompute()
+        pad = self._newBodyPad(sketch, length=3)
+        pad.ReferenceAxis = (sketch, ["N_Axis"])
+        self.Doc.recompute()
+
+        newBody = PartDesignNewBody.moveToNewBody(pad)
+
+        binders = [o for o in newBody.Group if o.isDerivedFrom("PartDesign::SubShapeBinder")]
+        self.assertEqual(len(binders), 1, "only the profile needs a binder")
+        self.assertAlmostEqual(newBody.Shape.Volume, 300.0, places=3)
+        self._assertValid()
+
     def testBoundProfileFollowsTheSketch(self):
         sketch = self._sketch("Shared", [(20, 0, 30, 10)])
         join = self.Body.newObject("PartDesign::Pad", "JoinPad")
