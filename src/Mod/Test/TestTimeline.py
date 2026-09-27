@@ -460,6 +460,23 @@ class TestTimeline(unittest.TestCase):
         self._press(QtCore.Qt.Key_Right)
         self.assertIs(self.body.Tip, multi)
 
+    def test_a_feature_failing_on_a_recompute_shows_on_its_marker(self):
+        """A feature that fails changes none of its own properties, so the marker has to
+        hear about the recompute itself."""
+
+        self.sketch.delGeometry(0)  # the profile is no longer closed
+        self._settle()
+        self.assertTrue(self.pad.isValid(), "nothing has been recomputed yet")
+
+        self.doc.recompute()
+        self._settle()
+
+        self.assertFalse(self.pad.isValid())
+        marker = self._marker_for("Pad")
+        self.assertIn(self.pad.getStatusString(), marker.toolTip())
+        # What the style sheet draws the red border from
+        self.assertTrue(marker.property("timelineError"))
+
     def test_arrow_keys_roll_the_history(self):
         """Left and right step one feature, Home and End run to the ends of the strip."""
 

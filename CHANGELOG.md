@@ -12,6 +12,8 @@ from upstream FreeCAD merges are not listed, only the work done in this fork.
 
 - Features can be suppressed from the timeline's right-click menu. A suppressed feature
   is drawn greyed out and struck through, and its tooltip says so.
+- A feature that fails to build has a red border on the timeline as well as its small
+  error badge.
 
 ### Fixed
 

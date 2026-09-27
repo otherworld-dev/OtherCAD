@@ -3387,8 +3387,9 @@ QWidget#TimelineMarker[timelineTip="true"] {
   border-bottom: 2px solid @AccentColor;
 }
 
+/* A marker has no text, so a failed feature is marked by its border as well as its badge. */
 QWidget#TimelineMarker[timelineError="true"] {
-  color: #d93025;
+  border: 1px solid #d93025;
 }
 
 QWidget#TimelinePlayhead {
