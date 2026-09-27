@@ -36,7 +36,7 @@ import FreeCAD
 import FreeCADGui
 import Part
 import Sketcher
-from PySide import QtCore, QtWidgets
+from PySide import QtCore, QtGui, QtWidgets
 
 TREE_PARAMS = "User parameter:BaseApp/Preferences/TreeView"
 DOCUMENT_TYPE = 1000
@@ -186,6 +186,13 @@ def _tree():
     return trees[0] if trees else None
 
 
+def _report_view():
+    for edit in FreeCADGui.getMainWindow().findChildren(QtWidgets.QTextEdit):
+        if edit.objectName() == "Report view":
+            return edit
+    return None
+
+
 class TreeFoldersBase(BrowserFoldersBase):
     def setUp(self):
         # Before the document is built, so a skip leaves nothing behind for tearDown
@@ -315,3 +322,51 @@ class TestFolderRows(TreeFoldersBase):
         self.doc.recompute()
         _process_events(300)
         self.assertEqual(self._rows(self._item_of(part))[-1], (OBJECT_TYPE, "Box"))
+
+
+class TestFolderDragAndDrop(TreeFoldersBase):
+    """Dragging over a row inside a folder: the row's parent is the folder, not an object."""
+
+    def _drag_over(self, pos):
+        """Sends the tree a drag entering and moving to pos, then leaving, as QDrag would."""
+        viewport = self.tree.viewport()
+        mime = QtCore.QMimeData()
+        mime.setData(self.tree.model().mimeTypes()[0], QtCore.QByteArray())
+        app = QtWidgets.QApplication.instance()
+        enter = QtGui.QDragEnterEvent(
+            pos, QtCore.Qt.MoveAction, mime, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier
+        )
+        app.sendEvent(viewport, enter)
+        move = QtGui.QDragMoveEvent(
+            pos, QtCore.Qt.MoveAction, mime, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier
+        )
+        app.sendEvent(viewport, move)
+        app.sendEvent(viewport, QtGui.QDragLeaveEvent())
+        # The tree's drag key filter is only taken down again by a real QDrag
+        app.removeEventFilter(self.tree)
+        _process_events()
+
+    def test_dragging_over_a_row_in_a_folder_targets_the_body(self):
+        # A move-drag over Pad (which takes no drops) retargets to Pad's parent. That used to
+        # be the History folder row, read as an object row.
+        pad = self._item_of(self.pad, self._folder("History"))
+        self.assertIsNotNone(pad)
+        FreeCADGui.Selection.addSelection(self.free_sketch)
+        _process_events()
+        self.tree.scrollToItem(pad)
+        _process_events()
+        rect = self.tree.visualItemRect(pad)
+        pos = QtCore.QPoint(rect.center().x(), rect.top() + 1)  # the in-between zone
+        hit = self._hold(self.tree.itemAt(pos)) if self.tree.isVisible() else None
+        if hit is None or hit.type() != OBJECT_TYPE or hit.text(0) != self.pad.Label:
+            self.skipTest("The Pad row is not on screen in this test environment")
+
+        report = _report_view()
+        if report is None:
+            self.skipTest("No Report view to catch an error in this test environment")
+        before = len(report.toPlainText())
+        self._drag_over(pos)
+
+        # GUIApplication::notify turns the bad read into a reported exception, not a crash
+        self.assertNotIn("Unhandled", report.toPlainText()[before:])
+        self.assertEqual([t for _, t in self._rows(self._folder("History"))], [self.pad.Label])

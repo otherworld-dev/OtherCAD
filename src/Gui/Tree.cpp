@@ -2335,7 +2335,7 @@ public:
                 continue;
             }
             // ignore child elements if the parent is selected
-            if (sels.contains(ti->parent())) {
+            if (sels.contains(TreeWidget::logicalParent(ti))) {
                 continue;
             }
             if (ti == targetItem) {
@@ -2472,8 +2472,9 @@ void TreeWidget::dragMoveEvent(QDragMoveEvent* event)
 
         // if we are in between or if target doesn't accept drops then the target is the parent
         if (da == Qt::MoveAction && (targetInfo.inThresholdZone || !vp->canDropObjects())) {
-            targetInfo.targetItem = targetInfo.targetItem->parent();
-            if (targetInfo.targetItem->type() == TreeWidget::DocumentType) {
+            // Past any folder row: the folder's owner is what takes the drop
+            targetInfo.targetItem = logicalParent(targetInfo.targetItem);
+            if (!targetInfo.targetItem || targetInfo.targetItem->type() != TreeWidget::ObjectType) {
                 leaveEvent(nullptr);
                 return;
             }
@@ -2868,7 +2869,11 @@ bool TreeWidget::dropInObject(
 
     // if we are in between or if target doesn't accept drops then the target is the parent
     if (da == Qt::MoveAction && (targetInfo.inThresholdZone || !vp->canDropObjects())) {
-        targetInfo.targetItem = targetInfo.targetItem->parent();
+        // Past any folder row: the folder's owner is what takes the drop
+        targetInfo.targetItem = logicalParent(targetInfo.targetItem);
+        if (!targetInfo.targetItem) {
+            return false;
+        }
         if (targetInfo.targetItem->type() == TreeWidget::DocumentType) {
             return dropInDocument(event, targetInfo, items);
         }
