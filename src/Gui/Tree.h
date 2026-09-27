@@ -576,6 +576,9 @@ public:
     DocumentObjectItem* getParentItem() const;
     TreeWidget* getTree() const;
 
+    /// The row icon with the visibility eye in front: [eye][spacing][icon]
+    static QIcon composeVisibilityIcon(QStyle* style, bool canToggle, bool visible, const QIcon& original);
+
 private:
     void setCheckState(bool checked);
     void getExpandedSnapshot(std::vector<bool>& snapshot) const;
@@ -621,10 +624,25 @@ public:
     /// Label, count and icon from the view provider's folder
     void applyFolder(const TreeFolder& folder);
     QList<DocumentObjectItem*> objectItems() const;
+    /// Whether the folder opens by default, which is what the saved expansion is kept against
+    bool expandedByDefault() const
+    {
+        return defaultOpen;
+    }
+
+    /// Redraws the eye when the folder's visibility changed, or always with reset
+    void updateStatus(bool reset = false);
+    /// Whether any object in the folder is shown
+    bool anyVisible() const;
+    /// Hides every object in the folder if any is shown, otherwise shows them all, as one
+    /// undo step
+    void toggleVisibility();
 
 private:
     std::string myKey;
     QIcon baseIcon;
+    bool defaultOpen {false};
+    int myStatus {-1};
 };
 
 class TreePanel: public QWidget

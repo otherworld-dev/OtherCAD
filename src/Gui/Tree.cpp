@@ -2117,6 +2117,20 @@ void TreeWidget::mousePressEvent(QMouseEvent* event)
     visibilityIconPressed = false;
     if (isVisibilityIconEnabled()) {
         QTreeWidgetItem* item = itemAt(event->pos());
+        if (item && item->type() == TreeWidget::FolderType && event->button() == Qt::LeftButton) {
+            // As for an object row below, less the checkbox: a folder row has none
+            auto iconRect = visualItemRect(item);
+            int const margin = style()->pixelMetric(QStyle::PM_FocusFrameHMargin) + 1;
+            iconRect.adjust(margin, 0, 0, 0);
+            iconRect.setWidth(getIconSize());
+            if (iconRect.contains(event->pos())) {
+                static_cast<FolderItem*>(item)->toggleVisibility();
+                visibilityIconDoubleClickTimer.start();
+                visibilityIconPressed = true;
+                event->accept();
+                return;
+            }
+        }
         if (item && item->type() == TreeWidget::ObjectType && event->button() == Qt::LeftButton) {
             auto objitem = static_cast<DocumentObjectItem*>(item);
 
@@ -4281,7 +4295,7 @@ void TreeWidget::updateVisibilityIcons()
                 objitem->testStatus(true);
             }
             else if (item->type() == FolderType) {
-                // Nothing to do yet: a folder row has no visibility icon of its own
+                static_cast<FolderItem*>(item)->updateStatus(true);
             }
         }
         tree->resizeColumnToContents(0);
@@ -5293,8 +5307,8 @@ void DocumentItem::populateFolders(DocumentObjectItem* item, bool checkHidden, b
 
         folderItem->applyFolder(folder);
         if (fresh) {
-            // Ignored until the row is in the tree, which it now is. Task 4 swaps this for
-            // the saved state when there is one.
+            // Ignored until the row is in the tree, which it now is. A saved state, when the
+            // file has one, is put back over this by restoreItemExpansion().
             folderItem->setExpanded(folder.expandedByDefault);
         }
     }
@@ -5660,17 +5674,63 @@ void DocumentItem::slotHighlightObject(
     END_FOREACH_ITEM
 }
 
+namespace
+{
+/// One <Expand> element under an item: an open object row, which nests its own, or the
+/// state of a folder row, which is a leaf named "<owner>#<key>". A closed folder that opens by
+/// default gets "<owner>#<key>~", so it stays closed when the file is opened again.
+struct ExpandEntry
+{
+    std::string name;
+    const DocumentObjectItem* item;  // null for a folder's leaf
+};
+
+std::vector<ExpandEntry> expandEntries(const QTreeWidgetItem* item)
+{
+    std::vector<ExpandEntry> entries;
+    // Past the folder rows, so the objects in them are saved at their owner's level as ever
+    for (auto* citem : TreeWidget::objectChildren(const_cast<QTreeWidgetItem*>(item))) {
+        if (!citem->isExpanded()) {
+            continue;
+        }
+        auto obj = citem->object()->getObject();
+        if (obj->isAttachedToDocument()) {
+            entries.push_back({obj->getNameInDocument(), citem});
+        }
+    }
+
+    if (item->type() != TreeWidget::ObjectType) {
+        return entries;
+    }
+    auto owner = static_cast<const DocumentObjectItem*>(item)->object()->getObject();
+    if (!owner->isAttachedToDocument()) {
+        return entries;
+    }
+    for (int i = 0, count = item->childCount(); i < count; ++i) {
+        auto citem = item->child(i);
+        if (citem->type() != TreeWidget::FolderType) {
+            continue;
+        }
+        auto folder = static_cast<const FolderItem*>(citem);
+        std::string name = std::string(owner->getNameInDocument()) + "#" + folder->key();
+        if (folder->isExpanded()) {
+            entries.push_back({std::move(name), nullptr});
+        }
+        else if (folder->expandedByDefault()) {
+            entries.push_back({name + "~", nullptr});
+        }
+    }
+    return entries;
+}
+}  // namespace
+
 static unsigned int countExpandedItem(const QTreeWidgetItem* item)
 {
     unsigned int size = 0;
-    for (int i = 0, count = item->childCount(); i < count; ++i) {
-        auto citem = item->child(i);
-        if (citem->type() != TreeWidget::ObjectType || !citem->isExpanded()) {
-            continue;
-        }
-        auto obj = static_cast<const DocumentObjectItem*>(citem)->object()->getObject();
-        if (obj->isAttachedToDocument()) {
-            size += strlen(obj->getNameInDocument()) + countExpandedItem(citem);
+    for (const auto& entry : expandEntries(item)) {
+        size += entry.name.size();
+        if (entry.item) {
+            size += countExpandedItem(entry.item);
         }
     }
     return size;
@@ -5683,34 +5743,22 @@ unsigned int DocumentItem::getMemSize() const
 
 static void saveExpandedItem(Base::Writer& writer, const QTreeWidgetItem* item)
 {
-    int itemCount = 0;
-    for (int i = 0, count = item->childCount(); i < count; ++i) {
-        auto citem = item->child(i);
-        if (citem->type() != TreeWidget::ObjectType || !citem->isExpanded()) {
-            continue;
-        }
-        auto obj = static_cast<const DocumentObjectItem*>(citem)->object()->getObject();
-        if (obj->isAttachedToDocument()) {
-            ++itemCount;
-        }
-    }
-
-    if (!itemCount) {
+    // One list for both the count and the elements, so the two always agree
+    const auto entries = expandEntries(item);
+    if (entries.empty()) {
         writer.Stream() << "/>" << std::endl;
         return;
     }
 
-    writer.Stream() << " count=\"" << itemCount << "\">" << std::endl;
+    writer.Stream() << " count=\"" << entries.size() << "\">" << std::endl;
     writer.incInd();
-    for (int i = 0, count = item->childCount(); i < count; ++i) {
-        auto citem = item->child(i);
-        if (citem->type() != TreeWidget::ObjectType || !citem->isExpanded()) {
-            continue;
+    for (const auto& entry : entries) {
+        writer.Stream() << writer.ind() << "<Expand name=\"" << entry.name << "\"";
+        if (entry.item) {
+            saveExpandedItem(writer, entry.item);
         }
-        auto obj = static_cast<const DocumentObjectItem*>(citem)->object()->getObject();
-        if (obj->isAttachedToDocument()) {
-            writer.Stream() << writer.ind() << "<Expand name=\"" << obj->getNameInDocument() << "\"";
-            saveExpandedItem(writer, static_cast<const DocumentObjectItem*>(citem));
+        else {
+            writer.Stream() << "/>" << std::endl;
         }
     }
     writer.decInd();
@@ -5743,22 +5791,39 @@ void DocumentItem::Restore(Base::XMLReader& reader)
 
 void DocumentItem::restoreItemExpansion(const ExpandInfoPtr& info, DocumentObjectItem* item)
 {
+    // Populates the row, folder rows included, at their defaults
     item->setExpanded(true);
     if (!info) {
         return;
     }
-    for (int i = 0, count = item->childCount(); i < count; ++i) {
-        auto citem = item->child(i);
-        if (citem->type() != TreeWidget::ObjectType) {
-            continue;
-        }
-        auto obj = static_cast<DocumentObjectItem*>(citem)->object()->getObject();
+    for (auto* citem : TreeWidget::objectChildren(item)) {
+        auto obj = citem->object()->getObject();
         if (!obj->isAttachedToDocument()) {
             continue;
         }
         auto it = info->find(obj->getNameInDocument());
         if (it != info->end()) {
-            restoreItemExpansion(it->second, static_cast<DocumentObjectItem*>(citem));
+            restoreItemExpansion(it->second, citem);
+        }
+    }
+
+    // A file without folder entries, older than the folders, leaves them at their defaults
+    auto owner = item->object()->getObject();
+    if (!owner->isAttachedToDocument()) {
+        return;
+    }
+    for (int i = 0, count = item->childCount(); i < count; ++i) {
+        auto citem = item->child(i);
+        if (citem->type() != TreeWidget::FolderType) {
+            continue;
+        }
+        const std::string name = std::string(owner->getNameInDocument()) + "#"
+            + static_cast<FolderItem*>(citem)->key();
+        if (info->count(name)) {
+            citem->setExpanded(true);
+        }
+        else if (info->count(name + "~")) {
+            citem->setExpanded(false);
         }
     }
 }
@@ -6857,6 +6922,21 @@ void DocumentObjectItem::generateIcon(int currentStatus, QIcon::Mode mode, QIcon
 
 QIcon DocumentObjectItem::getVisibilityIcon(int currentStatus, QIcon& original_icon)
 {
+    return composeVisibilityIcon(
+        getTree()->style(),
+        object()->canToggleVisibility(),
+        (currentStatus & Status::Visible) != 0,
+        original_icon
+    );
+}
+
+QIcon DocumentObjectItem::composeVisibilityIcon(
+    QStyle* style,
+    bool canToggle,
+    bool visible,
+    const QIcon& original
+)
+{
     static QPixmap pxVisible, pxInvisible;
     if (pxVisible.isNull()) {
         pxVisible = BitmapFactory().pixmap("TreeItemVisible");
@@ -6867,10 +6947,9 @@ QIcon DocumentObjectItem::getVisibilityIcon(int currentStatus, QIcon& original_i
 
     // Prepend the visibility pixmap to the final icon pixmaps and use these as the icon.
     QIcon new_icon;
-    auto style = this->getTree()->style();
     int const spacing = style->pixelMetric(QStyle::PM_LayoutHorizontalSpacing);
     for (auto state : {QIcon::On, QIcon::Off}) {
-        QPixmap px_org = original_icon.pixmap(0xFFFF, 0xFFFF, QIcon::Normal, state);
+        QPixmap px_org = original.pixmap(0xFFFF, 0xFFFF, QIcon::Normal, state);
 
         QPixmap px(2 * px_org.width() + spacing, px_org.height());
         px.fill(Qt::transparent);
@@ -6878,14 +6957,8 @@ QIcon DocumentObjectItem::getVisibilityIcon(int currentStatus, QIcon& original_i
         QPainter pt;
         pt.begin(&px);
         pt.setPen(Qt::NoPen);
-        if (object()->canToggleVisibility()) {
-            pt.drawPixmap(
-                0,
-                0,
-                px_org.width(),
-                px_org.height(),
-                (currentStatus & Status::Visible) ? pxVisible : pxInvisible
-            );
+        if (canToggle) {
+            pt.drawPixmap(0, 0, px_org.width(), px_org.height(), visible ? pxVisible : pxInvisible);
         }
         pt.drawPixmap(px_org.width() + spacing, 0, px_org.width(), px_org.height(), px_org);
         pt.end();
@@ -6955,6 +7028,11 @@ void DocumentObjectItem::testStatus(bool resetStatus, QIcon& icon1, QIcon& icon2
     }
 
     previousStatus = currentStatus;
+
+    // The folder's eye follows the rows in it
+    if (parent() && parent()->type() == TreeWidget::FolderType) {
+        static_cast<FolderItem*>(parent())->updateStatus();
+    }
 
     QIcon::Mode mode = QIcon::Normal;
     if (currentStatus & Status::Visible) {
@@ -7410,8 +7488,78 @@ void FolderItem::applyFolder(const TreeFolder& folder)
     if (this->text(0) != text) {
         setText(0, text);
     }
-    baseIcon = folder.icon;
-    setIcon(0, baseIcon);  // Task 4 adds the eye
+    // At the size an object row draws its icon at, which also keeps a scalable theme icon
+    // from being rendered at the largest size it is asked for
+    const int size = TreeWidget::getIconSize();
+    baseIcon = QIcon();
+    for (auto state : {QIcon::On, QIcon::Off}) {
+        baseIcon.addPixmap(folder.icon.pixmap(size, size, QIcon::Normal, state), QIcon::Normal, state);
+    }
+    defaultOpen = folder.expandedByDefault;
+    updateStatus(true);
+}
+
+bool FolderItem::anyVisible() const
+{
+    for (auto* oi : objectItems()) {
+        if (oi->isVisibleInTree()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void FolderItem::updateStatus(bool reset)
+{
+    // Not before applyFolder(), which a row placed in the folder can call this ahead of
+    if (baseIcon.isNull()) {
+        return;
+    }
+    const bool visible = anyVisible();
+    const int status = visible ? 1 : 0;
+    if (!reset && status == myStatus) {
+        return;
+    }
+    myStatus = status;
+    if (isVisibilityIconEnabled() && treeWidget()) {
+        setIcon(
+            0,
+            DocumentObjectItem::composeVisibilityIcon(treeWidget()->style(), true, visible, baseIcon)
+        );
+    }
+    else {
+        setIcon(0, baseIcon);
+    }
+}
+
+void FolderItem::toggleVisibility()
+{
+    auto* owner = ownerItem();
+    if (!owner) {
+        return;
+    }
+    const bool show = !anyVisible();
+    App::Document* doc = owner->object()->getObject()->getDocument();
+    doc->openTransaction(
+        show ? QT_TRANSLATE_NOOP("Command", "Show folder")
+             : QT_TRANSLATE_NOOP("Command", "Hide folder")
+    );
+    for (auto* oi : objectItems()) {
+        auto& visibility = oi->object()->getObject()->Visibility;
+        if (visibility.getValue() == show) {
+            continue;
+        }
+        // Visibility is NoModify, which never opens the transaction booked above, so the
+        // folder's writes would all go unrecorded. Lifted for the write, the first one opens
+        // it and the rest land in it: one undo step for the whole folder.
+        Base::ObjectStatusLocker<App::Property::Status, App::Property> guard(
+            App::Property::NoModify,
+            &visibility,
+            false
+        );
+        visibility.setValue(show);
+    }
+    doc->commitTransaction();
 }
 
 QList<DocumentObjectItem*> FolderItem::objectItems() const

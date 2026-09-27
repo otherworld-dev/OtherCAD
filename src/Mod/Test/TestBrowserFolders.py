@@ -668,3 +668,79 @@ class TestFolderInteraction(TreeFoldersBase):
         FreeCAD.closeDocument(name)
         _process_events(300)
         self.assertNotIn(name, FreeCAD.listDocuments())
+
+
+class TestFolderEyeAndExpansion(TreeFoldersBase):
+    """The eye on a folder row, and whether a folder is open, kept in the saved file."""
+
+    def _eye_point(self, item):
+        """The middle of the row's eye, as the tree hit-tests it, or a skip."""
+        if QtTest is None:
+            self.skipTest("QtTest is not available in this build")
+        self.tree.scrollToItem(item)
+        _process_events()
+        rect = self.tree.visualItemRect(item)
+        style = self.tree.style()
+        margin = style.pixelMetric(QtWidgets.QStyle.PM_FocusFrameHMargin) + 1
+        # iconSize() is (-1, -1) unless the icon height preference is set
+        size = self.tree.iconSize().height()
+        if size <= 0:
+            size = style.pixelMetric(QtWidgets.QStyle.PM_SmallIconSize)
+        pos = QtCore.QPoint(rect.left() + margin + size // 2, rect.center().y())
+        hit = self._hold(self.tree.itemAt(pos)) if self.tree.isVisible() else None
+        if hit is None or hit.type() != item.type() or hit.text(0) != item.text(0):
+            self.skipTest("The row is not on screen in this test environment")
+        return pos
+
+    def _eye_click(self, item):
+        pos = self._eye_point(item)
+        QtTest.QTest.mouseClick(
+            self.tree.viewport(), QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, pos
+        )
+        _process_events(200)
+
+    def test_folder_eye_hides_every_sketch_in_one_undo_step(self):
+        self.sketch.Visibility = True
+        self.free_sketch.Visibility = True
+        self.doc.recompute()
+        _process_events()
+        before = self.doc.UndoCount
+        self._eye_click(self._folder("Sketches"))
+        self.assertFalse(self.sketch.Visibility)
+        self.assertFalse(self.free_sketch.Visibility)
+        self.assertEqual(self.doc.UndoCount, before + 1)
+        self.doc.undo()
+        _process_events(200)
+        self.assertTrue(self.sketch.Visibility)
+        self.assertTrue(self.free_sketch.Visibility)
+
+    def test_folder_eye_shows_all_when_all_are_hidden(self):
+        self.sketch.Visibility = False
+        self.free_sketch.Visibility = False
+        _process_events()
+        self._eye_click(self._folder("Sketches"))
+        self.assertTrue(self.sketch.Visibility)
+        self.assertTrue(self.free_sketch.Visibility)
+
+    def test_folder_expansion_survives_save_and_reload(self):
+        import os
+        import shutil
+        import tempfile
+
+        tmp = tempfile.mkdtemp(prefix="TestBrowserFolders")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        # Both away from their defaults: Construction starts closed, Sketches open
+        self._folder("Construction").setExpanded(True)
+        self._folder("Sketches").setExpanded(False)
+        _process_events()
+        # Named after the document, so tearDown's prefix match still closes it
+        path = os.path.join(tmp, self.doc_name + ".FCStd")
+        self.doc.saveAs(path)
+        self._held = []  # as tearDown does, before the rows go
+        FreeCAD.closeDocument(self.doc.Name)
+        _process_events(200)
+        self.doc = FreeCAD.openDocument(path)
+        _process_events(500)
+        self.body = self.doc.getObject("Body")
+        self.assertTrue(self._folder("Construction").isExpanded())
+        self.assertFalse(self._folder("Sketches").isExpanded())
