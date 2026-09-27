@@ -409,6 +409,8 @@ private:
     QSize offset;
     int sizeDelta = 0;
     QRect rectOverlay;
+    /// A resize for the panels' new minimum is on its way
+    bool resizeForPanelsPending {false};
     OverlayProxyWidget* proxyWidget;
     QSplitter* splitter = nullptr;
     QWidget* titleBar = nullptr;

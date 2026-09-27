@@ -465,6 +465,9 @@ OverlayTabWidget::OverlayTabWidget(QWidget* parent, Qt::DockWidgetArea pos)
     connect(tabBar(), &QTabBar::tabBarClicked, this, &OverlayTabWidget::onCurrentChanged);
     connect(tabBar(), &QTabBar::tabMoved, this, &OverlayTabWidget::onTabMoved);
     tabBar()->installEventFilter(this);
+    // A panel asking for a new minimum, as a task dialog does when it adds boxes, reaches
+    // the splitter as a layout request
+    splitter->installEventFilter(this);
 
     timer.setSingleShot(true);
     connect(&timer, &QTimer::timeout, this, &OverlayTabWidget::setupLayout);
@@ -788,6 +791,27 @@ bool OverlayTabWidget::eventFilter(QObject* o, QEvent* ev)
         if (_state <= State::Normal) {
             timer.start(10);
         }
+    }
+    else if (
+        ev->type() == QEvent::LayoutRequest && o == splitter && isVisible()
+        && _state <= State::Normal && !resizeForPanelsPending
+    ) {
+        // Taken once the panels have settled, and only when it changes what is shown,
+        // since placing the overlay lays the splitter out again. Only the geometry: the
+        // rest of setRect() decides whether the overlay hides, which is not this event's
+        // to decide.
+        resizeForPanelsPending = true;
+        QTimer::singleShot(0, this, [this]() {
+            resizeForPanelsPending = false;
+            if (!isVisible() || _state != State::Normal || !getMainWindow()
+                || !getMainWindow()->getMdiArea()) {
+                return;
+            }
+            const QRect shown = shownRect(rectOverlay).translated(getMainWindow()->getMdiArea()->pos());
+            if (shown != geometry()) {
+                setGeometry(shown);
+            }
+        });
     }
     return QTabWidget::eventFilter(o, ev);
 }

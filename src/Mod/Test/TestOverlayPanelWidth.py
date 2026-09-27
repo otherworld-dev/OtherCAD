@@ -42,23 +42,33 @@ NARROW = 200
 
 
 class TestOverlayPanelWidth(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.window = FreeCADGui.getMainWindow() if hasattr(FreeCADGui, "getMainWindow") else None
+        cls.params = FreeCAD.ParamGet(RIGHT_OVERLAY)
+        cls.oldWidth = cls.params.GetInt("Width", 0)
+        cls.toggled = False
+        if cls.window is None:
+            return
+        # Once for the class: taking the panel off the overlay and putting it back
+        # between tests leaves it hidden
+        if cls._tasks_overlay() is None:
+            FreeCADGui.runCommand("Std_DockOverlayToggleRight")
+            cls.toggled = True
+            cls._process_events(300)
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls.oldWidth:
+            cls.params.SetInt("Width", cls.oldWidth)
+        if cls.toggled:
+            FreeCADGui.runCommand("Std_DockOverlayToggleRight")
+        cls._process_events(200)
+
     def setUp(self):
-        try:
-            self.window = FreeCADGui.getMainWindow()
-        except (AttributeError, RuntimeError):
-            self.window = None
         if self.window is None:
             raise unittest.SkipTest("The overlay needs a main window")
-
-        self.params = FreeCAD.ParamGet(RIGHT_OVERLAY)
-        self.oldWidth = self.params.GetInt("Width", 0)
-        self.toggled = False
         if self._tasks_overlay() is None:
-            FreeCADGui.runCommand("Std_DockOverlayToggleRight")
-            self.toggled = True
-            self._process_events(300)
-        if self._tasks_overlay() is None:
-            self._restore()
             raise unittest.SkipTest("The Tasks panel could not be put on the right overlay")
         self.params.SetInt("Width", NARROW)
         self._process_events(200)
@@ -76,29 +86,23 @@ class TestOverlayPanelWidth(unittest.TestCase):
             self._process_events(200)
         if getattr(self, "doc", None) and self.doc.Name in FreeCAD.listDocuments():
             FreeCAD.closeDocument(self.doc.Name)
-        self._restore()
 
-    def _restore(self):
-        if self.oldWidth:
-            self.params.SetInt("Width", self.oldWidth)
-        if self.toggled:
-            FreeCADGui.runCommand("Std_DockOverlayToggleRight")
-        self._process_events(200)
-
-    def _process_events(self, wait_ms=50):
+    @staticmethod
+    def _process_events(wait_ms=50):
         FreeCADGui.updateGui()
         app = QtWidgets.QApplication.instance()
         app.processEvents()
         time.sleep(wait_ms / 1000.0)
         app.processEvents()
 
-    def _tasks_overlay(self):
-        """The right overlay holding the Tasks panel, if it holds it."""
+    @staticmethod
+    def _tasks_overlay():
+        """The overlay holding the Tasks panel, if one does. It is known by what it holds,
+        as a hidden overlay is parked at the top left whatever edge it belongs to."""
         for widget in QtWidgets.QApplication.instance().allWidgets():
             if widget.metaObject().className() != "Gui::OverlayTabWidget":
                 continue
-            docks = widget.findChildren(QtWidgets.QDockWidget, "Tasks")
-            if docks and widget.geometry().left() > self.window.width() // 2:
+            if widget.findChildren(QtWidgets.QDockWidget, "Tasks"):
                 return widget
         return None
 
@@ -119,6 +123,36 @@ class TestOverlayPanelWidth(unittest.TestCase):
         self.assertGreaterEqual(overlay.width(), tasks.minimumSizeHint().width())
         self.assertLessEqual(tasks.width(), overlay.width(), "the panel is cut off")
         self.assertLessEqual(overlay.geometry().right(), self._mdi().geometry().right())
+
+    def testTheOverlayGrowsWhenTheOpenPanelNeedsMore(self):
+        """A panel can need more room while the overlay is already on screen, as when a
+        dialog adds boxes, and nothing else then puts the overlay in place again."""
+
+        FreeCADGui.ActiveDocument.setEdit(self.sketch.Name)
+        overlay = self._tasks_overlay()
+        deadline = time.monotonic() + 3.0
+        while not overlay.isVisible() and time.monotonic() < deadline:
+            self._process_events(100)
+        self._process_events(300)
+        tasks = overlay.findChild(QtWidgets.QDockWidget, "Tasks")
+        self.assertTrue(
+            overlay.isVisible(),
+            f"the sketch did not show the panel: overlay {overlay.geometry()}, tasks visible "
+            f"{tasks.isVisible()}, dialog {FreeCADGui.Control.activeDialog()}, edit "
+            f"{FreeCADGui.ActiveDocument.getInEdit()}",
+        )
+        tasks = overlay.findChild(QtWidgets.QDockWidget, "Tasks")
+        wider = overlay.width() + 120
+
+        tasks.widget().setMinimumWidth(wider)
+        try:
+            self._process_events(500)
+            # Its minimumSize(), rather than the hint, is what Qt holds the panel to
+            self.assertGreaterEqual(tasks.width(), wider, "the panel did not get its room")
+            self.assertLessEqual(tasks.width(), overlay.width(), "the panel is cut off")
+            self.assertLessEqual(overlay.geometry().right(), self._mdi().geometry().right())
+        finally:
+            tasks.widget().setMinimumWidth(0)
 
     def testTheChosenWidthIsKeptAndComesBack(self):
         FreeCADGui.ActiveDocument.setEdit(self.sketch.Name)
