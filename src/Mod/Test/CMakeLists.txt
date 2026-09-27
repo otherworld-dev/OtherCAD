@@ -47,6 +47,7 @@ SET(Test_SRCS
     TestSelectOther.py
     TestProfileRegions.py
     TestMoveFeatureGui.py
+    TestProfilePick.py
     TestGizmoValueLabels.py
     TestPatternPanel.py
     TestViewportProjection.py

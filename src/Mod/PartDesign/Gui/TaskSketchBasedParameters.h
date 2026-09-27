@@ -53,6 +53,10 @@ class QToolButton;
 namespace PartDesignGui
 {
 
+/// Makes the next profile panel to open start with region picking on, adding to what the
+/// feature was started on. Set around the creation of a feature picked from a region.
+void pickRegionsOnOpen(bool on);
+
 /** Fusion style profile row.
  *
  * Closed regions bounded by the sketch curves are precomputed by

@@ -17,6 +17,11 @@ from upstream FreeCAD merges are not listed, only the work done in this fork.
 
 ### Changed
 
+- Extrude, Revolve, Hole, Sweep, Loft and Coil with nothing selected wait for a click
+  in the 3D view, as in Fusion, instead of listing sketches by name. Click a region of
+  a sketch to build from that region, or a curve to use the whole sketch. The body's
+  sketches are shown while it waits, so another region of a sketch you have already
+  used is one click away, and more regions can be added once the feature has started.
 - The editor for stored preferences is called Edit Stored Preferences instead of Edit
   Parameters, so searching the commands for parameters no longer leads to it.
 

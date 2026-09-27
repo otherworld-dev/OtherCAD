@@ -63,6 +63,16 @@ using namespace Gui;
 // Defined in Command.cpp, where the commands decide what a new feature starts from
 bool wholeSketchMakesFace(const Part::Part2DObject* sketch);
 
+namespace
+{
+bool pickRegionsOnOpenFlag = false;
+}
+
+void PartDesignGui::pickRegionsOnOpen(bool on)
+{
+    pickRegionsOnOpenFlag = on;
+}
+
 /* TRANSLATOR PartDesignGui::TaskSketchBasedParameters */
 
 namespace
@@ -365,6 +375,11 @@ TaskSketchBasedParameters::TaskSketchBasedParameters(
         && !wholeSketchMakesFace(sketch);
     if (standIn) {
         profileWidget->setProfileProvisional(true);
+        profileWidget->setPickingActive(true);
+    }
+    else if (pickRegionsOnOpenFlag) {
+        // Started on a region picked in the view: more clicks add regions to it
+        pickRegionsOnOpenFlag = false;
         profileWidget->setPickingActive(true);
     }
 }

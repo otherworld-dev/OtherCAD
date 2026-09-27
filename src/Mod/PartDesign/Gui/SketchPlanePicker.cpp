@@ -107,14 +107,16 @@ Gui::View3DInventorViewer* viewerOf(App::Document* document)
 
 }  // namespace
 
-TaskDlgSketchPlanePick::TaskDlgSketchPlanePick(
+TaskDlgWaitForPick::TaskDlgWaitForPick(
     PartDesign::Body* body,
+    Options options,
     PickHandler onPick,
     DoneHandler onDone
 )
     : Gui::TaskView::TaskDialog()
     , Gui::SelectionObserver(/* attach = */ false)
     , body(body)
+    , options(std::move(options))
     , onPick(std::move(onPick))
     , onDone(std::move(onDone))
 {
@@ -122,19 +124,36 @@ TaskDlgSketchPlanePick::TaskDlgSketchPlanePick(
     setAutoCloseOnDeletedDocument(true);
 
     auto* panel = new QWidget();
-    panel->setObjectName(QStringLiteral("PartDesignGui__TaskSketchPlanePick"));
-    panel->setWindowTitle(tr("Create Sketch"));
+    panel->setObjectName(this->options.panelName);
+    panel->setWindowTitle(this->options.title);
     auto* layout = new QVBoxLayout(panel);
-    auto* hint = new QLabel(
-        tr("Select a planar face, datum plane or origin plane to sketch on."),
-        panel
-    );
+    auto* hint = new QLabel(this->options.panelText, panel);
     hint->setWordWrap(true);
     layout->addWidget(hint);
-    addTaskBox(Gui::BitmapFactory().pixmap("Sketcher_NewSketch"), panel);
+    addTaskBox(Gui::BitmapFactory().pixmap(this->options.pixmap), panel);
 }
 
-TaskDlgSketchPlanePick::~TaskDlgSketchPlanePick()
+TaskDlgSketchPlanePick::TaskDlgSketchPlanePick(
+    PartDesign::Body* body,
+    PickHandler onPick,
+    DoneHandler onDone
+)
+    : TaskDlgWaitForPick(
+          body,
+          Options {
+              .title = tr("Create Sketch"),
+              .pixmap = "Sketcher_NewSketch",
+              .panelText = tr("Select a planar face, datum plane or origin plane to sketch on."),
+              .hint = tr("select a face or plane"),
+              .panelName = QStringLiteral("PartDesignGui__TaskSketchPlanePick"),
+              .makeGate = [body]() -> Gui::SelectionGate* { return new SketchPlaneGate(body); },
+          },
+          std::move(onPick),
+          std::move(onDone)
+      )
+{}
+
+TaskDlgWaitForPick::~TaskDlgWaitForPick()
 {
     // Nothing that happens while tidying up may schedule another pick.
     detachSelection();
@@ -142,11 +161,11 @@ TaskDlgSketchPlanePick::~TaskDlgSketchPlanePick()
     if (viewer) {
         viewer->removeEventCallback(
             SoKeyboardEvent::getClassTypeId(),
-            &TaskDlgSketchPlanePick::handleKeyboardCB,
+            &TaskDlgWaitForPick::handleKeyboardCB,
             this
         );
     }
-    if (opened) {
+    if (opened && options.makeGate) {
         Gui::Selection().rmvSelectionGate();
         if (auto* mainWindow = Gui::getMainWindow()) {
             mainWindow->hideHints();
@@ -154,12 +173,12 @@ TaskDlgSketchPlanePick::~TaskDlgSketchPlanePick()
     }
 
     // Like TaskDlgAttacher, the follow-up runs from here: the dialog has already left
-    // the task panel, so the sketch's own editor is free to take it. A document on
+    // the task panel, so the editor that comes next is free to take it. A document on
     // its way out takes its pending command with it, so there is nothing to do then.
     // Nothing may leave a destructor: an exception here would end FuCadUp outright.
     if (onDone && !documentClosing) {
         try {
-            onDone(sketch);
+            onDone(picked);
         }
         catch (const Base::Exception& e) {
             e.reportException();
@@ -169,75 +188,77 @@ TaskDlgSketchPlanePick::~TaskDlgSketchPlanePick()
     }
 }
 
-void TaskDlgSketchPlanePick::open()
+void TaskDlgWaitForPick::open()
 {
     opened = true;
-    // Only a shown dialog listens: a pick must never build a sketch for a dialog
-    // the task panel turned away.
+    // Only a shown dialog listens: a pick must never act for a dialog the task panel
+    // turned away.
     attachSelection();
-    Gui::Selection().addSelectionGate(new SketchPlaneGate(body));
+    if (options.makeGate) {
+        Gui::Selection().addSelectionGate(options.makeGate());
+    }
 
     viewer = viewerOf(body->getDocument());
     if (viewer) {
         viewer->addEventCallback(
             SoKeyboardEvent::getClassTypeId(),
-            &TaskDlgSketchPlanePick::handleKeyboardCB,
+            &TaskDlgWaitForPick::handleKeyboardCB,
             this
         );
     }
 
     using enum Gui::InputHint::UserInput;
     Gui::getMainWindow()->showHints({
-        {.message = tr("%1 select a face or plane"), .sequences = {MouseLeft}},
+        {.message = QStringLiteral("%1 ") + options.hint, .sequences = {MouseLeft}},
         {.message = tr("%1 cancel"), .sequences = {KeyEscape}},
     });
 }
 
-bool TaskDlgSketchPlanePick::accept()
+bool TaskDlgWaitForPick::accept()
 {
     // Only a successful pick accepts this dialog; there is no OK button.
-    return sketch != nullptr;
+    return picked != nullptr;
 }
 
-bool TaskDlgSketchPlanePick::reject()
+bool TaskDlgWaitForPick::reject()
 {
-    sketch = nullptr;
+    picked = nullptr;
     return true;
 }
 
-void TaskDlgSketchPlanePick::autoClosedOnDeletedDocument()
+void TaskDlgWaitForPick::autoClosedOnDeletedDocument()
 {
     documentClosing = true;
 }
 
-void TaskDlgSketchPlanePick::onSelectionChanged(const Gui::SelectionChanges& msg)
+void TaskDlgWaitForPick::onSelectionChanged(const Gui::SelectionChanges& msg)
 {
     if (msg.Type != Gui::SelectionChanges::AddSelection || pickScheduled) {
         return;
     }
-    // Build on the selection once it has settled: opening the sketch clears the
-    // selection again, which must not happen from inside this notification.
+    // Act on the selection once it has settled: what comes next clears the selection
+    // again, which must not happen from inside this notification.
     pickScheduled = true;
     QTimer::singleShot(0, this, [this]() { tryPick(); });
 }
 
-void TaskDlgSketchPlanePick::tryPick()
+void TaskDlgWaitForPick::tryPick()
 {
     pickScheduled = false;
-    App::DocumentObject* picked = onPick ? onPick() : nullptr;
-    if (!picked) {
-        // Not something a sketch can sit on: keep waiting for the next click.
+    App::DocumentObject* object = onPick ? onPick() : nullptr;
+    if (!object) {
+        // Not something this command works on: keep waiting for the next click.
         Gui::Selection().clearSelection();
         return;
     }
 
-    sketch = picked;
+    picked = object;
     Gui::Control().accept(body->getDocument());
 }
 
-void TaskDlgSketchPlanePick::cancel()
+void TaskDlgWaitForPick::cancel()
 {
-    QPointer<TaskDlgSketchPlanePick> self(this);
+    QPointer<TaskDlgWaitForPick> self(this);
     App::Document* document = body->getDocument();
     QTimer::singleShot(0, [self, document]() {
         Gui::TaskView::TaskDialog* active = Gui::Control().activeDialog(document);
@@ -247,9 +268,9 @@ void TaskDlgSketchPlanePick::cancel()
     });
 }
 
-void TaskDlgSketchPlanePick::handleKeyboardCB(void* userdata, SoEventCallback* cb)
+void TaskDlgWaitForPick::handleKeyboardCB(void* userdata, SoEventCallback* cb)
 {
-    auto* self = static_cast<TaskDlgSketchPlanePick*>(userdata);
+    auto* self = static_cast<TaskDlgWaitForPick*>(userdata);
     const SoEvent* ev = cb->getEvent();
     if (!ev || !ev->isOfType(SoKeyboardEvent::getClassTypeId())) {
         return;

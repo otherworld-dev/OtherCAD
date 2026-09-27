@@ -25,7 +25,9 @@
 #pragma once
 
 #include <functional>
+#include <memory>
 #include <QPointer>
+#include <QString>
 
 #include <Gui/Selection/Selection.h>
 #include <Gui/TaskView/TaskDialog.h>
@@ -50,27 +52,40 @@ namespace PartDesignGui
 {
 
 /**
- * Waits for one click on a planar face, datum plane or origin plane, so that
- * Create Sketch works the way Fusion does: click the command, click the surface.
+ * Waits for one click in the 3D view, so that a command works the way Fusion's do:
+ * click the command, click what it works on. Create Sketch waits for the surface to
+ * sketch on, the profile commands for the region or face to build from.
  *
- * The dialog owns nothing but the wait. Building the sketch from the selection
- * and tidying up afterwards belong to the caller, which hands them in as
- * callbacks. A pick the handler turns down leaves the dialog open, so the user
- * can simply click something else. Esc in the 3D view, the Cancel button and
- * closing the document all end the wait without a sketch.
+ * The dialog owns nothing but the wait. Acting on the selection and tidying up
+ * afterwards belong to the caller, which hands them in as callbacks. A pick the
+ * handler turns down leaves the dialog open, so the user can simply click something
+ * else. Esc in the 3D view, the Cancel button and closing the document all end the
+ * wait with nothing picked.
  */
-class TaskDlgSketchPlanePick: public Gui::TaskView::TaskDialog, public Gui::SelectionObserver
+class TaskDlgWaitForPick: public Gui::TaskView::TaskDialog, public Gui::SelectionObserver
 {
     Q_OBJECT
 
 public:
-    /// Builds the sketch from the current selection; returns null to keep on picking.
+    /// Acts on the current selection; returns null to keep on picking.
     using PickHandler = std::function<App::DocumentObject*()>;
-    /// Runs once the dialog has left the task panel; the sketch is null after a cancel.
-    using DoneHandler = std::function<void(App::DocumentObject* sketch)>;
+    /// Runs once the dialog has left the task panel; the object is null after a cancel.
+    using DoneHandler = std::function<void(App::DocumentObject* picked)>;
 
-    TaskDlgSketchPlanePick(PartDesign::Body* body, PickHandler onPick, DoneHandler onDone);
-    ~TaskDlgSketchPlanePick() override;
+    /// What the dialog says and lets through
+    struct Options
+    {
+        QString title;
+        const char* pixmap {nullptr};
+        QString panelText;
+        /// The status bar hint after the mouse button, such as "select a face or plane"
+        QString hint;
+        QString panelName;
+        std::function<Gui::SelectionGate*()> makeGate;
+    };
+
+    TaskDlgWaitForPick(PartDesign::Body* body, Options options, PickHandler onPick, DoneHandler onDone);
+    ~TaskDlgWaitForPick() override;
 
     void open() override;
     bool accept() override;
@@ -94,13 +109,23 @@ private:
     static void handleKeyboardCB(void* userdata, SoEventCallback* cb);
 
     PartDesign::Body* body;
+    Options options;
     PickHandler onPick;
     DoneHandler onDone;
-    App::DocumentObject* sketch {nullptr};
+    App::DocumentObject* picked {nullptr};
     bool opened {false};
     bool pickScheduled {false};
     bool documentClosing {false};
     QPointer<Gui::View3DInventorViewer> viewer;
+};
+
+/// Create Sketch's wait: one click on a planar face, datum plane or origin plane
+class TaskDlgSketchPlanePick: public TaskDlgWaitForPick
+{
+    Q_OBJECT
+
+public:
+    TaskDlgSketchPlanePick(PartDesign::Body* body, PickHandler onPick, DoneHandler onDone);
 };
 
 }  // namespace PartDesignGui
