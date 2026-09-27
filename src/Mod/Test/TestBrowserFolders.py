@@ -514,6 +514,74 @@ class TestFolderInteraction(TreeFoldersBase):
         names = {o.Name for o in FreeCADGui.Selection.getSelection()}
         self.assertEqual(names, {self.plane.Name, self.binder.Name})
 
+    def _popup_from_right_click(self, item):
+        """Right-clicks the row and reports whether a popup menu opened.
+
+        A timer closes whatever popup it finds, so a menu that opens can't be left up: its
+        exec loop runs the timer. If no menu opens, the event returns at once.
+        """
+        pos = self._point_on(item)
+        app = QtWidgets.QApplication.instance()
+        seen = []
+
+        def close_popup():
+            popup = app.activePopupWidget()
+            if popup is not None:
+                seen.append(popup.metaObject().className())
+                popup.close()
+
+        timer = QtCore.QTimer()
+        timer.timeout.connect(close_popup)
+        timer.start(100)
+        try:
+            event = QtGui.QContextMenuEvent(
+                QtGui.QContextMenuEvent.Reason.Mouse, pos, self.tree.viewport().mapToGlobal(pos)
+            )
+            app.sendEvent(self.tree.viewport(), event)
+            _process_events(300)
+        finally:
+            timer.stop()
+            close_popup()
+        return seen
+
+    def test_right_clicking_a_folder_opens_no_menu(self):
+        # An object row opens the tree's menu, so the check below can see one
+        sketch = self._item_of(self.free_sketch, self._folder("Sketches"))
+        self.assertTrue(self._popup_from_right_click(sketch))
+        # The folder's would act on whatever is selected, which is not the folder
+        FreeCADGui.Selection.addSelection(self.doc.Name, self.pad.Name)
+        _process_events()
+        self.assertEqual(self._popup_from_right_click(self._folder("History")), [])
+
+    def _press_alt(self, key):
+        # Straight to the tree, past the application's shortcuts
+        event = QtGui.QKeyEvent(QtCore.QEvent.Type.KeyPress, key, QtCore.Qt.AltModifier)
+        QtWidgets.QApplication.instance().sendEvent(self.tree, event)
+        _process_events()
+
+    def test_alt_down_expands_the_rows_inside_folders(self):
+        history = self._folder("History")
+        pad = self._item_of(self.pad, history)
+        self.assertFalse(pad.isExpanded())
+        self.tree.setCurrentItem(self._item_of(self.body))
+        _process_events()
+        self._press_alt(QtCore.Qt.Key_Down)
+        self.assertTrue(history.isExpanded())
+        self.assertTrue(pad.isExpanded())
+
+    def test_alt_up_collapses_the_rows_inside_folders_but_not_the_folders(self):
+        sketches = self._folder("Sketches")
+        history = self._folder("History")
+        pad = self._item_of(self.pad, history)
+        history.setExpanded(True)
+        pad.setExpanded(True)
+        self.tree.setCurrentItem(self._item_of(self.body))
+        _process_events()
+        self._press_alt(QtCore.Qt.Key_Up)
+        self.assertTrue(sketches.isExpanded())
+        self.assertTrue(history.isExpanded())
+        self.assertFalse(pad.isExpanded())
+
     def _send_drop(self, pos):
         """A drag entering, moving and dropping at pos, as QDrag would deliver them."""
         viewport = self.tree.viewport()
