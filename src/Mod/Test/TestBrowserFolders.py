@@ -633,6 +633,42 @@ class TestFolderInteraction(TreeFoldersBase):
         self.assertIn(loose, self.body.Group)
         self.assertNotIn(loose, other.Group)
 
+    def test_dropping_own_sketch_on_its_folder_changes_nothing(self):
+        # A reorder drag that just misses its row lands on a folder. For an object already
+        # in the folder's body that used to take it out and put it back after the tip.
+        source = self._item_of(self.sketch, self._folder("Sketches"))
+        self.tree.setCurrentItem(source)
+        _process_events()
+        self.assertTrue(source.isSelected())
+        group = [o.Name for o in self.body.Group]
+        undo = self.doc.UndoCount
+        for key in ("History", "Sketches"):
+            target = self._folder(key)
+            pos = self._point_on(target)
+            viewport = self.tree.viewport()
+            mime = QtCore.QMimeData()
+            mime.setData(self.tree.model().mimeTypes()[0], QtCore.QByteArray())
+            app = QtWidgets.QApplication.instance()
+            buttons, mods = QtCore.Qt.LeftButton, QtCore.Qt.NoModifier
+            move = QtGui.QDragMoveEvent(pos, QtCore.Qt.MoveAction, mime, buttons, mods)
+            try:
+                app.sendEvent(
+                    viewport, QtGui.QDragEnterEvent(pos, QtCore.Qt.MoveAction, mime, buttons, mods)
+                )
+                app.sendEvent(viewport, move)
+                accepted = move.isAccepted()
+            finally:
+                app.removeEventFilter(self.tree)
+                app.sendEvent(viewport, QtGui.QDragLeaveEvent())
+                _process_events()
+            self.assertFalse(accepted, "the drag over " + key + " did not show no-drop")
+            # The drop itself, as a drag released there anyway would deliver it
+            self._send_drop(pos)
+            self.doc.recompute()
+            _process_events(300)
+            self.assertEqual([o.Name for o in self.body.Group], group, "dropped on " + key)
+            self.assertEqual(self.doc.UndoCount, undo, "dropped on " + key)
+
     def test_body_inside_a_part_keeps_the_full_subname(self):
         # Review Focus 1
         part = self.doc.addObject("App::Part", "Part")

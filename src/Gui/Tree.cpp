@@ -2631,6 +2631,18 @@ TreeWidget::TargetItemInfo TreeWidget::getTargetInfo(QEvent* ev)
         if (!targetInfo.targetItem || targetInfo.targetItem->isSelected()) {
             return {};
         }
+        // Moving the owner's own objects onto one of its folders would only take them out
+        // and put them back at the owner's insert point, reordering them by accident
+        const auto items = selectedItems();
+        if (!items.isEmpty()
+            && getDropAction(items.size(), targetInfo.targetItem->type()) == Qt::MoveAction
+            && std::ranges::all_of(items, [&targetInfo](QTreeWidgetItem* item) {
+                   return item->type() == TreeWidget::ObjectType
+                       && static_cast<DocumentObjectItem*>(item)->getParentItem()
+                       == targetInfo.targetItem;
+               })) {
+            return {};
+        }
     }
 
     if (targetInfo.targetItem->type() == TreeWidget::ObjectType) {
