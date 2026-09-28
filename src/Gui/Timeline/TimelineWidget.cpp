@@ -50,6 +50,8 @@
 #include <App/Application.h>
 #include <App/Document.h>
 #include <App/DocumentObject.h>
+#include <App/GeoFeatureGroupExtension.h>
+#include <App/Part.h>
 #include <App/Property.h>
 #include <App/PropertyLinks.h>
 #include <App/PropertyStandard.h>
@@ -191,6 +193,11 @@ void TimelineWidget::setupUi()
     emptyLabel->setObjectName(QStringLiteral("TimelineEmptyLabel"));
     emptyLabel->hide();
 
+    bodyLabel = new QLabel(this);
+    bodyLabel->setObjectName(QStringLiteral("TimelineBodyLabel"));
+    bodyLabel->hide();
+
+    outerLayout->addWidget(bodyLabel, 0, Qt::AlignVCenter);
     outerLayout->addWidget(controls, 0, Qt::AlignVCenter);
     outerLayout->addWidget(scrollArea, 1);
 
@@ -217,7 +224,14 @@ void TimelineWidget::connectDocumentSignals()
     connDeleteDocument = app->signalDeleteDocument.connect([this](const Gui::Document& doc) {
         if (&doc == trackedDocument) {
             connActiveObject.disconnect();
+            connInEdit.disconnect();
+            connResetEdit.disconnect();
             trackedDocument = nullptr;
+        }
+        // A document opened later under the same name must not inherit what was followed here
+        if (followedDocumentName == doc.getDocument()->getName()) {
+            followedBodyName.clear();
+            followedDocumentName.clear();
         }
         scheduleRebuild();
     });
@@ -258,12 +272,28 @@ void TimelineWidget::trackDocument(Gui::Document* doc)
     }
 
     connActiveObject.disconnect();
+    connInEdit.disconnect();
+    connResetEdit.disconnect();
     trackedDocument = doc;
 
     if (doc) {
         connActiveObject = doc->signalActivatedViewProvider.connect(
-            [this](const Gui::ViewProviderDocumentObject*, const char*) { scheduleRebuild(); }
+            [this](const Gui::ViewProviderDocumentObject*, const char* key) {
+                if (key && std::strcmp(key, PDBODYKEY) == 0) {
+                    // Activating a body is pointing at it: it wins over an older selection
+                    followedBodyName.clear();
+                    followedDocumentName.clear();
+                }
+                scheduleRebuild();
+            }
         );
+        // The body being edited takes the strip for as long as the edit lasts
+        connInEdit = doc->signalInEdit.connect([this](const Gui::ViewProviderDocumentObject&) {
+            scheduleRebuild();
+        });
+        connResetEdit = doc->signalResetEdit.connect([this](const Gui::ViewProviderDocumentObject&) {
+            scheduleRebuild();
+        });
     }
 }
 
@@ -323,7 +353,7 @@ void TimelineWidget::rebuild()
 
     if (appDoc) {
         documentName = appDoc->getName();
-        body = activeBody(guiDoc);
+        body = shownBody(guiDoc);
     }
 
     if (appDoc) {
@@ -409,6 +439,21 @@ void TimelineWidget::rebuild()
     positionPlayhead();
     applyRollbackVisibility();
     applyStates();
+    updateBodyLabel();
+}
+
+void TimelineWidget::updateBodyLabel()
+{
+    // The strip can show a body other than the one new features go into, and has to say so
+    App::DocumentObject* body = currentBody();
+    Gui::Application* app = Gui::Application::Instance;
+    if (body && app && body != activeBody(app->activeDocument())) {
+        bodyLabel->setText(tr("%1 (inactive)").arg(QString::fromUtf8(body->Label.getValue())));
+        bodyLabel->show();
+    }
+    else {
+        bodyLabel->hide();
+    }
 }
 
 void TimelineWidget::positionPlayhead()
@@ -435,6 +480,8 @@ void TimelineWidget::refreshMarkers()
     }
 
     applyStates();
+    // A relabelled body is only refreshed, not rebuilt
+    updateBodyLabel();
 }
 
 void TimelineWidget::applyStates()
@@ -522,6 +569,92 @@ App::DocumentObject* TimelineWidget::activeBody(Gui::Document* guiDoc) const
     }
 
     return body;
+}
+
+App::DocumentObject* TimelineWidget::bodyOf(App::DocumentObject* obj) const
+{
+    const Base::Type bodyType = Base::Type::fromName(bodyTypeName);
+    if (bodyType.isBad()) {
+        return nullptr;
+    }
+
+    // A feature's group is its body. An origin plane or axis is handed straight to the
+    // body that owns its origin, and a body inside a Part is found before the Part is.
+    for (int depth = 0; obj && depth < 4; ++depth) {
+        if (obj->isDerivedFrom(bodyType)) {
+            return obj;
+        }
+        obj = App::GeoFeatureGroupExtension::getGroupOfObject(obj);
+    }
+
+    return nullptr;
+}
+
+App::DocumentObject* TimelineWidget::editedBody(Gui::Document* guiDoc) const
+{
+    Gui::ViewProvider* provider = guiDoc ? guiDoc->getInEdit() : nullptr;
+    auto* objectProvider = freecad_cast<Gui::ViewProviderDocumentObject*>(provider);
+    return objectProvider ? bodyOf(objectProvider->getObject()) : nullptr;
+}
+
+App::DocumentObject* TimelineWidget::shownBody(Gui::Document* guiDoc) const
+{
+    if (App::DocumentObject* body = editedBody(guiDoc)) {
+        return body;
+    }
+
+    if (guiDoc && !followedBodyName.empty()
+        && followedDocumentName == guiDoc->getDocument()->getName()) {
+        App::DocumentObject* body = guiDoc->getDocument()->getObject(followedBodyName.c_str());
+        // A followed body that has been deleted, or a name now taken by something else
+        if (body && body->isAttachedToDocument() && bodyOf(body) == body) {
+            return body;
+        }
+    }
+
+    return activeBody(guiDoc);
+}
+
+bool TimelineWidget::activateShownBody()
+{
+    App::DocumentObject* body = currentBody();
+    Gui::Application* app = Gui::Application::Instance;
+    Gui::Document* guiDoc = app ? app->activeDocument() : nullptr;
+    if (!body || !guiDoc || guiDoc->getDocument() != body->getDocument()) {
+        return false;
+    }
+    if (activeBody(guiDoc) == body) {
+        return true;
+    }
+
+    // What double-clicking the body in the tree does, less the switch of workbench: a body
+    // inside a Part needs its Part active too. Neither is a change to the document, so none
+    // of it lands in the undo history and one undo still takes back only the action itself.
+    try {
+        if (App::Part* part = App::Part::getPartOfObject(body)) {
+            Gui::Command::doCommand(
+                Gui::Command::Gui,
+                "Gui.ActiveDocument.ActiveView.setActiveObject('%s',%s)",
+                PARTKEY,
+                Gui::Command::getObjectCmd(part).c_str()
+            );
+        }
+        Gui::Command::doCommand(
+            Gui::Command::Gui,
+            "Gui.ActiveDocument.ActiveView.setActiveObject('%s',%s)",
+            PDBODYKEY,
+            Gui::Command::getObjectCmd(body).c_str()
+        );
+    }
+    catch (const Base::Exception& e) {
+        e.reportException();
+        return false;
+    }
+
+    // Acting on a body is pointing at it, so the strip stays on it whatever was selected
+    followedBodyName = body->getNameInDocument();
+    followedDocumentName = body->getDocument()->getName();
+    return activeBody(guiDoc) == body;
 }
 
 void TimelineWidget::collectBodyFeatures(
@@ -903,6 +1036,8 @@ void TimelineWidget::onMarkerMenu(const QString& feature, const QPoint& globalPo
 
 void TimelineWidget::editFeature(const std::string& name)
 {
+    activateShownBody();
+
     App::DocumentObject* obj = resolve(name);
     if (!obj) {
         return;
@@ -974,6 +1109,8 @@ void TimelineWidget::renameFeature(const std::string& name)
 
 void TimelineWidget::deleteFeature(const std::string& name)
 {
+    activateShownBody();
+
     App::DocumentObject* obj = resolve(name);
     if (!obj || !obj->isAttachedToDocument()) {
         return;
@@ -994,6 +1131,8 @@ void TimelineWidget::deleteFeature(const std::string& name)
 
 void TimelineWidget::toggleSuppressed(const std::string& name)
 {
+    activateShownBody();
+
     App::DocumentObject* obj = resolve(name);
     auto* suppressible = obj ? obj->getExtensionByType<App::SuppressibleExtension>(true) : nullptr;
     if (!suppressible) {
@@ -1029,6 +1168,12 @@ void TimelineWidget::moveTo(int index)
     const int count = static_cast<int>(markers.size());
     index = std::clamp(index, -1, count - 1);
     if (index == playheadIndex) {
+        return;
+    }
+
+    // Rolling a body the user is only looking at makes it the one being worked on. That
+    // happens outside the step's transaction, so undoing the step leaves the body active.
+    if (!activateShownBody() && !bodyName.empty()) {
         return;
     }
 
@@ -1186,7 +1331,46 @@ int TimelineWidget::defaultPlayhead() const
 
 void TimelineWidget::onSelectionChanged(const Gui::SelectionChanges& msg)
 {
-    Q_UNUSED(msg)
+    // Only a selection that adds something points at a body. Clearing or shrinking the
+    // selection, or selecting something outside every body, leaves the strip where it is.
+    if (msg.Type == Gui::SelectionChanges::AddSelection
+        || msg.Type == Gui::SelectionChanges::SetSelection) {
+        App::Document* doc = App::GetApplication().getDocument(msg.pDocName);
+        App::DocumentObject* obj = nullptr;
+        std::string subName;
+        if (doc && *msg.pObjectName) {
+            obj = doc->getObject(msg.pObjectName);
+            subName = msg.pSubName;
+        }
+        else if (doc) {
+            // A selection set in one go names no object, so its last entry stands for it
+            const auto selection
+                = Gui::Selection().getSelection(msg.pDocName, Gui::ResolveMode::NoResolve);
+            if (!selection.empty()) {
+                obj = selection.back().pObject;
+                subName = selection.back().SubName ? selection.back().SubName : "";
+            }
+        }
+
+        // A pick in 3D names the top object and the path under it: Body + "Pad.Face3"
+        if (obj && !subName.empty()) {
+            if (App::DocumentObject* sub = obj->getSubObject(subName.c_str())) {
+                obj = sub;
+            }
+        }
+
+        App::DocumentObject* body = bodyOf(obj);
+        if (body
+            && (body->getNameInDocument() != followedBodyName
+                || body->getDocument()->getName() != followedDocumentName)) {
+            followedBodyName = body->getNameInDocument();
+            // Not the selection's own document: a pick through a link can reach into another
+            followedDocumentName = body->getDocument()->getName();
+            if (followedBodyName != bodyName || followedDocumentName != documentName) {
+                scheduleRebuild();
+            }
+        }
+    }
 
     applyStates();
 }

@@ -59,11 +59,16 @@ namespace Timeline
 class TimelineMarker;
 
 /**
- * Fusion style history strip: one marker per modelling feature of the active
- * body, in creation order, with a playhead that rolls the model back by moving
- * the tip of the body.
+ * Fusion style history strip: one marker per modelling feature of a body, in
+ * creation order, with a playhead that rolls the model back by moving the tip of
+ * the body.
  *
- * The strip is filled from the active PartDesign body of the active document.
+ * The strip is filled from a PartDesign body of the active document: the body of
+ * the object in edit while an edit is open, otherwise the body the user last
+ * pointed at, by selecting something in it or by activating it, and failing both
+ * the active body. A body that is not the active one is labelled as such, and is
+ * activated before anything on the strip acts on it.
+ *
  * PartDesign is not linked from Gui, so the body is recognised by type name and
  * read and written through its Group, Tip and BaseFeature properties, which
  * keeps the timeline out of the module dependency graph. Outside a body the
@@ -122,11 +127,21 @@ private:
     void clearStrip();
     void refreshMarkers();
     void applyStates();
+    /// Shows the "(inactive)" label when the body on the strip is not the active one
+    void updateBodyLabel();
 
     App::Document* currentDocument() const;
     App::DocumentObject* currentBody() const;
     App::DocumentObject* resolve(const std::string& name) const;
     App::DocumentObject* activeBody(Gui::Document* guiDoc) const;
+    /// The body obj belongs to, the body itself, or nullptr when it is in none
+    App::DocumentObject* bodyOf(App::DocumentObject* obj) const;
+    /// The body of the object in edit, or nullptr when no edit is open
+    App::DocumentObject* editedBody(Gui::Document* guiDoc) const;
+    /// The body the strip shows: the edited one, the followed one, or the active one
+    App::DocumentObject* shownBody(Gui::Document* guiDoc) const;
+    /// Makes the body on the strip the active one, if it is not; false when that failed
+    bool activateShownBody();
 
     void collectBodyFeatures(App::DocumentObject* body, std::vector<App::DocumentObject*>& features) const;
     void collectDocumentFeatures(App::Document* doc, std::vector<App::DocumentObject*>& features) const;
@@ -172,6 +187,8 @@ private:
     QHBoxLayout* stripLayout {nullptr};
     QWidget* playhead {nullptr};
     QLabel* emptyLabel {nullptr};
+    /// Names the body on the strip when it is not the active one
+    QLabel* bodyLabel {nullptr};
     QToolButton* stepBackButton {nullptr};
     QToolButton* stepForwardButton {nullptr};
     QTimer* updateTimer {nullptr};
@@ -182,6 +199,10 @@ private:
     std::vector<int> solidIndices;
     std::string documentName;
     std::string bodyName;
+    /// The body the user last pointed at by selecting in it, by internal name. Cleared when
+    /// a body is activated by hand, which is pointing at the active one.
+    std::string followedBodyName;
+    std::string followedDocumentName;
     int tipIndex {-1};
     /// The last feature the playhead has passed, so -1 is the state before the first one.
     /// The arrows move it one marker at a time. Only a solid feature can carry the tip, so
@@ -207,6 +228,8 @@ private:
     fastsignals::scoped_connection connCloseView;
     /// Reconnected on every document switch, so only one document is observed.
     fastsignals::scoped_connection connActiveObject;
+    fastsignals::scoped_connection connInEdit;
+    fastsignals::scoped_connection connResetEdit;
 
     Q_DISABLE_COPY(TimelineWidget)
 };
