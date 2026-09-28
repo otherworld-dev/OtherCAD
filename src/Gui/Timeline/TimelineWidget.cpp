@@ -291,7 +291,14 @@ void TimelineWidget::trackDocument(Gui::Document* doc)
         connInEdit = doc->signalInEdit.connect([this](const Gui::ViewProviderDocumentObject&) {
             scheduleRebuild();
         });
-        connResetEdit = doc->signalResetEdit.connect([this](const Gui::ViewProviderDocumentObject&) {
+        // Picks made during the edit left the strip alone, so it stays on the body just edited
+        connResetEdit = doc->signalResetEdit.connect([this](const Gui::ViewProviderDocumentObject& vp) {
+            App::DocumentObject* obj = vp.getObject();
+            App::DocumentObject* body = obj && obj->isAttachedToDocument() ? bodyOf(obj) : nullptr;
+            if (body && body->isAttachedToDocument()) {
+                followedBodyName = body->getNameInDocument();
+                followedDocumentName = body->getDocument()->getName();
+            }
             scheduleRebuild();
         });
     }
@@ -1333,8 +1340,14 @@ void TimelineWidget::onSelectionChanged(const Gui::SelectionChanges& msg)
 {
     // Only a selection that adds something points at a body. Clearing or shrinking the
     // selection, or selecting something outside every body, leaves the strip where it is.
-    if (msg.Type == Gui::SelectionChanges::AddSelection
-        || msg.Type == Gui::SelectionChanges::SetSelection) {
+    // So does a pick while an edit is open (another body's face for "up to face", an edge
+    // for external geometry): that is input to the edit, and the strip stays on the edited
+    // body after it closes too.
+    Gui::Application* app = Gui::Application::Instance;
+    const bool editing = app && app->editDocument();
+    if (!editing
+        && (msg.Type == Gui::SelectionChanges::AddSelection
+            || msg.Type == Gui::SelectionChanges::SetSelection)) {
         App::Document* doc = App::GetApplication().getDocument(msg.pDocName);
         App::DocumentObject* obj = nullptr;
         std::string subName;

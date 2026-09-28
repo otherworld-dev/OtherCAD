@@ -866,10 +866,31 @@ class TestTimelineFollowsSelection(TimelineTestBase):
         try:
             FreeCADGui.Selection.addSelection(self.doc.Name, self.other_pad.Name)
             self._settle()
+            # Or the check below would pass whatever the strip did with a selection
+            self.assertTrue(FreeCADGui.Selection.isSelected(self.other_pad))
             self.assertEqual(len(self._labels()), FEATURE_COUNT)
         finally:
             gui_doc.resetEdit()
             self._settle()
+
+    def test_a_pick_during_an_edit_does_not_move_the_strip_afterwards(self):
+        # Picking another body's face for a feature's "up to face" is a selection too. A
+        # feature's panel, unlike the sketcher, selects nothing of its own on closing.
+        gui_doc = FreeCADGui.getDocument(self.doc.Name)
+        gui_doc.setEdit(self.pad.Name)
+        self._settle()
+        try:
+            self.assertIsNotNone(gui_doc.getInEdit())
+            FreeCADGui.Selection.addSelection(self.doc.Name, self.other_pad.Name)
+            self._settle()
+            self.assertTrue(FreeCADGui.Selection.isSelected(self.other_pad))
+        finally:
+            if FreeCADGui.Control.activeDialog():
+                FreeCADGui.Control.closeDialog()
+            gui_doc.resetEdit()
+            self._settle()
+        self.assertEqual(len(self._labels()), FEATURE_COUNT)
+        self.assertTrue(self._inactive_label().isHidden())
 
     def test_opening_an_edit_takes_the_strip_to_the_edited_body(self):
         self._select(self.other_pad)
@@ -882,6 +903,54 @@ class TestTimelineFollowsSelection(TimelineTestBase):
             self.assertEqual(len(self._labels()), FEATURE_COUNT)
             self.assertTrue(self._inactive_label().isHidden())
         finally:
+            gui_doc.resetEdit()
+            self._settle()
+
+    def test_closing_an_edit_leaves_the_strip_on_the_edited_body(self):
+        # The edit is what was pointed at last, even though it was opened with no selection
+        self._select(self.other_pad)
+        FreeCADGui.Selection.clearSelection()
+        self.assertEqual(self._labels(), ["OtherSketch", "OtherPad"])
+        gui_doc = FreeCADGui.getDocument(self.doc.Name)
+        gui_doc.setEdit(self.pad.Name)
+        self._settle()
+        try:
+            self.assertIsNotNone(gui_doc.getInEdit())
+        finally:
+            if FreeCADGui.Control.activeDialog():
+                FreeCADGui.Control.closeDialog()
+            gui_doc.resetEdit()
+            self._settle()
+        self.assertEqual(len(self._labels()), FEATURE_COUNT)
+        self.assertTrue(self._inactive_label().isHidden())
+
+    def test_edit_from_an_inactive_body_marker_activates_it_and_opens_the_feature(self):
+        self._select(self.other_pad)
+        marker = self._marker_for("OtherPad")
+        self.assertIsNotNone(marker)
+        gui_doc = FreeCADGui.getDocument(self.doc.Name)
+        centre = marker.rect().center()
+        try:
+            QtWidgets.QApplication.instance().sendEvent(
+                marker,
+                QtGui.QMouseEvent(
+                    QtCore.QEvent.MouseButtonDblClick,
+                    QtCore.QPointF(centre),
+                    QtCore.QPointF(marker.mapToGlobal(centre)),
+                    QtCore.Qt.LeftButton,
+                    QtCore.Qt.LeftButton,
+                    QtCore.Qt.NoModifier,
+                ),
+            )
+            self._settle()
+            view = gui_doc.ActiveView
+            self.assertEqual(view.getActiveObject("pdbody").Name, self.other.Name)
+            in_edit = gui_doc.getInEdit()
+            self.assertIsNotNone(in_edit, "the marker opened no edit")
+            self.assertEqual(in_edit.Object.Name, self.other_pad.Name)
+        finally:
+            if FreeCADGui.Control.activeDialog():
+                FreeCADGui.Control.closeDialog()
             gui_doc.resetEdit()
             self._settle()
 
