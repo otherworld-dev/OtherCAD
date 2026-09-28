@@ -89,6 +89,12 @@ public:
 
     bool showInTree() const override;
 
+    /// Text the tree shows instead of the Label, or empty to show the Label
+    virtual QString getTreeLabel() const
+    {
+        return {};
+    }
+
     /// Get a list of TaskBoxes associated with this object
     void getTaskViewContent(std::vector<Gui::TaskView::TaskContent*>&) const override;
 

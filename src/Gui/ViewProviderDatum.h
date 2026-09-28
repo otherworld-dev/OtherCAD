@@ -31,6 +31,9 @@ namespace Gui
 
 class SoShapeScale;
 
+/// True when an origin's rows should read by role: its owner shows folders
+GuiExport bool originShowsRoleNames(const App::DocumentObject* originOrFeature);
+
 /**
  * View provider associated with an App::DatumElement.
  */
@@ -51,6 +54,7 @@ public:
     void attach(App::DocumentObject*) override;
     std::vector<std::string> getDisplayModes() const override;
     void setDisplayMode(const char* ModeName) override;
+    QString getTreeLabel() const override;
 
     /// @name Suppress ViewProviderGeometryObject's behaviour
     ///@{

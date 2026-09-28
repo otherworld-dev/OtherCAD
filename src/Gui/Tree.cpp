@@ -4688,6 +4688,12 @@ void DocumentItem::slotNewObject(const Gui::ViewProviderDocumentObject& obj)
     getTree()->_updateStatus();
 }
 
+static QString treeText(const DocumentObjectData& data)
+{
+    QString text = data.viewObject->getTreeLabel();
+    return text.isEmpty() ? QString::fromUtf8(data.label.c_str()) : text;
+}
+
 bool DocumentItem::createNewItem(
     const Gui::ViewProviderDocumentObject& obj,
     QTreeWidgetItem* parent,
@@ -4738,7 +4744,7 @@ bool DocumentItem::createNewItem(
         parent->insertChild(index, item);
     }
     assert(item->parent() == parent);
-    item->setText(0, QString::fromUtf8(data->label.c_str()));
+    item->setText(0, treeText(*data));
     if (!data->label2.empty()) {
         item->setText(1, QString::fromUtf8(data->label2.c_str()));
     }
@@ -5511,7 +5517,7 @@ void TreeWidget::slotChangeObject(const Gui::ViewProviderDocumentObject& view, c
         if (firstData->label != label) {
             for (const auto& data : itEntry->second) {
                 data->label = label;
-                auto displayName = QString::fromUtf8(label);
+                auto displayName = treeText(*data);
                 for (auto item : data->items) {
                     item->setText(0, displayName);
                 }
@@ -5551,6 +5557,12 @@ void TreeWidget::refreshFolders()
     for (auto& [obj, dataSet] : entries) {
         if (!dataSet.empty()) {
             updateChildren(obj, dataSet, false, true);
+        }
+        for (auto& data : dataSet) {
+            auto displayName = treeText(*data);
+            for (auto* item : data->items) {
+                item->setText(0, displayName);
+            }
         }
     }
     _updateStatus();

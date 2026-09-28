@@ -37,6 +37,7 @@
 #include "Application.h"
 #include "Command.h"
 #include "Document.h"
+#include "ViewProviderDatum.h"
 #include "ViewProviderLine.h"
 #include "ViewProviderPlane.h"
 #include "ViewProviderPoint.h"
@@ -106,6 +107,14 @@ void ViewProviderCoordinateSystem::setDisplayMode(const char* ModeName)
         setDisplayMaskMode("Base");
     }
     ViewProviderDocumentObject::setDisplayMode(ModeName);
+}
+
+QString ViewProviderCoordinateSystem::getTreeLabel() const
+{
+    if (!originShowsRoleNames(getObject())) {
+        return {};
+    }
+    return QObject::tr("Origin");
 }
 
 void ViewProviderCoordinateSystem::setTemporaryVisibility(DatumElements elements)

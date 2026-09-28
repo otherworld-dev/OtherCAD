@@ -230,14 +230,19 @@ class TreeFoldersBase(BrowserFoldersBase):
                 return self._hold(top)
         self.fail("No tree row for the test document")
 
-    def _item_of(self, obj, root=None):
-        """First row (depth first) whose text is the object's label."""
+    def _item_of(self, obj, root=None, text=None):
+        """First row (depth first) whose text is `text`, or the object's label if not given.
+
+        A row's text is not always its object's Label: an origin feature under a body
+        showing folders reads by role ("XY plane") instead.
+        """
+        wanted = obj.Label if text is None else text
         stack = [root or self._doc_item()]
         while stack:
             item = self._hold(stack.pop(0))
             for i in range(item.childCount()):
                 child = item.child(i)
-                if child.type() == OBJECT_TYPE and child.text(0) == obj.Label:
+                if child.type() == OBJECT_TYPE and child.text(0) == wanted:
                     return self._hold(child)
                 stack.append(child)
         return None
@@ -263,7 +268,7 @@ class TestFolderRows(TreeFoldersBase):
     def test_body_rows_are_origin_then_three_folders(self):
         rows = self._rows(self._item_of(self.body))
         self.assertEqual(rows[0][0], OBJECT_TYPE)
-        self.assertEqual(rows[0][1], self.body.Origin.Label)
+        self.assertEqual(rows[0][1], "Origin")
         self.assertEqual(
             rows[1:],
             [
@@ -755,3 +760,26 @@ class TestFolderEyeAndExpansion(TreeFoldersBase):
         self.body = self.doc.getObject("Body")
         self.assertTrue(self._folder("Construction").isExpanded())
         self.assertFalse(self._folder("Sketches").isExpanded())
+
+
+class TestOriginNames(TreeFoldersBase):
+    """A body's Origin row and its features read by role while folders are shown."""
+
+    def test_origin_rows_show_role_names_and_keep_their_labels(self):
+        origin_row = self._item_of(self.body.Origin, self._item_of(self.body), text="Origin")
+        self.assertEqual(origin_row.text(0), "Origin")
+        texts = sorted(t for _, t in self._rows(origin_row))
+        self.assertEqual(
+            texts,
+            sorted(
+                ["X axis", "Y axis", "Z axis", "XY plane", "XZ plane", "YZ plane", "Origin point"]
+            ),
+        )
+        xy = self._origin_feature(self.body, "XY_Plane")
+        self.assertNotEqual(xy.Label, "XY plane")  # the document keeps the real label
+
+    def test_role_names_go_away_with_the_preference(self):
+        self.params.SetBool("BodyFolders", False)
+        _process_events(300)
+        origin_row = self._item_of(self.body.Origin, self._item_of(self.body))
+        self.assertEqual(origin_row.text(0), self.body.Origin.Label)
