@@ -54,8 +54,8 @@ MARKER_NAME = "TimelineMarker"
 FEATURE_COUNT = 4
 
 
-class TestTimeline(unittest.TestCase):
-    """The timeline has to remember its rollback and undo it one step at a time."""
+class TimelineTestBase(unittest.TestCase):
+    """A document with one body of four features, active and on the strip."""
 
     def setUp(self):
         self.window = FreeCADGui.getMainWindow()
@@ -151,7 +151,7 @@ class TestTimeline(unittest.TestCase):
             self._process_events(50)
 
     def _activate_body(self, body=None):
-        """Only the active body fills the strip, so the timeline needs one either way."""
+        """With nothing selected the strip shows the active body, so it needs one."""
 
         target = self.body if body is None else body
         self._active_view(target.Document).setActiveObject("pdbody", target)
@@ -334,6 +334,10 @@ class TestTimeline(unittest.TestCase):
     def _hidden_by_rollback(self):
         return list(self.body.ViewObject.RollbackHidden)
 
+
+class TestTimeline(TimelineTestBase):
+    """The timeline has to remember its rollback and undo it one step at a time."""
+
     # -- tests -----------------------------------------------------------
 
     def test_rollback_survives_a_save_and_a_reload(self):
@@ -434,6 +438,48 @@ class TestTimeline(unittest.TestCase):
         self.assertTrue(self.sketch.Visibility)
         self.assertTrue(self.sketch2.Visibility)
         self.assertEqual(self._hidden_by_rollback(), [])
+
+    def test_the_steps_of_a_multitransform_are_not_markers(self):
+        """The steps are edited through the MultiTransform and make no shape of their own,
+        so the playhead must never stop on one and make it the tip."""
+
+        # A MultiTransform with no originals yet passes for one of its own steps, so it
+        # only becomes the body's next solid once it has them.
+        multi = self.doc.addObject("PartDesign::MultiTransform", "MultiTransform")
+        multi.Originals = [self.pad2]
+        self.body.addObject(multi)
+        step = self.body.newObject("PartDesign::LinearPattern", "LinearPattern")
+        step.Direction = (self.sketch2, ["H_Axis"])
+        step.Length = 30.0
+        step.Occurrences = 2
+        multi.Transformations = [step]
+        self.doc.recompute()
+        self.assertIs(self.body.Tip, multi)
+
+        self.assertTrue(self._wait_for_markers(FEATURE_COUNT + 1))
+        self.assertIsNone(self._marker_for("LinearPattern"))
+
+        self._press(QtCore.Qt.Key_Left)
+        self.assertIs(self.body.Tip, self.pad2)
+        self._press(QtCore.Qt.Key_Right)
+        self.assertIs(self.body.Tip, multi)
+
+    def test_a_feature_failing_on_a_recompute_shows_on_its_marker(self):
+        """A feature that fails changes none of its own properties, so the marker has to
+        hear about the recompute itself."""
+
+        self.sketch.delGeometry(0)  # the profile is no longer closed
+        self._settle()
+        self.assertTrue(self.pad.isValid(), "nothing has been recomputed yet")
+
+        self.doc.recompute()
+        self._settle()
+
+        self.assertFalse(self.pad.isValid())
+        marker = self._marker_for("Pad")
+        self.assertIn(self.pad.getStatusString(), marker.toolTip())
+        # What the style sheet draws the red border from
+        self.assertTrue(marker.property("timelineError"))
 
     def test_arrow_keys_roll_the_history(self):
         """Left and right step one feature, Home and End run to the ends of the strip."""
@@ -558,6 +604,97 @@ class TestTimeline(unittest.TestCase):
         for button in buttons:
             self.assertEqual(button.focusPolicy(), QtCore.Qt.TabFocus)
 
+    def _choose_from_marker_menu(self, label, text):
+        """Right-click a marker and pick an entry of its menu.
+
+        The menu runs an event loop of its own, so the pick is made from a timer that
+        keeps looking until it is open. Returns whether the entry was checked.
+        """
+
+        # A popup of an application in the background can close as soon as it opens
+        self.window.raise_()
+        self.window.activateWindow()
+        # A menu that is still closing would take the right-click for itself
+        deadline = time.monotonic() + 2.0
+        while QtWidgets.QApplication.activePopupWidget() and time.monotonic() < deadline:
+            self._process_events(50)
+
+        marker = self._marker_for(label)
+        self.assertIsNotNone(marker, f"Expected a marker for {label}")
+        chosen = []
+        offered = []
+        timer = QtCore.QTimer()
+        timer.setInterval(50)
+        deadline = time.monotonic() + 5.0
+
+        def pick():
+            menu = QtWidgets.QApplication.activePopupWidget()
+            if menu is not None:
+                timer.stop()
+                offered.extend(action.text() for action in menu.actions())
+                for action in menu.actions():
+                    if action.text() == text:
+                        chosen.append(action.isChecked())
+                        # Enter on the highlighted entry, as trigger() alone is not
+                        # what exec() hands back
+                        menu.setActiveAction(action)
+                        for kind in (QtCore.QEvent.KeyPress, QtCore.QEvent.KeyRelease):
+                            QtWidgets.QApplication.sendEvent(
+                                menu,
+                                QtGui.QKeyEvent(kind, QtCore.Qt.Key_Return, QtCore.Qt.NoModifier),
+                            )
+                        break
+                else:
+                    menu.close()
+            elif time.monotonic() > deadline:
+                timer.stop()
+
+        timer.timeout.connect(pick)
+        timer.start()
+        centre = marker.rect().center()
+        event = QtGui.QContextMenuEvent(
+            QtGui.QContextMenuEvent.Mouse, centre, marker.mapToGlobal(centre)
+        )
+        QtWidgets.QApplication.instance().sendEvent(marker, event)
+        self._process_events(600)
+        timer.stop()
+        if not offered and QtWidgets.QApplication.activeWindow() is None:
+            self.skipTest(
+                "This machine did not hand the application the foreground, "
+                "so the menu closed as soon as it opened"
+            )
+        self.assertEqual(len(chosen), 1, f"the menu of {label} had no {text} entry: {offered}")
+        return chosen[0]
+
+    def test_suppress_from_the_marker_menu(self):
+        full = self.body.Shape.Volume
+
+        was_checked = self._choose_from_marker_menu("Pad001", "Suppress")
+        self._settle()
+
+        self.assertFalse(was_checked)
+        self.assertTrue(self.pad2.Suppressed)
+        self.assertAlmostEqual(self.body.Shape.Volume, 10.0 * 6.0 * 10.0, places=3)
+        self.assertIn("Suppressed", self._marker_for("Pad001").toolTip())
+
+        was_checked = self._choose_from_marker_menu("Pad001", "Suppress")
+        self._settle()
+
+        self.assertTrue(was_checked)
+        self.assertFalse(self.pad2.Suppressed)
+        self.assertAlmostEqual(self.body.Shape.Volume, full, places=3)
+
+    def test_suppress_is_one_undo_step(self):
+        self.doc.UndoMode = 1
+        self._choose_from_marker_menu("Pad001", "Suppress")
+        self._settle()
+
+        self.doc.undo()
+        self.doc.recompute()
+        self._settle()
+
+        self.assertFalse(self.pad2.Suppressed)
+
     def test_right_clicking_a_marker_leaves_the_selection_alone(self):
         """The menu belongs to the marker under the cursor, not to the selection."""
 
@@ -644,3 +781,196 @@ class TestTimelineDock(unittest.TestCase):
         action.trigger()
         self._process_events()
         self.assertTrue(self.dock.isVisible(), "the View menu did not bring the timeline back")
+
+
+class TestTimelineFollowsSelection(TimelineTestBase):
+    """The strip shows the body the user last pointed at, active or not."""
+
+    def setUp(self):
+        super().setUp()
+        doc = self.doc
+        self.other = doc.addObject("PartDesign::Body", "Body001")
+        doc.recompute()
+        xy = [f for f in self.other.Origin.OriginFeatures if f.Role == "XY_Plane"][0]
+        self.other_sketch = self.other.newObject("Sketcher::SketchObject", "OtherSketch")
+        self.other_sketch.AttachmentSupport = (xy, [""])
+        self.other_sketch.MapMode = "FlatFace"
+        self._draw_rectangle(self.other_sketch, 5.0, 5.0)
+        doc.recompute()
+        self.other_pad = self.other.newObject("PartDesign::Pad", "OtherPad")
+        self.other_pad.Profile = self.other_sketch
+        self.other_pad.Length = 3.0
+        doc.recompute()
+        self._activate_body()  # self.body is active
+        self._settle()
+
+    def _labels(self):
+        return [
+            m.toolTip().split("\n")[0]
+            for m in self.widget.findChildren(QtWidgets.QWidget, MARKER_NAME)
+            if not m.isHidden()
+        ]
+
+    def _inactive_label(self):
+        return self.widget.findChild(QtWidgets.QLabel, "TimelineBodyLabel")
+
+    def _select(self, obj):
+        FreeCADGui.Selection.clearSelection()
+        FreeCADGui.Selection.addSelection(self.doc.Name, obj.Name)
+        self._settle()
+
+    def test_selecting_in_another_body_shows_its_history_without_activating_it(self):
+        self._select(self.other_pad)
+        self.assertEqual(self._labels(), ["OtherSketch", "OtherPad"])
+        view = FreeCADGui.getDocument(self.doc.Name).ActiveView
+        self.assertEqual(view.getActiveObject("pdbody").Name, self.body.Name)
+        label = self._inactive_label()
+        self.assertIsNotNone(label)
+        # Hidden rather than visible, like the markers: the label is the strip's to show,
+        # whether or not the dock itself is on screen
+        self.assertFalse(label.isHidden())
+        self.assertIn("Body001", label.text())
+
+    def test_renaming_the_shown_body_renames_its_label(self):
+        self._select(self.other_pad)
+        self.other.Label = "Bracket"
+        self._settle()
+        self.assertIn("Bracket", self._inactive_label().text())
+
+    def test_clearing_the_selection_keeps_the_body(self):
+        self._select(self.other_pad)
+        FreeCADGui.Selection.clearSelection()
+        self._settle()
+        self.assertEqual(self._labels(), ["OtherSketch", "OtherPad"])
+
+    def test_a_selection_outside_any_body_does_not_switch(self):
+        box = self.doc.addObject("Part::Box", "Box")
+        self.doc.recompute()
+        self._select(self.other_pad)
+        self._select(box)
+        self.assertEqual(self._labels(), ["OtherSketch", "OtherPad"])
+
+    def test_activating_a_body_by_hand_wins_over_an_older_selection(self):
+        self._select(self.other_pad)
+        self._activate_body(self.body)
+        self._activate_body(self.other)
+        self._activate_body(self.body)
+        self._settle()
+        self.assertEqual(len(self._labels()), FEATURE_COUNT)
+        self.assertTrue(self._inactive_label().isHidden())
+
+    def test_while_editing_the_strip_stays_on_the_edited_body(self):
+        gui_doc = FreeCADGui.getDocument(self.doc.Name)
+        gui_doc.setEdit(self.sketch.Name)
+        self._settle()
+        try:
+            FreeCADGui.Selection.addSelection(self.doc.Name, self.other_pad.Name)
+            self._settle()
+            # Or the check below would pass whatever the strip did with a selection
+            self.assertTrue(FreeCADGui.Selection.isSelected(self.other_pad))
+            self.assertEqual(len(self._labels()), FEATURE_COUNT)
+        finally:
+            gui_doc.resetEdit()
+            self._settle()
+
+    def test_a_pick_during_an_edit_does_not_move_the_strip_afterwards(self):
+        # Picking another body's face for a feature's "up to face" is a selection too. A
+        # feature's panel, unlike the sketcher, selects nothing of its own on closing.
+        gui_doc = FreeCADGui.getDocument(self.doc.Name)
+        gui_doc.setEdit(self.pad.Name)
+        self._settle()
+        try:
+            self.assertIsNotNone(gui_doc.getInEdit())
+            FreeCADGui.Selection.addSelection(self.doc.Name, self.other_pad.Name)
+            self._settle()
+            self.assertTrue(FreeCADGui.Selection.isSelected(self.other_pad))
+        finally:
+            if FreeCADGui.Control.activeDialog():
+                FreeCADGui.Control.closeDialog()
+            gui_doc.resetEdit()
+            self._settle()
+        self.assertEqual(len(self._labels()), FEATURE_COUNT)
+        self.assertTrue(self._inactive_label().isHidden())
+
+    def test_opening_an_edit_takes_the_strip_to_the_edited_body(self):
+        self._select(self.other_pad)
+        FreeCADGui.Selection.clearSelection()
+        self.assertEqual(self._labels(), ["OtherSketch", "OtherPad"])
+        gui_doc = FreeCADGui.getDocument(self.doc.Name)
+        gui_doc.setEdit(self.sketch.Name)
+        self._settle()
+        try:
+            self.assertEqual(len(self._labels()), FEATURE_COUNT)
+            self.assertTrue(self._inactive_label().isHidden())
+        finally:
+            gui_doc.resetEdit()
+            self._settle()
+
+    def test_closing_an_edit_leaves_the_strip_on_the_edited_body(self):
+        # The edit is what was pointed at last, even though it was opened with no selection
+        self._select(self.other_pad)
+        FreeCADGui.Selection.clearSelection()
+        self.assertEqual(self._labels(), ["OtherSketch", "OtherPad"])
+        gui_doc = FreeCADGui.getDocument(self.doc.Name)
+        gui_doc.setEdit(self.pad.Name)
+        self._settle()
+        try:
+            self.assertIsNotNone(gui_doc.getInEdit())
+        finally:
+            if FreeCADGui.Control.activeDialog():
+                FreeCADGui.Control.closeDialog()
+            gui_doc.resetEdit()
+            self._settle()
+        self.assertEqual(len(self._labels()), FEATURE_COUNT)
+        self.assertTrue(self._inactive_label().isHidden())
+
+    def test_edit_from_an_inactive_body_marker_activates_it_and_opens_the_feature(self):
+        self._select(self.other_pad)
+        marker = self._marker_for("OtherPad")
+        self.assertIsNotNone(marker)
+        gui_doc = FreeCADGui.getDocument(self.doc.Name)
+        centre = marker.rect().center()
+        try:
+            QtWidgets.QApplication.instance().sendEvent(
+                marker,
+                QtGui.QMouseEvent(
+                    QtCore.QEvent.MouseButtonDblClick,
+                    QtCore.QPointF(centre),
+                    QtCore.QPointF(marker.mapToGlobal(centre)),
+                    QtCore.Qt.LeftButton,
+                    QtCore.Qt.LeftButton,
+                    QtCore.Qt.NoModifier,
+                ),
+            )
+            self._settle()
+            view = gui_doc.ActiveView
+            self.assertEqual(view.getActiveObject("pdbody").Name, self.other.Name)
+            in_edit = gui_doc.getInEdit()
+            self.assertIsNotNone(in_edit, "the marker opened no edit")
+            self.assertEqual(in_edit.Object.Name, self.other_pad.Name)
+        finally:
+            if FreeCADGui.Control.activeDialog():
+                FreeCADGui.Control.closeDialog()
+            gui_doc.resetEdit()
+            self._settle()
+
+    def test_rolling_an_inactive_body_activates_it_in_one_undo_step(self):
+        self._select(self.other_pad)
+        self._invoke("stepBack")
+        view = FreeCADGui.getDocument(self.doc.Name).ActiveView
+        self.assertEqual(view.getActiveObject("pdbody").Name, self.other.Name)
+        self.assertNotEqual(self.other.Tip, self.other_pad)
+        self.doc.undo()
+        self.doc.recompute()
+        self._settle()
+        self.assertEqual(self.other.Tip, self.other_pad)
+        # Activating is not an edit of the document, so undo leaves the body active
+        self.assertEqual(view.getActiveObject("pdbody").Name, self.other.Name)
+
+    def test_deleting_the_shown_body_falls_back_to_the_active_one(self):
+        self._select(self.other_pad)
+        FreeCADGui.Selection.clearSelection()
+        self.other.removeObjectsFromDocument()
+        self.doc.removeObject(self.other.Name)
+        self._settle()
+        self.assertEqual(len(self._labels()), FEATURE_COUNT)

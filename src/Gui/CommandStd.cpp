@@ -426,6 +426,57 @@ void StdCmdRestartInSafeMode::activated(int iMsg)
 }
 
 //===========================================================================
+// Std_RepeatLastCommand
+//===========================================================================
+DEF_STD_CMD_A(StdCmdRepeatLastCommand)
+
+StdCmdRepeatLastCommand::StdCmdRepeatLastCommand()
+    : Command("Std_RepeatLastCommand")
+{
+    sGroup = "Edit";
+    sMenuText = QT_TR_NOOP("Repeat Last Command");
+    sToolTipText = QT_TR_NOOP("Runs the last modelling command again");
+    sWhatsThis = "Std_RepeatLastCommand";
+    sStatusTip = sToolTipText;
+    // The command it runs opens its own transaction, and it must not become the one
+    // it repeats itself
+    eType = NoTransaction;
+}
+
+void StdCmdRepeatLastCommand::activated(int iMsg)
+{
+    Q_UNUSED(iMsg);
+    const QString name = Ribbon::CommandPalette::lastRepeatable();
+    if (!name.isEmpty()) {
+        getGuiApplication()->commandManager().runCommandByName(name.toLatin1().constData());
+    }
+}
+
+bool StdCmdRepeatLastCommand::isActive()
+{
+    const QString name = Ribbon::CommandPalette::lastRepeatable();
+    Command* command = name.isEmpty()
+        ? nullptr
+        : getGuiApplication()->commandManager().getCommandByName(name.toLatin1().constData());
+
+    // Named after what it repeats, as in Fusion: "Repeat Extrude"
+    if (Action* action = getAction()) {
+        const QString text = command
+            ? QObject::tr("Repeat %1")
+                  .arg(
+                      Action::cleanTitle(
+                          QCoreApplication::translate(command->className(), command->getMenuText())
+                      )
+                  )
+            : QObject::tr("Repeat Last Command");
+        if (action->text() != text) {
+            action->setText(text);
+        }
+    }
+    return command && command->isActive();
+}
+
+//===========================================================================
 // Std_DlgParameter
 //===========================================================================
 DEF_STD_CMD(StdCmdDlgParameter)
@@ -434,9 +485,14 @@ StdCmdDlgParameter::StdCmdDlgParameter()
     : Command("Std_DlgParameter")
 {
     sGroup = "Tools";
-    sMenuText = QT_TR_NOOP("E&dit Parameters");
+    // Upstream calls this Edit Parameters, which is what a Fusion user searches for to find
+    // model parameters. It is the store of every preference instead, so it says so.
+    sMenuText = QT_TR_NOOP("E&dit Stored Preferences");
 
-    sToolTipText = QT_TR_NOOP("Opens a dialog to edit the parameters");
+    sToolTipText = QT_TR_NOOP(
+        "Opens the editor for every stored preference, including ones the Preferences "
+        "dialog does not show"
+    );
     sWhatsThis = "Std_DlgParameter";
     sStatusTip = sToolTipText;
     sPixmap = "Std_DlgParameter";
@@ -813,7 +869,8 @@ void StdCmdReportBug::activated(int iMsg)
     ParameterGrp::handle hURLGrp = App::GetApplication().GetParameterGroupByPath(
         "User parameter:BaseApp/Preferences/Websites"
     );
-    std::string url = hURLGrp->GetASCII("IssuesPage", "https://github.com/otherworld-dev/FuCadUp/issues");
+    std::string url
+        = hURLGrp->GetASCII("IssuesPage", "https://github.com/otherworld-dev/FuCadUp/issues");
     hURLGrp->SetASCII("IssuesPage", url.c_str());
     OpenURLInBrowser(url.c_str());
 }
@@ -892,9 +949,8 @@ StdCmdCommandPalette::StdCmdCommandPalette()
 {
     sGroup = "Tools";
     sMenuText = QT_TR_NOOP("Command Palette");
-    sToolTipText = QT_TR_NOOP(
-        "Opens a searchable palette of pinned, recent and all commands. Press S anywhere in the 3D view."
-    );
+    sToolTipText
+        = QT_TR_NOOP("Opens a searchable palette of pinned, recent and all commands. Press S anywhere in the 3D view.");
     sWhatsThis = "Std_CommandPalette";
     sStatusTip = sToolTipText;
     sPixmap = "Std_CommandPalette";
@@ -1158,6 +1214,7 @@ void CreateStdCommands()
     rcCmdMgr.addCommand(new StdCmdAboutQt());
 
     rcCmdMgr.addCommand(new StdCmdDlgParameter());
+    rcCmdMgr.addCommand(new StdCmdRepeatLastCommand());
     rcCmdMgr.addCommand(new StdCmdDlgPreferences());
     rcCmdMgr.addCommand(new StdCmdDlgCustomize());
     rcCmdMgr.addCommand(new StdCmdCommandLine());

@@ -43,6 +43,14 @@ SET(Test_SRCS
     TestWorkbenchSwitcher.py
     TestFusionShortcuts.py
     TestExtrudeFlip.py
+    TestNewBodyGui.py
+    TestSelectOther.py
+    TestProfileRegions.py
+    TestMoveFeatureGui.py
+    TestProfilePick.py
+    TestMissingReferenceGui.py
+    TestFeaturePanelErrors.py
+    TestOverlayPanelWidth.py
     TestGizmoValueLabels.py
     TestPatternPanel.py
     TestViewportProjection.py
@@ -59,6 +67,7 @@ SET(Test_SRCS
     TestSketchPlanePick.py
     TestMarkingMenu.py
     TestTimeline.py
+    TestBrowserFolders.py
     TestPartDesignDialogTitles.py
     TestGridUnits.py
     TestRibbonStrings.py

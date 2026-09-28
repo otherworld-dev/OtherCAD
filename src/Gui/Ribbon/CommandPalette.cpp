@@ -182,6 +182,27 @@ void CommandPalette::destruct()
     _instance = nullptr;
 }
 
+namespace
+{
+QString& repeatable()
+{
+    static QString command;
+    return command;
+}
+}  // namespace
+
+void CommandPalette::noteRepeatable(const char* command)
+{
+    if (command && *command) {
+        repeatable() = QString::fromLatin1(command);
+    }
+}
+
+QString CommandPalette::lastRepeatable()
+{
+    return repeatable();
+}
+
 void CommandPalette::noteCommandUsed(const char* command)
 {
     // Opening the palette is how the user got to the list, not something the
@@ -227,12 +248,8 @@ void CommandPalette::buildLayout()
     bodyLayout->setSpacing(6);
     layout->addWidget(body);
 
-    connect(searchField, &QLineEdit::textChanged, this, [this]() {
-        rebuild();
-    });
-    connect(searchField, &QLineEdit::returnPressed, this, [this]() {
-        activateCurrentTile();
-    });
+    connect(searchField, &QLineEdit::textChanged, this, [this]() { rebuild(); });
+    connect(searchField, &QLineEdit::returnPressed, this, [this]() { activateCurrentTile(); });
 }
 
 void CommandPalette::popUp()
@@ -467,9 +484,7 @@ QToolButton* CommandPalette::createTile(const QString& command, QWidget* parent)
     connect(tile, &QWidget::customContextMenuRequested, this, [this, tile, command](const QPoint& at) {
         showTileMenu(command, tile->mapToGlobal(at));
     });
-    connect(tile, &QToolButton::clicked, this, [this, command]() {
-        launchCommand(command);
-    });
+    connect(tile, &QToolButton::clicked, this, [this, command]() { launchCommand(command); });
 
     return tile;
 }

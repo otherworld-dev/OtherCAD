@@ -77,14 +77,17 @@ class TestSketchDimensionBox(SketcherGuiTestCase):
 
     def wait_for_focus(self, box):
         self.assertTrue(
-            self.wait_until(box.hasFocus, timeout_ms=2000), "the dimension box did not get the keyboard"
+            self.wait_until(box.hasFocus, timeout_ms=2000),
+            "the dimension box did not get the keyboard",
         )
 
     def assert_value_selected(self, box):
         """The whole value is selected, so typing replaces it."""
         edit = box.findChild(QtWidgets.QLineEdit)
         self.assertTrue(
-            self.wait_until(lambda: edit.text() and edit.selectedText() == edit.text(), timeout_ms=1000),
+            self.wait_until(
+                lambda: edit.text() and edit.selectedText() == edit.text(), timeout_ms=1000
+            ),
             f"the box's value was not selected (text {edit.text()!r}, selected {edit.selectedText()!r})",
         )
 
@@ -143,7 +146,9 @@ class TestSketchDimensionBox(SketcherGuiTestCase):
 
         self.doc.undo()
         self.flush_gui(150)
-        self.assertEqual(len(self.sketch.Constraints), 1, "undo took the dimension away with its value")
+        self.assertEqual(
+            len(self.sketch.Constraints), 1, "undo took the dimension away with its value"
+        )
         self.assertAlmostEqual(self.value(index), 10.0)
 
     def test_escape_keeps_the_dimension_as_measured(self):
@@ -155,7 +160,9 @@ class TestSketchDimensionBox(SketcherGuiTestCase):
         self.assertEqual(len(self.sketch.Constraints), 1)
         self.assertAlmostEqual(self.value(index), 10.0)
         self.assertEqual(self.boxes(), [])
-        self.assertIsNotNone(FreeCADGui.ActiveDocument.getInEdit(), "Esc in the box left the sketch")
+        self.assertIsNotNone(
+            FreeCADGui.ActiveDocument.getInEdit(), "Esc in the box left the sketch"
+        )
 
     def test_units_can_be_typed(self):
         index = self.place_length_dimension()
@@ -164,6 +171,58 @@ class TestSketchDimensionBox(SketcherGuiTestCase):
         self.key_click(box, QtCore.Qt.Key_Return)
         self.flush_gui(150)
         self.assertAlmostEqual(self.value(index), 25.4, places=6)
+
+    # -- over-constraining -----------------------------------------------
+
+    def _fix_the_length(self):
+        """Dimension the line already, so a second length dimension is one too many."""
+        self.sketch.addConstraint(Sketcher.Constraint("Distance", 0, 10.0))
+        self.doc.recompute()
+        self.flush_gui(150)
+
+    def _place_second_length(self):
+        FreeCADGui.Selection.clearSelection()
+        FreeCADGui.Selection.addSelection(self.doc.Name, self.sketch.Name, "Edge1")
+        FreeCADGui.runCommand("Sketcher_ConstrainDistance")
+        self.flush_gui(300)
+        self.assertEqual(len(self.sketch.Constraints), 2, "the second distance was not placed")
+
+    def test_an_over_constraining_dimension_is_added_as_driven(self):
+        self._fix_the_length()
+        self._place_second_length()
+
+        self.assertTrue(self.sketch.Constraints[0].Driving)
+        self.assertFalse(self.sketch.Constraints[1].Driving)
+        self.assertEqual(self.sketch.RedundantConstraints, [])
+        self.assertEqual(self.sketch.ConflictingConstraints, [])
+        self.assertEqual(self.boxes(), [], "a driven dimension has no value to type")
+
+    def test_the_sketch_stays_editable_after_an_over_constraining_dimension(self):
+        self._fix_the_length()
+        self._place_second_length()
+
+        FreeCADGui.Selection.clearSelection()
+        FreeCADGui.Selection.addSelection(self.doc.Name, self.sketch.Name, "Constraint1")
+        FreeCADGui.runCommand("Sketcher_ChangeDimensionConstraint")
+        box = self.wait_for_box()
+        self.type_into(box, "20")
+        self.key_click(box, QtCore.Qt.Key_Return)
+        self.flush_gui(150)
+        self.doc.recompute()
+        self.flush_gui(150)
+
+        self.assertAlmostEqual(self.value(0), 20.0)
+        self.assertAlmostEqual(self.value(1), 20.0, msg="the driven dimension follows the geometry")
+
+    def test_one_undo_takes_the_driven_dimension_away(self):
+        self._fix_the_length()
+        self._place_second_length()
+
+        self.doc.undo()
+        self.flush_gui(150)
+
+        self.assertEqual(len(self.sketch.Constraints), 1)
+        self.assertTrue(self.sketch.Constraints[0].Driving)
 
     # -- editing ---------------------------------------------------------
 
@@ -206,7 +265,9 @@ class TestSketchDimensionBox(SketcherGuiTestCase):
         QtCore.QTimer.singleShot(300, choose)
         edit = box.findChild(QtWidgets.QLineEdit)
         centre = edit.rect().center()
-        event = QtGui.QContextMenuEvent(QtGui.QContextMenuEvent.Mouse, centre, edit.mapToGlobal(centre))
+        event = QtGui.QContextMenuEvent(
+            QtGui.QContextMenuEvent.Mouse, centre, edit.mapToGlobal(centre)
+        )
         QtWidgets.QApplication.sendEvent(edit, event)
         self.flush_gui(200)
 
@@ -338,7 +399,9 @@ class TestSketchDimensionBox(SketcherGuiTestCase):
 
         self.double_click(self.viewport(), label)
         self.assertIn(
-            f"Constraint{index + 1}", self.hovered, f"{command} did not preselect the value under the cursor"
+            f"Constraint{index + 1}",
+            self.hovered,
+            f"{command} did not preselect the value under the cursor",
         )
         box = self.wait_for_box()
         self.assertAlmostEqual(box.property("rawValue"), 7.0)
@@ -366,7 +429,8 @@ class TestSketchDimensionBox(SketcherGuiTestCase):
             return bool(info) and "Edge2" in (info.get("SubElementNames") or [])
 
         self.assertTrue(
-            self.wait_until(line_on_screen, timeout_ms=2000), "the other line never settled on screen"
+            self.wait_until(line_on_screen, timeout_ms=2000),
+            "the other line never settled on screen",
         )
         other_line = self.screen_point(middle)
         self.move(self.viewport(), other_line)

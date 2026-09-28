@@ -32,8 +32,10 @@
 #include <App/Document.h>
 #include <App/Datums.h>
 #include <App/Origin.h>
+#include <App/OriginGroupExtension.h>
 
 #include "ViewProviderDatum.h"
+#include "Application.h"
 #include "Inventor/SoAxisCrossKit.h"
 #include "SoFCSelection.h"
 #include "ViewProviderCoordinateSystem.h"
@@ -44,6 +46,20 @@
 using namespace Gui;
 
 PROPERTY_SOURCE(Gui::ViewProviderDatum, Gui::ViewProviderGeometryObject)
+
+bool Gui::originShowsRoleNames(const App::DocumentObject* originOrFeature)
+{
+    const App::DocumentObject* origin = originOrFeature;
+    if (auto* element = freecad_cast<const App::DatumElement*>(originOrFeature)) {
+        origin = element->getLCS();
+    }
+    if (!origin || !origin->isDerivedFrom<App::Origin>()) {
+        return false;
+    }
+    auto* owner = App::OriginGroupExtension::getGroupOfObject(origin);
+    auto* vp = owner ? Application::Instance->getViewProvider(owner) : nullptr;
+    return vp && !vp->claimChildrenFolders().empty();
+}
 
 ViewProviderDatum::ViewProviderDatum()
 {
@@ -178,4 +194,35 @@ bool ViewProviderDatum::onDelete(const std::vector<std::string>&)
     auto feat = static_cast<App::DatumElement*>(getObject());
     // Forbid deletion if there is an origin this feature belongs to
     return !feat->getLCS();
+}
+
+QString ViewProviderDatum::getTreeLabel() const
+{
+    auto* element = getObject<App::DatumElement>();
+    if (!element || !originShowsRoleNames(element)) {
+        return {};
+    }
+    const std::string role = element->Role.getValue();
+    if (role == "X_Axis") {
+        return QObject::tr("X axis");
+    }
+    if (role == "Y_Axis") {
+        return QObject::tr("Y axis");
+    }
+    if (role == "Z_Axis") {
+        return QObject::tr("Z axis");
+    }
+    if (role == "XY_Plane") {
+        return QObject::tr("XY plane");
+    }
+    if (role == "XZ_Plane") {
+        return QObject::tr("XZ plane");
+    }
+    if (role == "YZ_Plane") {
+        return QObject::tr("YZ plane");
+    }
+    if (role == "Origin") {
+        return QObject::tr("Origin point");
+    }
+    return {};
 }

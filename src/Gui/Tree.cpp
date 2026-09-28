@@ -92,6 +92,7 @@ std::set<TreeWidget*> TreeWidget::Instances;
 static TreeWidget* _LastSelectedTreeWidget;
 const int TreeWidget::DocumentType = 1000;
 const int TreeWidget::ObjectType = 1001;
+const int TreeWidget::FolderType = 1002;
 static bool _DraggingActive;
 static bool _DragEventFilter;
 
@@ -128,6 +129,13 @@ void TreeParams::onItemBackgroundChanged()
     refreshTreeViews();
 }
 
+void TreeParams::onBodyFoldersChanged()
+{
+    for (auto tree : TreeWidget::Instances) {
+        tree->refreshFolders();
+    }
+}
+
 //////////////////////////////////////////////////////////////////////////////////////
 
 using DocumentObjectItems = std::set<DocumentObjectItem*>;
@@ -142,6 +150,7 @@ public:
     DocumentObjectItem* rootItem {nullptr};
     std::vector<App::DocumentObject*> children;
     std::set<App::DocumentObject*> childSet;
+    std::vector<TreeFolder> folders;
     bool removeChildrenFromRoot;
     bool itemHidden;
     std::string label;
@@ -209,11 +218,25 @@ public:
     {
         children = other->children;
         childSet = other->childSet;
+        folders = other->folders;
     }
 
     bool updateChildren(bool checkVisibility)
     {
         auto newChildren = viewObject->claimChildren();
+        auto newFolders = viewObject->claimChildrenFolders();
+        if (!newFolders.empty()) {
+            // A folder may hold objects claimChildren() leaves out because a sibling claims
+            // them (a sketch its Pad uses). The tree shows them in both places.
+            std::set<App::DocumentObject*> claimed(newChildren.begin(), newChildren.end());
+            for (const auto& folder : newFolders) {
+                for (auto* child : folder.objects) {
+                    if (child && claimed.insert(child).second) {
+                        newChildren.push_back(child);
+                    }
+                }
+            }
+        }
         auto obj = viewObject->getObject();
         std::set<App::DocumentObject*> newSet;
         bool updated = false;
@@ -270,6 +293,20 @@ public:
         }
         // We still need to check the order of the children
         updated = updated || children != newChildren;
+        auto sameFolders = [](const std::vector<TreeFolder>& a, const std::vector<TreeFolder>& b) {
+            if (a.size() != b.size()) {
+                return false;
+            }
+            for (std::size_t i = 0; i < a.size(); ++i) {
+                if (a[i].key != b[i].key || a[i].label != b[i].label || a[i].objects != b[i].objects
+                    || a[i].showCount != b[i].showCount) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        updated = updated || !sameFolders(folders, newFolders);
+        folders.swap(newFolders);
         children.swap(newChildren);
         childSet.swap(newSet);
 
@@ -468,11 +505,11 @@ void TreeWidgetItemDelegate::initStyleOption(QStyleOptionViewItem* option, const
         return;
     }
 
-    // Clear State_Enabled for invisible objects so QSS ::item:disabled rules can
+    // Clear State_Enabled for greyed out objects so QSS ::item:disabled rules can
     // override the overlay stylesheet's blanket ::item { color } for text fading.
     if (item->type() == TreeWidget::ObjectType) {
         if (auto* docItem = static_cast<DocumentObjectItem*>(item);
-            docItem->object() && !docItem->isVisibleInTree()) {
+            docItem->object() && docItem->isGreyed()) {
             option->state &= ~QStyle::State_Enabled;
         }
     }
@@ -818,12 +855,21 @@ void TreeWidget::selectAll()
         return;
     }
 
+    // A folder is a group of its own rows, with nothing of its own to select
+    if (current->type() == FolderType) {
+        SelectAllGuard guard(inSelectAllOperation);
+        lastSelectAllParent = true;
+        selectAllGroupLevel(current, false);
+        return;
+    }
+
     bool isGrp = false;
     if (current->type() == ObjectType) {
         isGrp = (static_cast<const DocumentObjectItem*>(current)->isGroup() != 0);
     }
 
-    const QTreeWidgetItem* parent = current->parent();
+    // Past any folder, so a row in one selects all of its body's rows
+    const QTreeWidgetItem* parent = logicalParent(const_cast<QTreeWidgetItem*>(current));
 
     // if its not a group and got no parent, just select whole document immediately
     if (!isGrp && (!parent || parent->type() == DocumentType)) {
@@ -874,6 +920,11 @@ void TreeWidget::selectGroupItems(const QTreeWidgetItem* group, bool recursive)
     const int childCount = group->childCount();
     for (int i = 0; i < childCount; ++i) {
         QTreeWidgetItem* child = group->child(i);
+        // A folder's rows are the group's own children
+        if (child->type() == TreeWidget::FolderType) {
+            selectGroupItems(child, recursive);
+            continue;
+        }
         if (child->type() != TreeWidget::ObjectType) {
             continue;
         }
@@ -1200,6 +1251,12 @@ void TreeWidget::contextMenuEvent(QContextMenuEvent* e)
     // get the current item
     this->contextItem = itemAt(e->pos());
 
+    // A folder row is not an object: it has no menu
+    if (this->contextItem && this->contextItem->type() == FolderType) {
+        this->contextItem = nullptr;
+        return;
+    }
+
     if (this->contextItem && this->contextItem->type() == DocumentType) {
         auto docitem = static_cast<DocumentItem*>(this->contextItem);
         App::Document* doc = docitem->document()->getDocument();
@@ -1438,9 +1495,11 @@ void TreeWidget::onCreateGroup()
 void TreeWidget::onRelabelObject()
 {
     QTreeWidgetItem* item = currentItem();
-    if (item) {
-        editItem(item);
+    // Only an object's label can be renamed; a folder's comes from its view provider
+    if (!item || item->type() != ObjectType) {
+        return;
     }
+    editItem(item);
 }
 
 void TreeWidget::onStartEditing()
@@ -1708,6 +1767,33 @@ TreeWidget* TreeWidget::instance()
     return res;
 }
 
+QTreeWidgetItem* TreeWidget::logicalParent(QTreeWidgetItem* item)
+{
+    QTreeWidgetItem* parent = item ? item->parent() : nullptr;
+    while (parent && parent->type() == FolderType) {
+        parent = parent->parent();
+    }
+    return parent;
+}
+
+QList<DocumentObjectItem*> TreeWidget::objectChildren(QTreeWidgetItem* item)
+{
+    QList<DocumentObjectItem*> result;
+    if (!item) {
+        return result;
+    }
+    for (int i = 0; i < item->childCount(); ++i) {
+        QTreeWidgetItem* child = item->child(i);
+        if (child->type() == ObjectType) {
+            result.append(static_cast<DocumentObjectItem*>(child));
+        }
+        else if (child->type() == FolderType) {
+            result.append(static_cast<FolderItem*>(child)->objectItems());
+        }
+    }
+    return result;
+}
+
 void TreeWidget::setupResizableColumn(TreeWidget* tree)
 {
     auto mode = TreeParams::getResizableColumn() ? QHeaderView::Interactive
@@ -1968,6 +2054,13 @@ void TreeWidget::keyPressEvent(QKeyEvent* event)
             for (auto& item : selectedItems()) {
                 item->setExpanded(true);
                 for (auto& child : childrenOfItem(*item)) {
+                    // Collapse the rows in a folder, but leave the folder as it is
+                    if (child->type() == FolderType) {
+                        for (auto* objItem : static_cast<FolderItem*>(child)->objectItems()) {
+                            objItem->setExpanded(false);
+                        }
+                        continue;
+                    }
                     child->setExpanded(false);
                 }
             }
@@ -1979,6 +2072,12 @@ void TreeWidget::keyPressEvent(QKeyEvent* event)
                 item->setExpanded(true);
                 for (auto& child : childrenOfItem(*item)) {
                     child->setExpanded(true);
+                    // A folder's rows are the item's children too
+                    if (child->type() == FolderType) {
+                        for (auto* objItem : static_cast<FolderItem*>(child)->objectItems()) {
+                            objItem->setExpanded(true);
+                        }
+                    }
                 }
             }
             event->accept();
@@ -2018,6 +2117,20 @@ void TreeWidget::mousePressEvent(QMouseEvent* event)
     visibilityIconPressed = false;
     if (isVisibilityIconEnabled()) {
         QTreeWidgetItem* item = itemAt(event->pos());
+        if (item && item->type() == TreeWidget::FolderType && event->button() == Qt::LeftButton) {
+            // As for an object row below, less the checkbox: a folder row has none
+            auto iconRect = visualItemRect(item);
+            int const margin = style()->pixelMetric(QStyle::PM_FocusFrameHMargin) + 1;
+            iconRect.adjust(margin, 0, 0, 0);
+            iconRect.setWidth(getIconSize());
+            if (iconRect.contains(event->pos())) {
+                static_cast<FolderItem*>(item)->toggleVisibility();
+                visibilityIconDoubleClickTimer.start();
+                visibilityIconPressed = true;
+                event->accept();
+                return;
+            }
+        }
         if (item && item->type() == TreeWidget::ObjectType && event->button() == Qt::LeftButton) {
             auto objitem = static_cast<DocumentObjectItem*>(item);
 
@@ -2174,6 +2287,10 @@ void TreeWidget::mouseDoubleClickEvent(QMouseEvent* event)
                 }
             }
         }
+        else if (item->type() == TreeWidget::FolderType) {
+            // Nothing to edit in a folder, so a double-click opens or closes it
+            item->setExpanded(!item->isExpanded());
+        }
     }
     catch (Base::Exception& e) {
         e.reportException();
@@ -2271,7 +2388,7 @@ public:
                 continue;
             }
             // ignore child elements if the parent is selected
-            if (sels.contains(ti->parent())) {
+            if (sels.contains(TreeWidget::logicalParent(ti))) {
                 continue;
             }
             if (ti == targetItem) {
@@ -2408,8 +2525,9 @@ void TreeWidget::dragMoveEvent(QDragMoveEvent* event)
 
         // if we are in between or if target doesn't accept drops then the target is the parent
         if (da == Qt::MoveAction && (targetInfo.inThresholdZone || !vp->canDropObjects())) {
-            targetInfo.targetItem = targetInfo.targetItem->parent();
-            if (targetInfo.targetItem->type() == TreeWidget::DocumentType) {
+            // Past any folder row: the folder's owner is what takes the drop
+            targetInfo.targetItem = logicalParent(targetInfo.targetItem);
+            if (!targetInfo.targetItem || targetInfo.targetItem->type() != TreeWidget::ObjectType) {
                 leaveEvent(nullptr);
                 return;
             }
@@ -2506,6 +2624,27 @@ TreeWidget::TargetItemInfo TreeWidget::getTargetInfo(QEvent* ev)
     }
     targetInfo.underMouseItem = targetInfo.targetItem;
 
+    // A drop onto a folder is a drop onto the object that owns it
+    const bool onFolder = targetInfo.targetItem->type() == TreeWidget::FolderType;
+    if (onFolder) {
+        targetInfo.targetItem = logicalParent(targetInfo.targetItem);
+        if (!targetInfo.targetItem || targetInfo.targetItem->isSelected()) {
+            return {};
+        }
+        // Moving the owner's own objects onto one of its folders would only take them out
+        // and put them back at the owner's insert point, reordering them by accident
+        const auto items = selectedItems();
+        if (!items.isEmpty()
+            && getDropAction(items.size(), targetInfo.targetItem->type()) == Qt::MoveAction
+            && std::ranges::all_of(items, [&targetInfo](QTreeWidgetItem* item) {
+                   return item->type() == TreeWidget::ObjectType
+                       && static_cast<DocumentObjectItem*>(item)->getParentItem()
+                       == targetInfo.targetItem;
+               })) {
+            return {};
+        }
+    }
+
     if (targetInfo.targetItem->type() == TreeWidget::ObjectType) {
         auto targetItemObj = static_cast<DocumentObjectItem*>(targetInfo.targetItem);
         targetInfo.targetDoc = targetItemObj->getOwnerDocument()->document()->getDocument();
@@ -2516,6 +2655,12 @@ TreeWidget::TargetItemInfo TreeWidget::getTargetInfo(QEvent* ev)
     }
     else {
         return {};
+    }
+
+    // The edge of a folder row is still inside the owner, never next to it
+    if (onFolder) {
+        targetInfo.inThresholdZone = false;
+        return targetInfo;
     }
 
     // Calculate the position of the mouse relative to the item's rectangle
@@ -2804,7 +2949,11 @@ bool TreeWidget::dropInObject(
 
     // if we are in between or if target doesn't accept drops then the target is the parent
     if (da == Qt::MoveAction && (targetInfo.inThresholdZone || !vp->canDropObjects())) {
-        targetInfo.targetItem = targetInfo.targetItem->parent();
+        // Past any folder row: the folder's owner is what takes the drop
+        targetInfo.targetItem = logicalParent(targetInfo.targetItem);
+        if (!targetInfo.targetItem) {
+            return false;
+        }
         if (targetInfo.targetItem->type() == TreeWidget::DocumentType) {
             return dropInDocument(event, targetInfo, items);
         }
@@ -3240,6 +3389,10 @@ void TreeWidget::sortDroppedObjects(
     std::vector<App::DocumentObject*> draggedObjects
 )
 {
+    // A drop onto a folder appends, as there is no row to put the objects next to
+    if (!targetInfo.underMouseItem || targetInfo.underMouseItem->type() != ObjectType) {
+        return;
+    }
     if (targetInfo.targetItem == targetInfo.underMouseItem) {
         return;
     }
@@ -4046,6 +4199,17 @@ void TreeWidget::onItemSelectionChanged()
 
     auto selItems = selectedItems();
 
+    // Folder rows can't be selected, but should one get through, it is not an object
+    for (auto it = selItems.begin(); it != selItems.end();) {
+        if ((*it)->type() == FolderType) {
+            (*it)->setSelected(false);
+            it = selItems.erase(it);
+        }
+        else {
+            ++it;
+        }
+    }
+
     // do not allow document item multi-selection
     if (!selItems.empty()) {
         auto firstType = selItems.back()->type();
@@ -4142,11 +4306,15 @@ void TreeWidget::updateVisibilityIcons()
                 auto objitem = static_cast<DocumentObjectItem*>(item);
                 objitem->testStatus(true);
             }
+            else if (item->type() == FolderType) {
+                static_cast<FolderItem*>(item)->updateStatus(true);
+            }
         }
         tree->resizeColumnToContents(0);
     }
 }
 
+// The raw child rows, folder rows included; see objectChildren() for the objects only
 QList<QTreeWidgetItem*> TreeWidget::childrenOfItem(const QTreeWidgetItem& item) const
 {
     QList children = QList<QTreeWidgetItem*>();
@@ -4532,6 +4700,12 @@ void DocumentItem::slotNewObject(const Gui::ViewProviderDocumentObject& obj)
     getTree()->_updateStatus();
 }
 
+static QString treeText(const DocumentObjectData& data)
+{
+    QString text = data.viewObject->getTreeLabel();
+    return text.isEmpty() ? QString::fromUtf8(data.label.c_str()) : text;
+}
+
 bool DocumentItem::createNewItem(
     const Gui::ViewProviderDocumentObject& obj,
     QTreeWidgetItem* parent,
@@ -4582,7 +4756,7 @@ bool DocumentItem::createNewItem(
         parent->insertChild(index, item);
     }
     assert(item->parent() == parent);
-    item->setText(0, QString::fromUtf8(data->label.c_str()));
+    item->setText(0, treeText(*data));
     if (!data->label2.empty()) {
         item->setText(1, QString::fromUtf8(data->label2.c_str()));
     }
@@ -4671,7 +4845,12 @@ void TreeWidget::_slotDeleteObject(const Gui::ViewProviderDocumentObject& view, 
             ++citNext;
             DocumentObjectItem* itemToDelete = *cit;
             itemToDelete->myOwner = nullptr;
+            QTreeWidgetItem* folder = itemToDelete->parent();
             delete itemToDelete;
+            // Don't leave an empty folder row showing until the owner's next refresh
+            if (folder && folder->type() == FolderType && folder->childCount() == 0) {
+                delete folder;
+            }
         }
 
         // Check for any child of the deleted object that is not in the tree, and put it
@@ -4796,6 +4975,23 @@ void DocumentItem::populateItem(DocumentObjectItem* item, bool refresh, bool del
     item->populated = true;
     bool checkHidden = !showHidden();
     bool updated = false;
+
+    // Folder rows, and tearing down folder rows the item no longer wants, have a sync of
+    // their own. Every other item takes the flat loop below.
+    bool hasFolderRows = false;
+    for (int j = 0; j < item->childCount(); ++j) {
+        if (item->child(j)->type() == TreeWidget::FolderType) {
+            hasFolderRows = true;
+            break;
+        }
+    }
+    if (!item->myData->folders.empty() || hasFolderRows) {
+        populateFolders(item, checkHidden, updated);
+        if (updated) {
+            getTree()->_updateStatus();
+        }
+        return;
+    }
 
     int i = -1;
     // iterate through the claimed children, and try to synchronize them with the
@@ -4925,6 +5121,252 @@ void DocumentItem::populateItem(DocumentObjectItem* item, bool refresh, bool del
     }
     if (updated) {
         getTree()->_updateStatus();
+    }
+}
+
+void DocumentItem::moveRow(QTreeWidgetItem* row, QTreeWidgetItem* container, int index)
+{
+    QTreeWidgetItem* from = row->parent();
+    if (from == container && container->indexOfChild(row) == index) {
+        return;
+    }
+
+    // Taking a row out of the tree drops the expanded state of everything under it. A
+    // folder row's own flag is kept here, the object rows under it in the snapshot.
+    QList<DocumentObjectItem*> objectRows;
+    bool expanded = row->isExpanded();
+    if (row->type() == TreeWidget::ObjectType) {
+        auto* objectRow = static_cast<DocumentObjectItem*>(row);
+        objectRow->setHighlight(false);
+        objectRows.append(objectRow);
+    }
+    else if (row->type() == TreeWidget::FolderType) {
+        objectRows = static_cast<FolderItem*>(row)->objectItems();
+    }
+    std::vector<bool> snapshot;
+    for (auto* objectRow : objectRows) {
+        objectRow->getExpandedSnapshot(snapshot);
+    }
+
+    if (from) {
+        from->removeChild(row);
+    }
+    container->insertChild(index, row);
+
+    if (row->type() != TreeWidget::ObjectType) {
+        row->setExpanded(expanded);
+    }
+    auto next = snapshot.cbegin();
+    for (auto* objectRow : objectRows) {
+        objectRow->applyExpandedSnapshot(snapshot, next);
+    }
+}
+
+bool DocumentItem::placeChild(
+    DocumentObjectItem* item,
+    QTreeWidgetItem* container,
+    int index,
+    App::DocumentObject* child,
+    std::unordered_map<App::DocumentObject*, DocumentObjectItem*>& pool,
+    bool checkHidden,
+    bool& updated
+)
+{
+    auto pooled = pool.find(child);
+    if (pooled != pool.end()) {
+        DocumentObjectItem* childItem = pooled->second;
+        pool.erase(pooled);
+        moveRow(childItem, container, index);
+        if (checkHidden) {
+            updateItemsVisibility(childItem, false);
+        }
+        // Same policy handling as the flat loop in populateItem
+        if (item->myData->removeChildrenFromRoot) {
+            if (childItem->myData->rootItem) {
+                bool lock = getTree()->blockSelection(true);
+                delete childItem->myData->rootItem;
+                getTree()->blockSelection(lock);
+            }
+        }
+        else if (childItem->requiredAtRoot()) {
+            createNewItem(*childItem->object(), this, -1, childItem->myData);
+            updated = true;
+        }
+        return true;
+    }
+
+    auto it = ObjectMap.find(child);
+    if (it == ObjectMap.end() || it->second->items.empty()) {
+        auto vp = getViewProvider(child);
+        if (!vp
+            || !createNewItem(
+                *vp,
+                container,
+                index,
+                it == ObjectMap.end() ? DocumentObjectDataPtr() : it->second
+            )) {
+            return false;
+        }
+        updated = true;
+        return true;
+    }
+
+    if (!item->myData->removeChildrenFromRoot || !it->second->rootItem) {
+        DocumentObjectItem* other = *it->second->items.begin();
+        if (!createNewItem(*other->object(), container, index, it->second)) {
+            return false;
+        }
+        updated = true;
+        return true;
+    }
+
+    DocumentObjectItem* rootItem = it->second->rootItem;
+    if (item == rootItem || item->isChildOfItem(rootItem)) {
+        TREE_ERR(
+            "Cyclic dependency in " << item->object()->getObject()->getFullName() << '.'
+                                    << rootItem->object()->getObject()->getFullName()
+        );
+        return false;
+    }
+    it->second->rootItem = nullptr;
+    moveRow(rootItem, container, index);
+    if (checkHidden) {
+        updateItemsVisibility(rootItem, false);
+    }
+    return true;
+}
+
+void DocumentItem::populateFolders(DocumentObjectItem* item, bool checkHidden, bool& updated)
+{
+    const auto& data = item->myData;
+
+    // Which folder each claimed object goes into
+    std::unordered_map<App::DocumentObject*, std::size_t> folderOf;
+    for (std::size_t f = 0; f < data->folders.size(); ++f) {
+        for (auto* obj : data->folders[f].objects) {
+            if (data->childSet.contains(obj)) {
+                folderOf.emplace(obj, f);
+            }
+        }
+    }
+
+    // Every object row and folder row there is now, to reuse
+    std::unordered_map<App::DocumentObject*, DocumentObjectItem*> pool;
+    std::unordered_map<std::string, FolderItem*> folderRows;
+    auto collect = [&pool](QTreeWidgetItem* container) {
+        for (int j = 0; j < container->childCount(); ++j) {
+            QTreeWidgetItem* ci = container->child(j);
+            if (ci->type() == TreeWidget::ObjectType) {
+                auto* oi = static_cast<DocumentObjectItem*>(ci);
+                pool.emplace(oi->object()->getObject(), oi);
+            }
+        }
+    };
+    collect(item);
+    for (int j = 0; j < item->childCount(); ++j) {
+        QTreeWidgetItem* ci = item->child(j);
+        if (ci->type() == TreeWidget::FolderType) {
+            auto* fi = static_cast<FolderItem*>(ci);
+            folderRows.emplace(fi->key(), fi);
+            collect(fi);
+        }
+    }
+
+    // Direct children first, in claim order
+    int row = 0;
+    for (auto* child : data->children) {
+        if (!folderOf.contains(child)
+            && placeChild(item, item, row, child, pool, checkHidden, updated)) {
+            ++row;
+        }
+    }
+
+    // Then one row per non-empty folder, in the order the view provider gave
+    std::set<FolderItem*> wanted;
+    for (std::size_t f = 0; f < data->folders.size(); ++f) {
+        const TreeFolder& folder = data->folders[f];
+        std::vector<App::DocumentObject*> members;
+        for (auto* obj : folder.objects) {
+            auto it = folderOf.find(obj);
+            if (it != folderOf.end() && it->second == f) {
+                members.push_back(obj);
+            }
+        }
+        if (members.empty()) {
+            continue;
+        }
+
+        FolderItem*& folderItem = folderRows[folder.key];
+        bool fresh = folderItem == nullptr;
+        if (fresh) {
+            folderItem = new FolderItem(folder.key);
+        }
+        moveRow(folderItem, item, row++);
+        wanted.insert(folderItem);
+
+        int k = 0;
+        for (auto* obj : members) {
+            if (placeChild(item, folderItem, k, obj, pool, checkHidden, updated)) {
+                ++k;
+            }
+        }
+        // Rows left behind the members belong to nothing in this folder any more
+        while (folderItem->childCount() > k) {
+            QTreeWidgetItem* stale = folderItem->child(k);
+            if (stale->type() == TreeWidget::ObjectType) {
+                // Still pooled, so the cleanup below decides its fate
+                folderItem->removeChild(stale);
+                item->addChild(stale);
+            }
+            else {
+                delete stale;
+            }
+        }
+
+        folderItem->applyFolder(folder);
+        if (fresh) {
+            // Ignored until the row is in the tree, which it now is. A saved state, when the
+            // file has one, is put back over this by restoreItemExpansion().
+            folderItem->setExpanded(folder.expandedByDefault);
+        }
+    }
+
+    // Unclaimed rows: to the root if they need one there, otherwise gone. This has to run
+    // before any folder is deleted, since deleting a folder deletes what is still in it.
+    for (auto& [obj, childItem] : pool) {
+        if (childItem->requiredAtRoot()) {
+            childItem->parent()->removeChild(childItem);
+            auto index = findRootIndex(obj);
+            if (index >= 0) {
+                this->insertChild(index, childItem);
+            }
+            else {
+                this->addChild(childItem);
+            }
+            if (checkHidden) {
+                updateItemsVisibility(childItem, false);
+            }
+            childItem->myData->rootItem = childItem;
+            continue;
+        }
+        bool lock = getTree()->blockSelection(true);
+        delete childItem;
+        getTree()->blockSelection(lock);
+    }
+
+    for (auto& [key, folderItem] : folderRows) {
+        if (folderItem && !wanted.contains(folderItem)) {
+            bool lock = getTree()->blockSelection(true);
+            delete folderItem;
+            getTree()->blockSelection(lock);
+        }
+    }
+
+    // Anything else after the rows placed above (there should be nothing)
+    while (item->childCount() > row) {
+        bool lock = getTree()->blockSelection(true);
+        delete item->child(row);
+        getTree()->blockSelection(lock);
     }
 }
 
@@ -5087,7 +5529,7 @@ void TreeWidget::slotChangeObject(const Gui::ViewProviderDocumentObject& view, c
         if (firstData->label != label) {
             for (const auto& data : itEntry->second) {
                 data->label = label;
-                auto displayName = QString::fromUtf8(label);
+                auto displayName = treeText(*data);
                 for (auto item : data->items) {
                     item->setText(0, displayName);
                 }
@@ -5115,6 +5557,27 @@ void TreeWidget::slotChangeObject(const Gui::ViewProviderDocumentObject& view, c
     if (prop.testStatus(App::Property::Output) || prop.testStatus(App::Property::NoRecompute)) {
         s.set(CS_Output);
     }
+}
+
+void TreeWidget::refreshFolders()
+{
+    // Copied first: updateChildren can add to and remove from the table
+    std::vector<std::pair<App::DocumentObject*, std::set<DocumentObjectDataPtr>>> entries(
+        ObjectTable.begin(),
+        ObjectTable.end()
+    );
+    for (auto& [obj, dataSet] : entries) {
+        if (!dataSet.empty()) {
+            updateChildren(obj, dataSet, false, true);
+        }
+        for (auto& data : dataSet) {
+            auto displayName = treeText(*data);
+            for (auto* item : data->items) {
+                item->setText(0, displayName);
+            }
+        }
+    }
+    _updateStatus();
 }
 
 void TreeWidget::updateChildren(
@@ -5235,17 +5698,63 @@ void DocumentItem::slotHighlightObject(
     END_FOREACH_ITEM
 }
 
+namespace
+{
+/// One <Expand> element under an item: an open object row, which nests its own, or the
+/// state of a folder row, which is a leaf named "<owner>#<key>". A closed folder that opens by
+/// default gets "<owner>#<key>~", so it stays closed when the file is opened again.
+struct ExpandEntry
+{
+    std::string name;
+    const DocumentObjectItem* item;  // null for a folder's leaf
+};
+
+std::vector<ExpandEntry> expandEntries(const QTreeWidgetItem* item)
+{
+    std::vector<ExpandEntry> entries;
+    // Past the folder rows, so the objects in them are saved at their owner's level as ever
+    for (auto* citem : TreeWidget::objectChildren(const_cast<QTreeWidgetItem*>(item))) {
+        if (!citem->isExpanded()) {
+            continue;
+        }
+        auto obj = citem->object()->getObject();
+        if (obj->isAttachedToDocument()) {
+            entries.push_back({obj->getNameInDocument(), citem});
+        }
+    }
+
+    if (item->type() != TreeWidget::ObjectType) {
+        return entries;
+    }
+    auto owner = static_cast<const DocumentObjectItem*>(item)->object()->getObject();
+    if (!owner->isAttachedToDocument()) {
+        return entries;
+    }
+    for (int i = 0, count = item->childCount(); i < count; ++i) {
+        auto citem = item->child(i);
+        if (citem->type() != TreeWidget::FolderType) {
+            continue;
+        }
+        auto folder = static_cast<const FolderItem*>(citem);
+        std::string name = std::string(owner->getNameInDocument()) + "#" + folder->key();
+        if (folder->isExpanded()) {
+            entries.push_back({std::move(name), nullptr});
+        }
+        else if (folder->expandedByDefault()) {
+            entries.push_back({name + "~", nullptr});
+        }
+    }
+    return entries;
+}
+}  // namespace
+
 static unsigned int countExpandedItem(const QTreeWidgetItem* item)
 {
     unsigned int size = 0;
-    for (int i = 0, count = item->childCount(); i < count; ++i) {
-        auto citem = item->child(i);
-        if (citem->type() != TreeWidget::ObjectType || !citem->isExpanded()) {
-            continue;
-        }
-        auto obj = static_cast<const DocumentObjectItem*>(citem)->object()->getObject();
-        if (obj->isAttachedToDocument()) {
-            size += strlen(obj->getNameInDocument()) + countExpandedItem(citem);
+    for (const auto& entry : expandEntries(item)) {
+        size += entry.name.size();
+        if (entry.item) {
+            size += countExpandedItem(entry.item);
         }
     }
     return size;
@@ -5258,34 +5767,22 @@ unsigned int DocumentItem::getMemSize() const
 
 static void saveExpandedItem(Base::Writer& writer, const QTreeWidgetItem* item)
 {
-    int itemCount = 0;
-    for (int i = 0, count = item->childCount(); i < count; ++i) {
-        auto citem = item->child(i);
-        if (citem->type() != TreeWidget::ObjectType || !citem->isExpanded()) {
-            continue;
-        }
-        auto obj = static_cast<const DocumentObjectItem*>(citem)->object()->getObject();
-        if (obj->isAttachedToDocument()) {
-            ++itemCount;
-        }
-    }
-
-    if (!itemCount) {
+    // One list for both the count and the elements, so the two always agree
+    const auto entries = expandEntries(item);
+    if (entries.empty()) {
         writer.Stream() << "/>" << std::endl;
         return;
     }
 
-    writer.Stream() << " count=\"" << itemCount << "\">" << std::endl;
+    writer.Stream() << " count=\"" << entries.size() << "\">" << std::endl;
     writer.incInd();
-    for (int i = 0, count = item->childCount(); i < count; ++i) {
-        auto citem = item->child(i);
-        if (citem->type() != TreeWidget::ObjectType || !citem->isExpanded()) {
-            continue;
+    for (const auto& entry : entries) {
+        writer.Stream() << writer.ind() << "<Expand name=\"" << entry.name << "\"";
+        if (entry.item) {
+            saveExpandedItem(writer, entry.item);
         }
-        auto obj = static_cast<const DocumentObjectItem*>(citem)->object()->getObject();
-        if (obj->isAttachedToDocument()) {
-            writer.Stream() << writer.ind() << "<Expand name=\"" << obj->getNameInDocument() << "\"";
-            saveExpandedItem(writer, static_cast<const DocumentObjectItem*>(citem));
+        else {
+            writer.Stream() << "/>" << std::endl;
         }
     }
     writer.decInd();
@@ -5318,22 +5815,39 @@ void DocumentItem::Restore(Base::XMLReader& reader)
 
 void DocumentItem::restoreItemExpansion(const ExpandInfoPtr& info, DocumentObjectItem* item)
 {
+    // Populates the row, folder rows included, at their defaults
     item->setExpanded(true);
     if (!info) {
         return;
     }
-    for (int i = 0, count = item->childCount(); i < count; ++i) {
-        auto citem = item->child(i);
-        if (citem->type() != TreeWidget::ObjectType) {
-            continue;
-        }
-        auto obj = static_cast<DocumentObjectItem*>(citem)->object()->getObject();
+    for (auto* citem : TreeWidget::objectChildren(item)) {
+        auto obj = citem->object()->getObject();
         if (!obj->isAttachedToDocument()) {
             continue;
         }
         auto it = info->find(obj->getNameInDocument());
         if (it != info->end()) {
-            restoreItemExpansion(it->second, static_cast<DocumentObjectItem*>(citem));
+            restoreItemExpansion(it->second, citem);
+        }
+    }
+
+    // A file without folder entries, older than the folders, leaves them at their defaults
+    auto owner = item->object()->getObject();
+    if (!owner->isAttachedToDocument()) {
+        return;
+    }
+    for (int i = 0, count = item->childCount(); i < count; ++i) {
+        auto citem = item->child(i);
+        if (citem->type() != TreeWidget::FolderType) {
+            continue;
+        }
+        const std::string name = std::string(owner->getNameInDocument()) + "#"
+            + static_cast<FolderItem*>(citem)->key();
+        if (info->count(name)) {
+            citem->setExpanded(true);
+        }
+        else if (info->count(name + "~")) {
+            citem->setExpanded(false);
         }
     }
 }
@@ -5545,6 +6059,10 @@ void DocumentItem::updateSelection(QTreeWidgetItem* ti, bool unselect)
                 updateSelection(childItem, true);
             }
         }
+        else if (unselect && child && child->type() == TreeWidget::FolderType) {
+            // A folder's rows are the group's children
+            updateSelection(child, true);
+        }
     }
 
     if (unselect) {
@@ -5719,7 +6237,9 @@ App::DocumentObject* DocumentItem::getTopParent(App::DocumentObject* obj, std::s
     std::multimap<int, DocumentObjectItem*> items;
     for (auto item : it->second->items) {
         int i = 0;
-        for (auto parent = item->parent(); parent; ++i, parent = parent->parent()) {
+        // A folder row is not a level of the hierarchy
+        for (QTreeWidgetItem* parent = TreeWidget::logicalParent(item); parent;
+             ++i, parent = TreeWidget::logicalParent(parent)) {
             if (parent->isHidden()) {
                 i += 1000;
             }
@@ -5824,7 +6344,9 @@ DocumentObjectItem* DocumentItem::findItemByObject(
     std::multimap<int, DocumentObjectItem*> items;
     for (auto item : it->second->items) {
         int i = 0;
-        for (auto parent = item->parent(); parent; ++i, parent = parent->parent()) {
+        // A folder row is not a level of the hierarchy
+        for (QTreeWidgetItem* parent = TreeWidget::logicalParent(item); parent;
+             ++i, parent = TreeWidget::logicalParent(parent)) {
             ++i;
         }
         items.emplace(i, item);
@@ -5901,13 +6423,8 @@ DocumentObjectItem* DocumentItem::findItem(
         populateItem(item, true);
     }
 
-    for (int i = 0, count = item->childCount(); i < count; ++i) {
-        auto ti = item->child(i);
-        if (!ti || ti->type() != TreeWidget::ObjectType) {
-            continue;
-        }
-        auto child = static_cast<DocumentObjectItem*>(ti);
-
+    // The object rows, those in folders included
+    for (auto* child : TreeWidget::objectChildren(item)) {
         if (child->object()->getObject() == subObj) {
             return findItem(sync, child, nextsub, select);
         }
@@ -6092,6 +6609,13 @@ bool DocumentItem::showItem(DocumentObjectItem* item, bool select, bool force)
         item->setHidden(false);
     }
 
+    // A row in a folder is shown through the folder's owner, and the folder opens with it
+    QTreeWidgetItem* folder = nullptr;
+    if (parent->type() == TreeWidget::FolderType) {
+        folder = parent;
+        parent = parent->parent();
+    }
+
     if (parent->type() == TreeWidget::ObjectType) {
         if (!showItem(static_cast<DocumentObjectItem*>(parent), false, force)) {
             return false;
@@ -6099,6 +6623,9 @@ bool DocumentItem::showItem(DocumentObjectItem* item, bool select, bool force)
         auto pitem = static_cast<DocumentObjectItem*>(parent);
         if (force || !pitem->object()->getObject()->testStatus(App::NoAutoExpand)) {
             parent->setExpanded(true);
+            if (folder) {
+                folder->setExpanded(true);
+            }
         }
         else if (!select) {
             return false;
@@ -6318,9 +6845,44 @@ enum Status
     Error = 1 << 2,
     Hidden = 1 << 3,
     External = 1 << 4,
-    Freezed = 1 << 5
+    Freezed = 1 << 5,
+    FolderBody = 1 << 6,
+    RolledBack = 1 << 7
 };
+
+// Whether a row is greyed out. In a group showing folders that means rolled back, and a
+// hidden row there keeps its text and only crosses its eye. Anywhere else it means hidden.
+bool isGreyStatus(int status)
+{
+    return (status & Status::FolderBody) ? (status & Status::RolledBack) != 0
+                                         : (status & Status::Visible) == 0;
 }
+
+// The view provider of the group an object belongs to, when that group shows folders. Per
+// object, not per row: DocumentObjectData::testStatus shares one icon across every row of
+// an object. The folders are the ones cached from the group's last children update, as
+// testStatus runs for every object on every status update.
+ViewProviderDocumentObject* folderOwnerOf(
+    App::DocumentObject* obj,
+    const std::unordered_map<App::DocumentObject*, std::set<DocumentObjectDataPtr>>& objectTable
+)
+{
+    auto* group = App::GeoFeatureGroupExtension::getGroupOfObject(obj);
+    if (!group) {
+        return nullptr;
+    }
+    auto it = objectTable.find(group);
+    if (it == objectTable.end()) {
+        return nullptr;
+    }
+    for (const auto& data : it->second) {
+        if (!data->folders.empty()) {
+            return data->viewObject;
+        }
+    }
+    return nullptr;
+}
+}  // namespace
 
 // currentStatus is the status enum built by testStatus()
 // overlays is a reference to the main QIcon that needs overlays added
@@ -6419,6 +6981,21 @@ void DocumentObjectItem::generateIcon(int currentStatus, QIcon::Mode mode, QIcon
 
 QIcon DocumentObjectItem::getVisibilityIcon(int currentStatus, QIcon& original_icon)
 {
+    return composeVisibilityIcon(
+        getTree()->style(),
+        object()->canToggleVisibility(),
+        (currentStatus & Status::Visible) != 0,
+        original_icon
+    );
+}
+
+QIcon DocumentObjectItem::composeVisibilityIcon(
+    QStyle* style,
+    bool canToggle,
+    bool visible,
+    const QIcon& original
+)
+{
     static QPixmap pxVisible, pxInvisible;
     if (pxVisible.isNull()) {
         pxVisible = BitmapFactory().pixmap("TreeItemVisible");
@@ -6429,10 +7006,9 @@ QIcon DocumentObjectItem::getVisibilityIcon(int currentStatus, QIcon& original_i
 
     // Prepend the visibility pixmap to the final icon pixmaps and use these as the icon.
     QIcon new_icon;
-    auto style = this->getTree()->style();
     int const spacing = style->pixelMetric(QStyle::PM_LayoutHorizontalSpacing);
     for (auto state : {QIcon::On, QIcon::Off}) {
-        QPixmap px_org = original_icon.pixmap(0xFFFF, 0xFFFF, QIcon::Normal, state);
+        QPixmap px_org = original.pixmap(0xFFFF, 0xFFFF, QIcon::Normal, state);
 
         QPixmap px(2 * px_org.width() + spacing, px_org.height());
         px.fill(Qt::transparent);
@@ -6440,14 +7016,8 @@ QIcon DocumentObjectItem::getVisibilityIcon(int currentStatus, QIcon& original_i
         QPainter pt;
         pt.begin(&px);
         pt.setPen(Qt::NoPen);
-        if (object()->canToggleVisibility()) {
-            pt.drawPixmap(
-                0,
-                0,
-                px_org.width(),
-                px_org.height(),
-                (currentStatus & Status::Visible) ? pxVisible : pxInvisible
-            );
+        if (canToggle) {
+            pt.drawPixmap(0, 0, px_org.width(), px_org.height(), visible ? pxVisible : pxInvisible);
         }
         pt.drawPixmap(px_org.width() + spacing, 0, px_org.width(), px_org.height(), px_org);
         pt.end();
@@ -6491,6 +7061,11 @@ bool DocumentObjectItem::isVisibleInTree() const
     return visible != 0;
 }
 
+bool DocumentObjectItem::isGreyed() const
+{
+    return previousStatus >= 0 && isGreyStatus(previousStatus);
+}
+
 void DocumentObjectItem::testStatus(bool resetStatus, QIcon& icon1, QIcon& icon2)
 {
     // guard against calling this during destruction when tree widget may be nullptr
@@ -6511,6 +7086,12 @@ void DocumentObjectItem::testStatus(bool resetStatus, QIcon& icon1, QIcon& icon2
         | ((object()->showInTree() ? 0 : 1) << 3) | ((pObject->isError() ? 1 : 0) << 2)
         | ((pObject->isTouched() || pObject->mustExecute() == 1 ? 1 : 0) << 1) | (visible ? 1 : 0);
 
+    if (auto* owner = folderOwnerOf(pObject, getTree()->ObjectTable)) {
+        currentStatus |= Status::FolderBody;
+        if (owner->isChildRolledBack(pObject)) {
+            currentStatus |= Status::RolledBack;
+        }
+    }
 
     if (!resetStatus && previousStatus == currentStatus) {
         return;
@@ -6518,8 +7099,13 @@ void DocumentObjectItem::testStatus(bool resetStatus, QIcon& icon1, QIcon& icon2
 
     previousStatus = currentStatus;
 
+    // The folder's eye follows the rows in it
+    if (parent() && parent()->type() == TreeWidget::FolderType) {
+        static_cast<FolderItem*>(parent())->updateStatus();
+    }
+
     QIcon::Mode mode = QIcon::Normal;
-    if (currentStatus & Status::Visible) {
+    if (!isGreyStatus(currentStatus)) {
         // Note: By default the foreground, i.e. text color is invalid
         // to make use of the default color of the tree widget's palette.
         // If we temporarily set this color to dark and reset to an invalid
@@ -6532,7 +7118,7 @@ void DocumentObjectItem::testStatus(bool resetStatus, QIcon& icon1, QIcon& icon2
             this->setData(column, Qt::ForegroundRole, QVariant());
         }
     }
-    else {  // invisible
+    else {  // greyed out
         QStyleOptionViewItem opt;
         // it can happen that a tree item is not attached to the tree widget (#0003025)
         if (this->treeWidget()) {
@@ -6544,7 +7130,13 @@ void DocumentObjectItem::testStatus(bool resetStatus, QIcon& icon1, QIcon& icon2
         mode = QIcon::Disabled;
     }
 
-    QIcon& icon = mode == QIcon::Normal ? icon1 : icon2;
+    // The icons are shared by the object's rows, whose eyes can differ (a row under a link
+    // asks the link). Elsewhere the mode tells the eye apart; in a group showing folders the
+    // mode is the same for every row of an object, so the eye picks the icon instead.
+    const bool firstIcon = (currentStatus & Status::FolderBody)
+        ? (currentStatus & Status::Visible) != 0
+        : mode == QIcon::Normal;
+    QIcon& icon = firstIcon ? icon1 : icon2;
 
     if (icon.isNull()) {
         generateIcon(currentStatus, mode, icon);
@@ -6566,6 +7158,10 @@ QVariant DocumentObjectItem::data(int column, int role) const
         if (!tip.isEmpty()) {
             return tip;
         }
+    }
+    // A row reading by role (an origin plane's "XY plane") is renamed through its Label
+    if (column == 0 && role == Qt::EditRole && object() && !object()->getTreeLabel().isEmpty()) {
+        return QString::fromUtf8(object()->getObject()->Label.getValue());
     }
     return QTreeWidgetItem::data(column, role);
 }
@@ -6611,6 +7207,14 @@ void DocumentObjectItem::setData(int column, int role, const QVariant& value)
         auto obj = object()->getObject();
         auto& label = column ? obj->Label2 : obj->Label;
 
+        // A row reading by role keeps doing so. Its editor opens with the Label, so
+        // committing it untouched is no rename and leaves no undo entry.
+        const bool byRole = column == 0 && !object()->getTreeLabel().isEmpty();
+        if (byRole && value.toString() == QString::fromUtf8(label.getValue())) {
+            QTreeWidgetItem::setData(column, role, treeText(*myData));
+            return;
+        }
+
         std::ostringstream str;
         str << TreeWidget::tr("Rename").toStdString() << ' ' << getName() << '.' << label.getName();
 
@@ -6621,7 +7225,7 @@ void DocumentObjectItem::setData(int column, int role, const QVariant& value)
         label.setValue(value.toString().toUtf8().constData());
         doc->commitTransaction();
 
-        myValue = QString::fromUtf8(label.getValue());
+        myValue = byRole ? treeText(*myData) : QString::fromUtf8(label.getValue());
     }
     QTreeWidgetItem::setData(column, role, myValue);
 }
@@ -6757,44 +7361,11 @@ int DocumentObjectItem::isParentGroup() const
 
 DocumentObjectItem* DocumentObjectItem::getParentItem() const
 {
-    if (parent()->type() != TreeWidget::ObjectType) {
+    QTreeWidgetItem* parent = TreeWidget::logicalParent(const_cast<DocumentObjectItem*>(this));
+    if (!parent || parent->type() != TreeWidget::ObjectType) {
         return nullptr;
     }
-    return static_cast<DocumentObjectItem*>(parent());
-}
-
-DocumentObjectItem* DocumentObjectItem::getNextSibling() const
-{
-    QTreeWidgetItem* parent = this->parent();
-    if (parent) {
-        int index = parent->indexOfChild(const_cast<DocumentObjectItem*>(this));
-        if (index >= 0) {
-            while (++index < parent->childCount()) {
-                QTreeWidgetItem* sibling = parent->child(index);
-                if (sibling->type() == TreeWidget::ObjectType) {
-                    return static_cast<DocumentObjectItem*>(sibling);
-                }
-            }
-        }
-    }
-
-    return nullptr;
-}
-
-DocumentObjectItem* DocumentObjectItem::getPreviousSibling() const
-{
-    QTreeWidgetItem* parent = this->parent();
-    if (parent) {
-        int index = parent->indexOfChild(const_cast<DocumentObjectItem*>(this));
-        while (index > 0) {
-            QTreeWidgetItem* sibling = parent->child(--index);
-            if (sibling->type() == TreeWidget::ObjectType) {
-                return static_cast<DocumentObjectItem*>(sibling);
-            }
-        }
-    }
-
-    return nullptr;
+    return static_cast<DocumentObjectItem*>(parent);
 }
 
 const char* DocumentObjectItem::getName() const
@@ -6947,7 +7518,15 @@ void DocumentObjectItem::getExpandedSnapshot(std::vector<bool>& snapshot) const
     snapshot.push_back(isExpanded());
 
     for (int i = 0; i < childCount(); ++i) {
-        static_cast<const DocumentObjectItem*>(child(i))->getExpandedSnapshot(snapshot);
+        QTreeWidgetItem* ci = child(i);
+        if (ci->type() == TreeWidget::FolderType) {
+            snapshot.push_back(ci->isExpanded());
+            for (auto* oi : static_cast<FolderItem*>(ci)->objectItems()) {
+                oi->getExpandedSnapshot(snapshot);
+            }
+            continue;
+        }
+        static_cast<const DocumentObjectItem*>(ci)->getExpandedSnapshot(snapshot);
     }
 }
 
@@ -6959,8 +7538,146 @@ void DocumentObjectItem::applyExpandedSnapshot(
     setExpanded(*from++);
 
     for (int i = 0; i < childCount(); ++i) {
-        static_cast<DocumentObjectItem*>(child(i))->applyExpandedSnapshot(snapshot, from);
+        QTreeWidgetItem* ci = child(i);
+        if (ci->type() == TreeWidget::FolderType) {
+            ci->setExpanded(*from++);
+            for (auto* oi : static_cast<FolderItem*>(ci)->objectItems()) {
+                oi->applyExpandedSnapshot(snapshot, from);
+            }
+            continue;
+        }
+        static_cast<DocumentObjectItem*>(ci)->applyExpandedSnapshot(snapshot, from);
     }
+}
+
+// ----------------------------------------------------------------------------
+
+FolderItem::FolderItem(std::string key)
+    : QTreeWidgetItem(TreeWidget::FolderType)
+    , myKey(std::move(key))
+{
+    // Not the QTreeWidgetItem default, which is also selectable, draggable and checkable
+    setFlags(Qt::ItemIsEnabled | Qt::ItemIsDropEnabled);
+    setChildIndicatorPolicy(QTreeWidgetItem::ShowIndicator);
+}
+
+DocumentObjectItem* FolderItem::ownerItem() const
+{
+    QTreeWidgetItem* p = parent();
+    return p && p->type() == TreeWidget::ObjectType ? static_cast<DocumentObjectItem*>(p) : nullptr;
+}
+
+void FolderItem::applyFolder(const TreeFolder& folder)
+{
+    QString text = folder.label;
+    if (folder.showCount) {
+        text += QStringLiteral(" (%1)").arg(childCount());
+    }
+    if (this->text(0) != text) {
+        setText(0, text);
+    }
+    // At the size an object row draws its icon at, which also keeps a scalable theme icon
+    // from being rendered at the largest size it is asked for
+    const int size = TreeWidget::getIconSize();
+    baseIcon = QIcon();
+    for (auto state : {QIcon::On, QIcon::Off}) {
+        baseIcon.addPixmap(folder.icon.pixmap(size, size, QIcon::Normal, state), QIcon::Normal, state);
+    }
+    defaultOpen = folder.expandedByDefault;
+    updateStatus(true);
+}
+
+bool FolderItem::anyVisible() const
+{
+    for (auto* oi : objectItems()) {
+        if (oi->isVisibleInTree()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void FolderItem::updateStatus(bool reset)
+{
+    // Not before applyFolder(), which a row placed in the folder can call this ahead of
+    if (baseIcon.isNull()) {
+        return;
+    }
+    const bool visible = anyVisible();
+    const int status = visible ? 1 : 0;
+    if (!reset && status == myStatus) {
+        return;
+    }
+    myStatus = status;
+    if (isVisibilityIconEnabled() && treeWidget()) {
+        setIcon(
+            0,
+            DocumentObjectItem::composeVisibilityIcon(treeWidget()->style(), true, visible, baseIcon)
+        );
+    }
+    else {
+        setIcon(0, baseIcon);
+    }
+}
+
+void FolderItem::toggleVisibility()
+{
+    auto* owner = ownerItem();
+    if (!owner) {
+        return;
+    }
+    const bool show = !anyVisible();
+    App::Document* doc = owner->object()->getObject()->getDocument();
+
+    // A task dialog keeps a transaction open, or booked, until its OK or Cancel. Opening one
+    // here would commit it under the dialog, so the writes join it instead, and its Cancel
+    // takes them back with the rest.
+    const bool ownTransaction = !doc->hasPendingTransaction()
+        && doc->getBookedTransactionID() == App::NullTransaction;
+    if (ownTransaction) {
+        doc->openTransaction(
+            show ? QT_TRANSLATE_NOOP("Command", "Show folder")
+                 : QT_TRANSLATE_NOOP("Command", "Hide folder")
+        );
+    }
+    try {
+        for (auto* oi : objectItems()) {
+            auto& visibility = oi->object()->getObject()->Visibility;
+            if (visibility.getValue() == show) {
+                continue;
+            }
+            // Visibility is NoModify, which never opens a booked transaction, so the folder's
+            // writes would all go unrecorded. Lifted for the write, the first one opens it
+            // and the rest land in it: one undo step for the whole folder.
+            Base::ObjectStatusLocker<App::Property::Status, App::Property> guard(
+                App::Property::NoModify,
+                &visibility,
+                false
+            );
+            visibility.setValue(show);
+        }
+    }
+    catch (const Base::Exception& e) {
+        if (ownTransaction) {
+            doc->abortTransaction();
+        }
+        e.reportException();
+        return;
+    }
+    if (ownTransaction) {
+        doc->commitTransaction();
+    }
+}
+
+QList<DocumentObjectItem*> FolderItem::objectItems() const
+{
+    QList<DocumentObjectItem*> result;
+    for (int i = 0; i < childCount(); ++i) {
+        if (child(i)->type() == TreeWidget::ObjectType) {
+            result.append(static_cast<DocumentObjectItem*>(child(i)));
+        }
+    }
+    return result;
 }
 
 #include "moc_Tree.cpp"

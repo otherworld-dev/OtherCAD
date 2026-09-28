@@ -386,6 +386,25 @@
         </property>
        </widget>
       </item>
+      <item row="8" column="0" colspan="2">
+       <widget class="Gui::PrefCheckBox" name="bodyFoldersCheckBox">
+        <property name="toolTip">
+         <string>Show a body's sketches, construction geometry and feature history under folder rows instead of one flat list</string>
+        </property>
+        <property name="text">
+         <string>Group body contents into folders</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+        <property name="prefEntry" stdset="0">
+         <cstring>BodyFolders</cstring>
+        </property>
+        <property name="prefPath" stdset="0">
+         <cstring>TreeView</cstring>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>

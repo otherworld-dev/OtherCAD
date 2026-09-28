@@ -60,6 +60,19 @@
 using namespace PartDesignGui;
 using namespace Gui;
 
+// Defined in Command.cpp, where the commands decide what a new feature starts from
+bool wholeSketchMakesFace(const Part::Part2DObject* sketch);
+
+namespace
+{
+bool pickRegionsOnOpenFlag = false;
+}
+
+void PartDesignGui::pickRegionsOnOpen(bool on)
+{
+    pickRegionsOnOpenFlag = on;
+}
+
 /* TRANSLATOR PartDesignGui::TaskSketchBasedParameters */
 
 namespace
@@ -72,10 +85,7 @@ std::set<const App::DocumentObject*>& featuresWithProfileRow()
 }
 }  // namespace
 
-ProfileSelectionWidget::ProfileSelectionWidget(
-    PartDesign::ProfileBased* profileFeature,
-    QWidget* parent
-)
+ProfileSelectionWidget::ProfileSelectionWidget(PartDesign::ProfileBased* profileFeature, QWidget* parent)
     : QWidget(parent)
     , Gui::SelectionObserver(false)
     , feature(profileFeature)
@@ -91,6 +101,7 @@ ProfileSelectionWidget::ProfileSelectionWidget(
     layout->addStretch(1);
 
     pickButton = new QToolButton(this);
+    pickButton->setObjectName(QStringLiteral("ProfilePickButton"));
     pickButton->setText(tr("Select"));
     pickButton->setCheckable(true);
     pickButton->setToolTip(tr("Click inside a closed sketch region to add or remove it"));
@@ -182,8 +193,8 @@ void ProfileSelectionWidget::setPickingActive(bool active)
 
                 Gui::getMainWindow()->showHints({{
                     .message = tr(
-                        "Click a region to extrude only that region; click it again to "
-                        "release it"
+                        "Click a region to build the feature from that region only; click "
+                        "it again to release it"
                     ),
                     // The hint names no key: the region is picked with the mouse.
                     .sequences = {},
@@ -278,9 +289,7 @@ void ProfileSelectionWidget::onSelectionChanged(const Gui::SelectionChanges& msg
     toggleRegion(prefix + sub);
 
     // Clearing from inside the observer callback would re-enter the selection machinery.
-    QTimer::singleShot(0, this, []() {
-        Gui::Selection().clearSelection();
-    });
+    QTimer::singleShot(0, this, []() { Gui::Selection().clearSelection(); });
 }
 
 void ProfileSelectionWidget::toggleRegion(const std::string& subName)
@@ -348,17 +357,31 @@ TaskSketchBasedParameters::TaskSketchBasedParameters(
         showDraggerHints();
     });
 
-    const int regions = ProfileSelectionWidget::countRegions(sketchBased->Profile.getValue());
+    App::DocumentObject* profile = sketchBased->Profile.getValue();
+    const int regions = ProfileSelectionWidget::countRegions(profile);
     if (regions < 2) {
         profileWidget->hide();
         return;
     }
 
-    // A sketch bounding several regions opens ready to be picked from, since the one the
-    // feature starts on is only a stand-in. The regions themselves are not drawn, so the
-    // ones left unchosen do not clutter the view.
-    profileWidget->setProfileProvisional(true);
-    profileWidget->setPickingActive(true);
+    // A sketch whose curves cross cannot be built from as a whole, so the feature starts on
+    // its first region as a stand-in (defaultProfileRegion() in Command.cpp). Only then
+    // does the panel open ready to pick, with the first pick replacing the stand-in. The
+    // whole sketch, or regions the user chose, are left alone until Select is pressed.
+    const std::vector<std::string>& subs = sketchBased->Profile.getSubValues();
+    auto* sketch = freecad_cast<Part::Part2DObject*>(profile);
+    const bool standIn = sketch && subs.size() == 1
+        && subs.front() == Sketcher::SketchObject::internalPrefix() + "Face1"
+        && !wholeSketchMakesFace(sketch);
+    if (standIn) {
+        profileWidget->setProfileProvisional(true);
+        profileWidget->setPickingActive(true);
+    }
+    else if (pickRegionsOnOpenFlag) {
+        // Started on a region picked in the view: more clicks add regions to it
+        pickRegionsOnOpenFlag = false;
+        profileWidget->setPickingActive(true);
+    }
 }
 
 const QString TaskSketchBasedParameters::onAddSelection(

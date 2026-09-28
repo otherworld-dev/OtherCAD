@@ -41,6 +41,7 @@ from PartDesignTests.TestPipe import TestPipe
 from PartDesignTests.TestLoft import TestLoft
 from PartDesignTests.TestPrimitive import TestPrimitive
 from PartDesignTests.TestHelix import TestHelix
+from PartDesignTests.TestNewBody import TestNewBody
 
 # transformations and boolean
 from PartDesignTests.TestMirrored import TestMirrored
@@ -53,6 +54,7 @@ from PartDesignTests.TestBaseFeature import TestBaseFeature
 # dressup features
 from PartDesignTests.TestFillet import TestFillet
 from PartDesignTests.TestChamfer import TestChamfer
+from PartDesignTests.TestMissingReference import TestMissingReference
 from PartDesignTests.TestDraft import TestDraft
 from PartDesignTests.TestThickness import TestThickness
 

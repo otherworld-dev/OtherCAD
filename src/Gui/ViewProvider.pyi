@@ -219,6 +219,14 @@ class ViewProvider(ExtensionContainer):
         """
         ...
 
+    @constmethod
+    def claimChildrenFolders(self) -> list:
+        """
+        Returns the folders the tree groups this object's children into, as a list of
+        (key, label, objects) tuples. Empty when the children are shown flat.
+        """
+        ...
+
     def partialRender(self, sub: Any = None, clear: bool = False, /) -> int:
         """
         Render only part of the object.

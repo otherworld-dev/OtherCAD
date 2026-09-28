@@ -180,6 +180,46 @@ class TestFusionShortcuts(unittest.TestCase):
         self.assertEqual(self._shortcut_of("Sketcher_ConstrainSymmetric"), "K, M")
         self.assertEqual(self._shortcut_of("Sketcher_CreateCircle"), "C")
 
+    def test_l_draws_lines_one_after_another(self):
+        # Fusion's Line carries on from the end of each segment until Esc, which is the
+        # polyline here. The single line keeps its upstream chord.
+        self.assertEqual(self._shortcut_of("Sketcher_CreatePolyline"), "L")
+        self.assertEqual(self._shortcut_of("Sketcher_CreateLine"), "G, L")
+
+    def test_j_starts_a_joint(self):
+        FreeCADGui.activateWorkbench("AssemblyWorkbench")
+        try:
+            self.assertEqual(self._shortcut_of("Assembly_CreateJointFixed"), "J")
+        finally:
+            FreeCADGui.activateWorkbench("PartDesignWorkbench")
+
+    def test_repeat_runs_the_last_modelling_command_again(self):
+        def trigger(command):
+            # Through the action, the way a click on its button reaches it: a command
+            # run from Python is not the user's and is not offered again. A disabled
+            # action ignores trigger(), and actions are enabled on a timer.
+            action = FreeCADGui.Command.get(command).getAction()[0]
+            deadline = time.monotonic() + 2.0
+            while not action.isEnabled() and time.monotonic() < deadline:
+                self._process_events(50)
+            self.assertTrue(action.isEnabled(), f"{command} is not available here")
+            action.trigger()
+            self._process_events(50)
+
+        bodies = lambda: [o for o in self.doc.Objects if o.isDerivedFrom("PartDesign::Body")]
+        trigger("PartDesign_Body")
+        self.assertEqual(len(bodies()), 1)
+        trigger("Std_ViewFitAll")  # a view command is no modelling to repeat
+
+        repeat = FreeCADGui.Command.get("Std_RepeatLastCommand")
+        repeat.isActive()  # names the action after what it repeats
+        menu_text = FreeCADGui.Command.get("PartDesign_Body").getInfo()["menuText"].replace("&", "")
+        self.assertEqual(repeat.getAction()[0].text(), f"Repeat {menu_text}")
+
+        repeat.run()
+        self._process_events(50)
+        self.assertEqual(len(bodies()), 2)
+
     def test_part_selection_filters_use_the_free_u_prefix(self):
         """The four Part selection filters answer to U rather than to a Fusion letter."""
 

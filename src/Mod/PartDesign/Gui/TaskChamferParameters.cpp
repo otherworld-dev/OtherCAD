@@ -77,7 +77,7 @@ TaskChamferParameters::TaskChamferParameters(ViewProviderDressUp* DressUpView, Q
 
     std::vector<std::string> strings = pcChamfer->Base.getSubValues();
     for (const auto& string : strings) {
-        ui->listWidgetReferences->addItem(QString::fromStdString(string));
+        addReferenceItem(ui->listWidgetReferences, string);
     }
 
     QMetaObject::connectSlotsByName(this);

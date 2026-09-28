@@ -277,27 +277,27 @@ class TestSelectAllInstances(unittest.TestCase):
         tree = self._get_tree_widget()
         self.assertIsNotNone(tree, "Could not find tree widget")
 
-        def find_index(parent_index, label):
-            """Find the QModelIndex of an item with matching label, recursively."""
+        # The row's text can be its Label or a role name ("XY plane" in a body showing
+        # folders), so the row is found by the internal name the tree keeps in column 2
+        xy_name = next(f.Name for f in body.Origin.OriginFeatures if f.Role == "XY_Plane")
+
+        def find_index(parent_index, name):
+            """Find the column 0 QModelIndex of the object's row, recursively."""
             model = tree.model()
             if parent_index.isValid():
                 rows = model.rowCount(parent_index)
             else:
                 rows = tree.topLevelItemCount()
             for i in range(rows):
-                if parent_index.isValid():
-                    idx = model.index(i, 0, parent_index)
-                else:
-                    idx = model.index(i, 0)
-                text = model.data(idx)
-                if text and (text == label or label in text):
+                idx = model.index(i, 0, parent_index)
+                if model.data(model.index(i, 2, parent_index)) == name:
                     return idx
-                found = find_index(idx, label)
+                found = find_index(idx, name)
                 if found.isValid():
                     return found
             return QModelIndex()
 
-        xy_index = find_index(QModelIndex(), "XY-plane")
+        xy_index = find_index(QModelIndex(), xy_name)
         self.assertTrue(xy_index.isValid(), "Could not locate XY-plane tree item")
 
         # Step 3:

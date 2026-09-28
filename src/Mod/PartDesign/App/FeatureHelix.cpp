@@ -407,6 +407,10 @@ App::DocumentObjectExecReturn* Helix::execute()
 
         AddSubShape.setValue(result);
 
+        if (keepBaseForNewBody(base)) {
+            return App::DocumentObject::StdReturn;
+        }
+
         if (base.isNull() || !combinesWithBase()) {
 
             if (getAddSubType() == FeatureAddSub::Type::Subtractive) {

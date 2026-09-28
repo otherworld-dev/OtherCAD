@@ -110,6 +110,10 @@ App::DocumentObjectExecReturn* FeaturePrimitive::execute(const TopoDS_Shape& pri
         }
         AddSubShape.setValue(primitiveShape);
 
+        if (keepBaseForNewBody(base)) {
+            return App::DocumentObject::StdReturn;
+        }
+
         if (!combinesWithBase()) {
             Shape.setValue(getSolid(primitiveShape));
             return App::DocumentObject::StdReturn;

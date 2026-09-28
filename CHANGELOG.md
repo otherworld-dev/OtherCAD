@@ -8,6 +8,67 @@ from upstream FreeCAD merges are not listed, only the work done in this fork.
 
 ## [Unreleased]
 
+### Added
+
+- Features can be suppressed from the timeline's right-click menu. A suppressed feature
+  is drawn greyed out and struck through, and its tooltip says so.
+- Repeat Last Command, at the top of the right-click menu in the 3D view and in the
+  Edit menu, runs the last modelling command again and is named after it, for example
+  Repeat Extrude.
+- J starts a joint in an assembly, as in Fusion.
+- A feature that fails to build has a red border on the timeline as well as its small
+  error badge.
+- When an edge or face a Fillet, Chamfer, Draft, Shell or face tool used has gone after
+  an earlier feature was changed, the feature says which one and what to do, for example
+  "Edge5 of Pad no longer exists. Edit Fillet to remove it or pick another.", and its
+  panel lists the reference as missing so it can be removed and picked again.
+- A feature panel says at its top why the feature cannot be built while a value is
+  wrong, and again if OK is pressed on it, instead of only in the Report view.
+
+### Changed
+
+- Extrude, Revolve, Hole, Sweep, Loft and Coil with nothing selected wait for a click
+  in the 3D view, as in Fusion, instead of listing sketches by name. Click a region of
+  a sketch to build from that region, or a curve to use the whole sketch. The body's
+  sketches are shown while it waits, so another region of a sketch you have already
+  used is one click away, and more regions can be added once the feature has started.
+- L and the Line button in a sketch draw lines one after another from the end of the
+  last, as Fusion's Line does, until Esc. M switches the next segment to an arc. The
+  single line is still in the Create menu as Single Line (G, L).
+- The editor for stored preferences is called Edit Stored Preferences instead of Edit
+  Parameters, so searching the commands for parameters no longer leads to it.
+- The model tree now groups a body's contents into Sketches, Construction and History
+  folders, with the origin kept on its own row. A row only goes grey when it is rolled
+  back, and a hidden row just shows its crossed eye instead of going grey. Turn it
+  off under Preferences > Display > UI, "Group body contents into folders".
+- The timeline now shows the history of whichever body you last selected, not just the
+  active one, and acting on it from there activates that body first.
+
+### Fixed
+
+- The New body operation of Extrude, Revolve, Sweep, Loft, Coil and the primitives now
+  makes a new body. Before, the body the feature was made in lost everything that came
+  before it and no new body appeared. On OK the feature moves into a body of its own,
+  which becomes the active one, and the whole thing is one undo step.
+- Select Other on the ribbon, in a menu or from the command palette did nothing, as it
+  looked under the pointer while the pointer was on the button. It now waits for a click
+  in the 3D view and opens its menu there. Esc stops it waiting.
+- A sketch dimension that would over-constrain the sketch is added as a driven dimension,
+  as in Fusion, with a note in the status bar. Before, it went in as a driving one, and
+  typing a different value into it left the sketch in conflict with none of its
+  dimensions editable.
+- The steps of a MultiTransform no longer show on the timeline as features of their own.
+  Stepping the history could stop on one and make it the body's tip.
+- Extrude and the other profile tools open ready to pick regions only when the sketch
+  cannot be used whole, where the region they start on is just a stand-in. A sketch
+  such as a square with a hole no longer opens in picking mode, and editing a feature
+  no longer sets the first click to replace the regions picked before.
+- Moving a body's first feature to another body (Move object to other body in the tree)
+  no longer empties the body it came from.
+- The Tasks panel on the right-hand overlay is no longer cut off at the edge of the
+  screen when a sketch's panels need more width than the overlay had. The overlay grows
+  while they need it and goes back to its own width afterwards.
+
 ## [26.4.0] - 2026-09-25
 
 The first FuCadUp release. It carries on from FuCad 26.3.2 with a new name, a reworked

@@ -48,6 +48,7 @@ class DocumentObjectItem;
 class DocumentObjectData;
 using DocumentObjectDataPtr = std::shared_ptr<DocumentObjectData>;
 class TreeWidgetItemDelegate;
+struct TreeFolder;
 
 class DocumentItem;
 class Command;
@@ -100,6 +101,14 @@ public:
 
     static const int DocumentType;
     static const int ObjectType;
+    static const int FolderType;
+
+    /// The row's parent, skipping folder rows: what the row belongs to in the document.
+    static QTreeWidgetItem* logicalParent(QTreeWidgetItem* item);
+    /// Object rows under an item, looking one level into its folder rows.
+    static QList<DocumentObjectItem*> objectChildren(QTreeWidgetItem* item);
+    /// Re-read every object's folders, after the BodyFolders preference changed.
+    void refreshFolders();
 
     void markItem(const App::DocumentObject* Obj, bool mark);
     void syncView(ViewProviderDocumentObject* vp);
@@ -328,6 +337,7 @@ private:
 
     friend class DocumentItem;
     friend class DocumentObjectItem;
+    friend class FolderItem;
     friend class TreeParams;
     friend class TreeWidgetItemDelegate;
 
@@ -464,6 +474,18 @@ private:
     ExpandInfoPtr _ExpandInfo;
     void restoreItemExpansion(const ExpandInfoPtr&, DocumentObjectItem*);
 
+    void populateFolders(DocumentObjectItem* item, bool checkHidden, bool& updated);
+    bool placeChild(
+        DocumentObjectItem* item,
+        QTreeWidgetItem* container,
+        int index,
+        App::DocumentObject* child,
+        std::unordered_map<App::DocumentObject*, DocumentObjectItem*>& pool,
+        bool checkHidden,
+        bool& updated
+    );
+    static void moveRow(QTreeWidgetItem* row, QTreeWidgetItem* container, int index);
+
     using Connection = fastsignals::connection;
     Connection connectNewObject;
     Connection connectDelObject;
@@ -497,6 +519,8 @@ public:
     void testStatus(bool resetStatus, QIcon& icon1, QIcon& icon2);
     void testStatus(bool resetStatus);
     bool isVisibleInTree() const;
+    /// Whether the row's text is greyed out, as of its last status update
+    bool isGreyed() const;
     void displayStatusInfo();
 
     QVariant data(int column, int role) const override;
@@ -552,9 +576,10 @@ public:
     int isParentGroup() const;
 
     DocumentObjectItem* getParentItem() const;
-    DocumentObjectItem* getNextSibling() const;
-    DocumentObjectItem* getPreviousSibling() const;
     TreeWidget* getTree() const;
+
+    /// The row icon with the visibility eye in front: [eye][spacing][icon]
+    static QIcon composeVisibilityIcon(QStyle* style, bool canToggle, bool visible, const QIcon& original);
 
 private:
     void setCheckState(bool checked);
@@ -579,6 +604,47 @@ private:
 
     friend class TreeWidget;
     friend class DocumentItem;
+    friend class FolderItem;
+};
+
+/** A folder row that groups some of an object row's children.
+ *
+ * Owned by the object row it sits under. It is not a document object: it can't be
+ * selected, renamed or dragged. TreeWidget::logicalParent() skips it, so everything
+ * that asks for an object's parent still gets the owner.
+ */
+class FolderItem: public QTreeWidgetItem
+{
+public:
+    explicit FolderItem(std::string key);
+
+    const std::string& key() const
+    {
+        return myKey;
+    }
+    DocumentObjectItem* ownerItem() const;
+    /// Label, count and icon from the view provider's folder
+    void applyFolder(const TreeFolder& folder);
+    QList<DocumentObjectItem*> objectItems() const;
+    /// Whether the folder opens by default, which is what the saved expansion is kept against
+    bool expandedByDefault() const
+    {
+        return defaultOpen;
+    }
+
+    /// Redraws the eye when the folder's visibility changed, or always with reset
+    void updateStatus(bool reset = false);
+    /// Whether any object in the folder is shown
+    bool anyVisible() const;
+    /// Hides every object in the folder if any is shown, otherwise shows them all, as one
+    /// undo step
+    void toggleVisibility();
+
+private:
+    std::string myKey;
+    QIcon baseIcon;
+    bool defaultOpen {false};
+    int myStatus {-1};
 };
 
 class TreePanel: public QWidget

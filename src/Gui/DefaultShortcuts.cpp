@@ -107,9 +107,12 @@ const std::unordered_map<std::string_view, const char*> shortcuts = {
     {"Std_Measure", "I"},
     {"Std_SetAppearance", "A"},
     {"Std_CommandPalette", "S"},
+    // Fusion's J is its one Joint command; the fixed joint's panel changes the type.
+    {"Assembly_CreateJointFixed", "J"},
 
-    // Sketching, live only inside a sketch.
-    {"Sketcher_CreateLine", "L"},
+    // Sketching, live only inside a sketch. L is the polyline, which carries on from the
+    // end of each segment the way Fusion's Line does; the single line keeps "G, L".
+    {"Sketcher_CreatePolyline", "L"},
     {"Sketcher_CompCreateRectangles", "R"},
     {"Sketcher_CreateCircle", "C"},
     {"Sketcher_Dimension", "D"},

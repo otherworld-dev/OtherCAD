@@ -92,7 +92,7 @@ void TaskThicknessParameters::initControls()
 
     std::vector<std::string> strings = thickness->Base.getSubValues();
     for (const auto& string : strings) {
-        ui->listWidgetReferences->addItem(QString::fromStdString(string));
+        addReferenceItem(ui->listWidgetReferences, string);
     }
 
     setupConnections();

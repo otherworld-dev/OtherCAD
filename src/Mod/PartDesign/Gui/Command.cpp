@@ -68,9 +68,11 @@
 #include "PatternDefaults.h"
 #include "PatternFeaturePicker.h"
 #include "ReferenceSelection.h"
+#include "SketchPlanePicker.h"
 #include "SketchWorkflow.h"
 #include "TaskFeaturePick.h"
 #include "TaskPatternParameters.h"
+#include "TaskSketchBasedParameters.h"
 #include "Utils.h"
 #include "WorkflowManager.h"
 #include "ViewProvider.h"
@@ -951,6 +953,140 @@ std::vector<std::string> defaultProfileRegion(App::DocumentObject* profile)
     return {Sketcher::SketchObject::internalPrefix() + "Face1"};
 }
 
+namespace
+{
+
+/// What a profile feature can start from when it is picked in the 3D view: a sketch of
+/// the body, clicked on one of its regions or curves, or a planar face of the body's solid.
+class ProfilePickGate: public PartDesignGui::ReferenceSelection
+{
+public:
+    explicit ProfilePickGate(PartDesign::Body* body)
+        : ReferenceSelection(nullptr, planarFaces())
+        , body(body)
+    {}
+
+    bool allow(App::Document* document, App::DocumentObject* object, const char* subName) override
+    {
+        if (!object || !body || document != body->getDocument()) {
+            return false;
+        }
+        if (object->isDerivedFrom<Part::Part2DObject>()) {
+            return body->hasObject(object);
+        }
+        if (object->isDerivedFrom<App::DatumElement>()) {
+            return false;
+        }
+        return ReferenceSelection::allow(document, object, subName);
+    }
+
+private:
+    static PartDesignGui::AllowSelectionFlags planarFaces()
+    {
+        PartDesignGui::AllowSelectionFlags flags;
+        flags.setFlag(PartDesignGui::AllowSelection::FACE);
+        flags.setFlag(PartDesignGui::AllowSelection::PLANAR);
+        return flags;
+    }
+
+    PartDesign::Body* body;
+};
+
+/// The regions among the sub-elements picked on a sketch, named the way a profile names
+/// them. A click on a curve gives none, which stands for the whole sketch.
+std::vector<std::string> pickedRegions(const std::vector<std::string>& subs)
+{
+    const std::string& prefix = Sketcher::SketchObject::internalPrefix();
+    std::vector<std::string> regions;
+    for (std::string sub : subs) {
+        if (const std::size_t dot = sub.rfind('.'); dot != std::string::npos) {
+            sub = sub.substr(dot + 1);
+        }
+        if (sub.rfind(prefix, 0) == 0) {
+            sub = sub.substr(prefix.size());
+        }
+        // The shape of a sketch has no faces of its own, so a face is always a region
+        if (sub.size() > 4 && sub.rfind("Face", 0) == 0) {
+            regions.push_back(prefix + sub);
+        }
+    }
+    return regions;
+}
+
+/// With nothing selected, a profile command waits for a click in the 3D view the way
+/// Fusion's do, rather than listing sketches by name. The body's sketches are shown while
+/// it waits, those already used included, since picking another region of one of them is
+/// the usual next step.
+void pickProfile(
+    PartDesign::Body* body,
+    Gui::Command* cmd,
+    const std::string& which,
+    std::function<void(App::DocumentObject*, const std::vector<std::string>&)> build
+)
+{
+    auto shown = std::make_shared<std::vector<App::DocumentObjectT>>();
+    for (App::DocumentObject* obj : body->Group.getValues()) {
+        // What lies past the insert point is rolled back, and is no profile for now
+        if (obj->isDerivedFrom<Part::Part2DObject>() && !obj->Visibility.getValue()
+            && !body->isAfterInsertPoint(obj)) {
+            obj->Visibility.setValue(true);
+            shown->emplace_back(obj);
+        }
+    }
+
+    const bool wholeSketchOnly = which == "Hole";
+    auto picked = std::make_shared<std::vector<std::string>>();
+
+    auto onPick = [picked, wholeSketchOnly]() -> App::DocumentObject* {
+        std::vector<Gui::SelectionObject> selection = Gui::Selection().getSelectionEx();
+        if (selection.empty() || !selection.front().getObject()) {
+            return nullptr;
+        }
+        App::DocumentObject* object = selection.front().getObject();
+        *picked = selection.front().getSubNames();
+        if (object->isDerivedFrom<Part::Part2DObject>()) {
+            *picked = wholeSketchOnly ? std::vector<std::string>() : pickedRegions(*picked);
+        }
+        return object;
+    };
+
+    auto onDone = [shown, picked, build](App::DocumentObject* object) {
+        for (const App::DocumentObjectT& sketchT : *shown) {
+            if (App::DocumentObject* sketch = sketchT.getObject()) {
+                sketch->Visibility.setValue(false);
+            }
+        }
+        if (!object) {
+            return;
+        }
+        Gui::Selection().clearSelection();
+        // A feature started on a region opens ready to take more of them, as in Fusion
+        PartDesignGui::pickRegionsOnOpen(!picked->empty());
+        build(object, *picked);
+        PartDesignGui::pickRegionsOnOpen(false);
+    };
+
+    QString title = QCoreApplication::translate(cmd->className(), cmd->getMenuText());
+    title.remove(QLatin1Char('&'));
+
+    PartDesignGui::TaskDlgWaitForPick::Options options {
+        .title = title,
+        .pixmap = cmd->getPixmap(),
+        .panelText = QObject::tr(
+            "Select a sketch region, a sketch or a planar face of the body to build from."
+        ),
+        .hint = QObject::tr("select a region, sketch or face"),
+        .panelName = QStringLiteral("PartDesignGui__TaskProfilePick"),
+        .makeGate = [body]() -> Gui::SelectionGate* { return new ProfilePickGate(body); },
+    };
+    Gui::Control().showDialog(
+        new PartDesignGui::TaskDlgWaitForPick(body, std::move(options), onPick, onDone),
+        body->getDocument()
+    );
+}
+
+}  // namespace
+
 void prepareProfileBased(
     PartDesign::Body* pcActiveBody,
     Gui::Command* cmd,
@@ -995,8 +1131,7 @@ void prepareProfileBased(
         if (std::all_of(cmdSubs.begin(), cmdSubs.end(), [](const std::string& sub) {
                 return sub.empty();
             })) {
-            if (std::vector<std::string> region = defaultProfileRegion(feature);
-                !region.empty()) {
+            if (std::vector<std::string> region = defaultProfileRegion(feature); !region.empty()) {
                 cmdSubs = std::move(region);
             }
         }
@@ -1172,14 +1307,6 @@ void prepareProfileBased(
     std::vector<App::DocumentObject*>::iterator firstFreeSketch;
     validateSketches(sketches, status, firstFreeSketch);
 
-    auto accepter = [=](const std::vector<App::DocumentObject*>& features) -> bool {
-        if (features.empty()) {
-            return false;
-        }
-
-        return true;
-    };
-
     auto sketch_worker = [base_worker](std::vector<App::DocumentObject*> features) {
         base_worker(features.front(), {});
     };
@@ -1268,12 +1395,7 @@ void prepareProfileBased(
         }
 
         Gui::Selection().clearSelection();
-        pickDlg = new PartDesignGui::TaskDlgFeaturePick(sketches, status, accepter, sketch_worker, true);
-        // Logically dead code because 'bNoSketchWasSelected' must be true
-        // if (!bNoSketchWasSelected && extReference)
-        //    pickDlg->showExternal(true);
-
-        Gui::Control().showDialog(pickDlg, cmd->getDocument());
+        pickProfile(pcActiveBody, cmd, which, base_worker);
     }
     else {
         sketch_worker({sketches[0]});
@@ -1340,8 +1462,9 @@ CmdPartDesignExtrude::CmdPartDesignExtrude()
     sAppModule = "PartDesign";
     sGroup = QT_TR_NOOP("PartDesign");
     sMenuText = QT_TR_NOOP("Extrude");
-    sToolTipText
-        = QT_TR_NOOP("Extrudes the selected sketch or profile and joins, cuts or intersects it with the body");
+    sToolTipText = QT_TR_NOOP(
+        "Extrudes the selected sketch or profile and joins, cuts or intersects it with the body"
+    );
     sWhatsThis = "PartDesign_Extrude";
     sStatusTip = sToolTipText;
     sPixmap = "PartDesign_Pad";
@@ -3498,4 +3621,3 @@ void CreatePartDesignCommands()
     rcCmdMgr.addCommand(new CmdPartDesignCompDatums());
     rcCmdMgr.addCommand(new CmdPartDesignCompSketches());
 }
-

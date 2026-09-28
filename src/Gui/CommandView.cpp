@@ -41,11 +41,14 @@
 #include <QFont>
 #include <QFontMetrics>
 #include <QImageReader>
+#include <QKeyEvent>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPointer>
 #include <QSignalBlocker>
 #include <QTextStream>
+#include <QTimer>
 #include <QToolButton>
 
 #include <App/ComplexGeoDataPy.h>
@@ -4040,6 +4043,46 @@ bool StdCmdAlignToSelection::isActive()
 // Std_ClarifySelection
 //===========================================================================
 
+namespace
+{
+
+SbVec2s viewPoint(QWidget* widget, const QPoint& local);
+void showClarifyMenu(View3DInventorViewer* viewer, SbVec2s point, QPoint globalPos);
+
+/// Waits for the left click in the 3D view that says where Select Other should look.
+/// Esc, or a click anywhere else or with another button, gives up.
+class ClarifyClickWaiter: public QObject
+{
+public:
+    explicit ClarifyClickWaiter(View3DInventorViewer* viewer);
+    ~ClarifyClickWaiter() override;
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
+private:
+    void finish();
+
+    QPointer<View3DInventorViewer> viewer;
+    bool finished = false;
+
+    static ClarifyClickWaiter* current;
+};
+
+ClarifyClickWaiter* ClarifyClickWaiter::current = nullptr;
+
+/// Eats the release of a press that was taken, so the view does not see half a click
+class ReleaseSwallower: public QObject
+{
+public:
+    explicit ReleaseSwallower(QWidget* widget);
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+};
+
+}  // namespace
+
 DEF_STD_CMD_A(StdCmdClarifySelection)
 
 StdCmdClarifySelection::StdCmdClarifySelection()
@@ -4080,21 +4123,50 @@ void StdCmdClarifySelection::activated(int iMsg)
 
     // check if we have a stored right-click position (context menu) or should use current cursor
     // position (keyboard shortcut)
-    SbVec2s point;
     auto& storedPosition = viewer->navigationStyle()->getRightClickPosition();
     if (storedPosition.has_value()) {
-        point = storedPosition.value();
-    }
-    else {
-        QPoint pos = QCursor::pos();
-        QPoint local = widget->mapFromGlobal(pos);
-
+        SbVec2s point = storedPosition.value();
         qreal devicePixelRatio = widget->devicePixelRatioF();
-        point = SbVec2s(
-            static_cast<short>(local.x() * devicePixelRatio),
-            static_cast<short>((widget->height() - local.y() - 1) * devicePixelRatio)
+        int logicalHeight = static_cast<int>(widget->height());
+        QPoint localPos(
+            static_cast<int>(point[0] / devicePixelRatio),
+            logicalHeight - static_cast<int>(point[1] / devicePixelRatio) - 1
         );
+        showClarifyMenu(viewer, point, widget->mapToGlobal(localPos));
+        return;
     }
+
+    QPoint local = widget->mapFromGlobal(QCursor::pos());
+    if (!widget->rect().contains(local)) {
+        // Run from the ribbon, a menu or the command palette: the pointer is not over the
+        // view, so there is nothing under it yet. The next click in the view says where.
+        new ClarifyClickWaiter(viewer);
+        return;
+    }
+
+    showClarifyMenu(viewer, viewPoint(widget, local), QCursor::pos());
+}
+
+bool StdCmdClarifySelection::isActive()
+{
+    return qobject_cast<View3DInventor*>(getMainWindow()->activeWindow()) != nullptr;
+}
+
+namespace
+{
+
+SbVec2s viewPoint(QWidget* widget, const QPoint& local)
+{
+    qreal devicePixelRatio = widget->devicePixelRatioF();
+    return SbVec2s(
+        static_cast<short>(local.x() * devicePixelRatio),
+        static_cast<short>((widget->height() - local.y() - 1) * devicePixelRatio)
+    );
+}
+
+void showClarifyMenu(View3DInventorViewer* viewer, SbVec2s point, QPoint globalPos)
+{
+    QWidget* widget = viewer->getGLWidget();
 
     // Use ray picking to get all objects under cursor
     SoRayPickAction pickAction(viewer->getSoRenderManager()->getViewportRegion());
@@ -4193,29 +4265,109 @@ void StdCmdClarifySelection::activated(int iMsg)
         return;
     }
 
-    QPoint globalPos;
-    if (storedPosition.has_value()) {
-        qreal devicePixelRatio = widget->devicePixelRatioF();
-        int logicalHeight = static_cast<int>(widget->height());
-        QPoint localPos(
-            static_cast<int>(point[0] / devicePixelRatio),
-            logicalHeight - static_cast<int>(point[1] / devicePixelRatio) - 1
-        );
-        globalPos = widget->mapToGlobal(localPos);
-    }
-    else {
-        globalPos = QCursor::pos();
-    }
-
     // Use SelectionMenu to display and handle the pick menu
     SelectionMenu contextMenu(widget);
     contextMenu.doPick(selections, globalPos);
 }
 
-bool StdCmdClarifySelection::isActive()
+ClarifyClickWaiter::ClarifyClickWaiter(View3DInventorViewer* viewer)
+    : QObject(viewer->getGLWidget())
+    , viewer(viewer)
 {
-    return qobject_cast<View3DInventor*>(getMainWindow()->activeWindow()) != nullptr;
+    // One wait at a time: running the command again starts it over
+    if (current) {
+        current->finish();
+    }
+    current = this;
+    qApp->installEventFilter(this);
+    getMainWindow()->showMessage(
+        QObject::tr("Select Other: click in the 3D view to choose from what is under the pointer")
+    );
 }
+
+ClarifyClickWaiter::~ClarifyClickWaiter()
+{
+    // Closing the view deletes a waiter that never finished
+    if (current == this) {
+        current = nullptr;
+    }
+}
+
+bool ClarifyClickWaiter::eventFilter(QObject* watched, QEvent* event)
+{
+    QWidget* widget = viewer ? viewer->getGLWidget() : nullptr;
+    if (!widget) {
+        finish();
+        return false;
+    }
+
+    switch (event->type()) {
+        case QEvent::KeyPress:
+            if (static_cast<QKeyEvent*>(event)->key() == Qt::Key_Escape) {
+                finish();
+                return true;
+            }
+            break;
+        case QEvent::MouseButtonPress: {
+            auto* mouse = static_cast<QMouseEvent*>(event);
+            if (watched != widget || mouse->button() != Qt::LeftButton) {
+                // A click anywhere else, or with another button, and the user has moved on
+                if (watched->isWidgetType()) {
+                    finish();
+                }
+                break;
+            }
+            // The press is ours, and so is its release: the view must not select as well
+            new ReleaseSwallower(widget);
+            QPoint local = mouse->position().toPoint();
+            QPoint global = mouse->globalPosition().toPoint();
+            QPointer<View3DInventorViewer> target = viewer;
+            finish();
+            // The menu runs its own event loop, which must not start inside an event filter
+            QTimer::singleShot(0, [target, local, global]() {
+                if (target && target->getGLWidget()) {
+                    showClarifyMenu(target, viewPoint(target->getGLWidget(), local), global);
+                }
+            });
+            return true;
+        }
+        default:
+            break;
+    }
+    return false;
+}
+
+void ClarifyClickWaiter::finish()
+{
+    if (finished) {
+        return;
+    }
+    finished = true;
+    if (current == this) {
+        current = nullptr;
+    }
+    qApp->removeEventFilter(this);
+    getMainWindow()->showMessage(QString());
+    deleteLater();
+}
+
+ReleaseSwallower::ReleaseSwallower(QWidget* widget)
+    : QObject(widget)
+{
+    widget->installEventFilter(this);
+}
+
+bool ReleaseSwallower::eventFilter(QObject* watched, QEvent* event)
+{
+    Q_UNUSED(watched);
+    if (event->type() == QEvent::MouseButtonRelease) {
+        deleteLater();
+        return true;
+    }
+    return false;
+}
+
+}  // namespace
 
 //===========================================================================
 // Instantiation

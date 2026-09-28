@@ -103,6 +103,12 @@ protected:
     virtual void setButtons(const selectionModes mode) = 0;
     static void removeItemFromListWidget(QListWidget* widget, const char* itemstr);
 
+public:
+    /// Lists one reference of the feature. One whose element has gone, which an edit of an
+    /// earlier feature can cause, is marked so it can be found, removed and picked again.
+    static void addReferenceItem(QListWidget* widget, const std::string& sub);
+
+protected:
     ViewProviderDressUp* getDressUpView() const;
 
 private:

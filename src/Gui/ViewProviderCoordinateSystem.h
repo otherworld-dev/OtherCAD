@@ -70,6 +70,7 @@ public:
     void attach(App::DocumentObject* pcObject) override;
     std::vector<std::string> getDisplayModes() const override;
     void setDisplayMode(const char* ModeName) override;
+    QString getTreeLabel() const override;
     ///@}
 
     /** @name Temporary visibility mode

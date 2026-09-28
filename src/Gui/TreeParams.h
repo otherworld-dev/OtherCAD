@@ -495,6 +495,20 @@ public:
     static const char* docVisibilityIcon();
     static void onVisibilityIconChanged();
     //@}
+
+    // Auto generated code (Tools/params_utils.py:138)
+    //@{
+    /// Accessor for parameter BodyFolders
+    ///
+    /// Show a body's sketches, construction geometry and feature history under folder rows
+    /// instead of one flat list.
+    static const bool& getBodyFolders();
+    static const bool& defaultBodyFolders();
+    static void removeBodyFolders();
+    static void setBodyFolders(const bool& v);
+    static const char* docBodyFolders();
+    static void onBodyFoldersChanged();
+    //@}
     //[[[end]]]
 
     static void refreshTreeViews();

@@ -572,12 +572,14 @@ void Revolved::setResult(const TopoShape& base, const TopoShape& revolved, bool 
     // set the additive shape property for later usage in e.g. pattern
     this->AddSubShape.setValue(result);
 
+    if (keepBaseForNewBody(base)) {
+        return;
+    }
+
     if (!base.isNull() && combineWithBase && combinesWithBase()) {
         result = combineShapes(base, result);
         if (result.countSubShapes(TopAbs_SOLID) == 0) {
-            throw Base::RuntimeError(
-                QT_TRANSLATE_NOOP("Exception", "Resulting shape is empty")
-            );
+            throw Base::RuntimeError(QT_TRANSLATE_NOOP("Exception", "Resulting shape is empty"));
         }
         // store shape before refinement
         this->rawShape = result;

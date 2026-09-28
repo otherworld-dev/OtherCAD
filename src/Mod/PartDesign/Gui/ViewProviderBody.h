@@ -77,6 +77,11 @@ public:
 
     bool onDelete(const std::vector<std::string>&) override;
 
+    /// Sketches, Construction and History, unless the BodyFolders preference is off
+    std::vector<Gui::TreeFolder> claimChildrenFolders() const override;
+    /// Past the timeline's playhead, read the way TimelineWidget::defaultPlayhead() reads it
+    bool isChildRolledBack(const App::DocumentObject* child) const override;
+
     /// Update the children's highlighting when triggered
     void updateData(const App::Property* prop) override;
     /// unify children visuals
@@ -123,6 +128,9 @@ private:
     void onChangedObject(const Gui::ViewProvider& vp, const App::Property& prop);
     fastsignals::scoped_connection m_ChangedConn;
     void refreshOverlays();
+    /// Has the tree restyle the rows of the Group's objects, or only of those that are not
+    /// PartDesign features: a Tip change already reaches those through setTipIcon()
+    void refreshRollbackRows(bool includeFeatures);
 };
 
 }  // namespace PartDesignGui
