@@ -38,6 +38,7 @@ import FreeCADGui
 from PySide import QtWidgets
 
 RIGHT_OVERLAY = "User parameter:BaseApp/MainWindow/DockWindows/OverlayRight"
+VIEW = "User parameter:BaseApp/Preferences/View"
 NARROW = 200
 
 
@@ -165,6 +166,12 @@ class TestOverlayPanelWidth(unittest.TestCase):
             f"{FreeCADGui.ActiveDocument.getInEdit()}",
         )
         wider = overlay.width() + 120
+
+        # Opening the dialog also asks the overlay manager to lay the overlays out again,
+        # after its layout delay. Left pending, that would put the overlay in place after
+        # the box below is added and hide whether the overlay reacts to the box itself.
+        delay = FreeCAD.ParamGet(VIEW).GetInt("DockOverlayDelay", 200)
+        self._process_events(delay + 300)
 
         # A box is added to the dialog, as a real one does. Setting the task view's own
         # minimum instead does not stick: it measures its content again whenever that
