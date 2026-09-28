@@ -494,9 +494,14 @@ class TestFolderInteraction(TreeFoldersBase):
 
     def test_search_finds_an_object_inside_a_folder(self):
         # The tree only opens rows to a new selection while it syncs with the selection
-        saved_sync = self.params.GetBool("SyncSelection", True)
+        # Put back as found: a key that was not in user.cfg is taken out again
+        if "SyncSelection" in self.params.GetBools():
+            self.addCleanup(
+                self.params.SetBool, "SyncSelection", self.params.GetBool("SyncSelection")
+            )
+        else:
+            self.addCleanup(self.params.RemBool, "SyncSelection")
         self.params.SetBool("SyncSelection", True)
-        self.addCleanup(self.params.SetBool, "SyncSelection", saved_sync)
         folder = self._folder("Construction")
         folder.setExpanded(False)
         body = self._item_of(self.body)
@@ -822,6 +827,64 @@ class TestFolderEyeAndExpansion(TreeFoldersBase):
         self.body = self.doc.getObject("Body")
         self.assertTrue(self._folder("Construction").isExpanded())
         self.assertFalse(self._folder("Sketches").isExpanded())
+
+    def test_a_file_from_before_the_folders_opens_them_at_their_defaults(self):
+        import os
+        import re
+        import shutil
+        import tempfile
+        import xml.etree.ElementTree as ElementTree
+        import zipfile
+
+        tmp = tempfile.mkdtemp(prefix="TestBrowserFolders")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        # Away from their defaults, so a file that kept them would show it
+        self._folder("Construction").setExpanded(True)
+        self._folder("History").setExpanded(True)
+        self._folder("Sketches").setExpanded(False)
+        _process_events()
+        saved = os.path.join(tmp, "saved.FCStd")
+        self.doc.saveAs(saved)
+
+        # The file as a build without folders wrote it: no "Body#Folder" expansion entries
+        stripped = []
+
+        def strip(root):
+            for parent in list(root.iter()):
+                for child in list(parent):
+                    if child.tag == "Expand" and "#" in child.get("name", ""):
+                        parent.remove(child)
+                        stripped.append(child.get("name"))
+            for expand in root.iter("Expand"):
+                if expand.get("count") is None:
+                    continue
+                count = len([c for c in expand if c.tag == "Expand"])
+                if count or expand.get("name") is None:
+                    expand.set("count", str(count))
+                else:
+                    del expand.attrib["count"]  # as the writer leaves an entry with none
+
+        path = os.path.join(tmp, self.doc_name + ".FCStd")
+        with zipfile.ZipFile(saved) as source, zipfile.ZipFile(path, "w") as target:
+            for info in source.infolist():
+                data = source.read(info.filename)
+                if info.filename == "GuiDocument.xml":
+                    root = ElementTree.fromstring(data)
+                    strip(root)
+                    data = ElementTree.tostring(root, encoding="utf-8", xml_declaration=True)
+                target.writestr(info, data)
+        self.assertTrue(stripped, "the saved file had no folder expansion entries")
+        self.assertFalse([n for n in stripped if not re.match(r"Body#\w+~?$", n)])
+
+        self._held = []  # as tearDown does, before the rows go
+        FreeCAD.closeDocument(self.doc.Name)
+        _process_events(200)
+        self.doc = FreeCAD.openDocument(path)
+        _process_events(500)
+        self.body = self.doc.getObject("Body")
+        self.assertTrue(self._folder("Sketches").isExpanded())
+        self.assertFalse(self._folder("Construction").isExpanded())
+        self.assertFalse(self._folder("History").isExpanded())
 
 
 class TestOriginNames(TreeFoldersBase):
