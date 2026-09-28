@@ -37,6 +37,12 @@ from upstream FreeCAD merges are not listed, only the work done in this fork.
   single line is still in the Create menu as Single Line (G, L).
 - The editor for stored preferences is called Edit Stored Preferences instead of Edit
   Parameters, so searching the commands for parameters no longer leads to it.
+- The model tree now groups a body's contents into Sketches, Construction and History
+  folders, with the origin kept on its own row. A row only goes grey when it is rolled
+  back, and a hidden row still shows its crossed eye rather than disappearing. Turn it
+  off under Preferences > Display > UI, "Group body contents into folders".
+- The timeline now shows the history of whichever body you last selected, not just the
+  active one, and acting on it from there activates that body first.
 
 ### Fixed
 
