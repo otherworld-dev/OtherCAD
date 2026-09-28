@@ -437,7 +437,16 @@ void QuantitySpinBox::evaluateExpression()
 
 void Gui::QuantitySpinBox::setNumberExpression(App::NumberExpression* expr)
 {
-    updateEdit(getUserString(expr->getQuantity()));
+    Q_D(QuantitySpinBox);
+    Base::Quantity quantity = expr->getQuantity();
+    // A dimensionless expression result inherits the widget's required unit
+    // without rescaling, matching expression/property assignment semantics.
+    // The displayed input unit may use a different scale.
+    // see: https://github.com/FreeCAD/FreeCAD/issues/32968
+    if (quantity.isDimensionless() && d->unit != Base::Unit::One) {
+        quantity.setUnit(d->unit);
+    }
+    updateEdit(getUserString(quantity));
     handlePendingEmit();
 }
 
