@@ -38,6 +38,7 @@ import FreeCADGui
 from PySide import QtWidgets
 
 RIGHT_OVERLAY = "User parameter:BaseApp/MainWindow/DockWindows/OverlayRight"
+VIEW = "User parameter:BaseApp/Preferences/View"
 NARROW = 200
 
 
@@ -109,6 +110,31 @@ class TestOverlayPanelWidth(unittest.TestCase):
     def _mdi(self):
         return self.window.findChild(QtWidgets.QMdiArea)
 
+    def _settle(self, overlay, timeout=3.0):
+        """Wait until the panel has the width it asks for and the overlay holds it.
+
+        A new minimum reaches the overlay as a chain of posted events (the panel, the
+        dock's layout, the splitter, the overlay), and the task view sets its own minimum
+        again from a timer. A fixed wait can land part-way through that, which on a cold
+        start it did: the dock still held a stale minimum and the overlay was 32 px short.
+        """
+        tasks = overlay.findChild(QtWidgets.QDockWidget, "Tasks")
+        app = QtWidgets.QApplication.instance()
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            FreeCADGui.updateGui()
+            app.processEvents()
+            panel = tasks.widget()
+            needed = max(panel.minimumWidth(), panel.minimumSizeHint().width())
+            if (
+                overlay.isVisible()
+                and panel.minimumWidth() >= panel.minimumSizeHint().width()
+                and tasks.width() >= needed
+                and overlay.width() >= tasks.width()
+            ):
+                return
+            time.sleep(0.02)
+
     def testTheOverlayIsWideEnoughForTheSketchPanels(self):
         FreeCADGui.ActiveDocument.setEdit(self.sketch.Name)
         self._process_events(500)
@@ -116,6 +142,7 @@ class TestOverlayPanelWidth(unittest.TestCase):
         self._process_events(500)
 
         overlay = self._tasks_overlay()
+        self._settle(overlay)
         tasks = overlay.findChild(QtWidgets.QDockWidget, "Tasks")
         self.assertGreater(
             tasks.minimumSizeHint().width(), NARROW, "the sketch panels no longer need more room"
@@ -130,10 +157,7 @@ class TestOverlayPanelWidth(unittest.TestCase):
 
         FreeCADGui.ActiveDocument.setEdit(self.sketch.Name)
         overlay = self._tasks_overlay()
-        deadline = time.monotonic() + 3.0
-        while not overlay.isVisible() and time.monotonic() < deadline:
-            self._process_events(100)
-        self._process_events(300)
+        self._settle(overlay)
         tasks = overlay.findChild(QtWidgets.QDockWidget, "Tasks")
         self.assertTrue(
             overlay.isVisible(),
@@ -141,18 +165,29 @@ class TestOverlayPanelWidth(unittest.TestCase):
             f"{tasks.isVisible()}, dialog {FreeCADGui.Control.activeDialog()}, edit "
             f"{FreeCADGui.ActiveDocument.getInEdit()}",
         )
-        tasks = overlay.findChild(QtWidgets.QDockWidget, "Tasks")
         wider = overlay.width() + 120
 
-        tasks.widget().setMinimumWidth(wider)
+        # Opening the dialog also asks the overlay manager to lay the overlays out again,
+        # after its layout delay. Left pending, that would put the overlay in place after
+        # the box below is added and hide whether the overlay reacts to the box itself.
+        delay = FreeCAD.ParamGet(VIEW).GetInt("DockOverlayDelay", 200)
+        self._process_events(delay + 300)
+
+        # A box is added to the dialog, as a real one does. Setting the task view's own
+        # minimum instead does not stick: it measures its content again whenever that
+        # lays out, and puts its minimum back to what the content needs.
+        content = tasks.widget().currentWidget().findChild(QtWidgets.QScrollArea).widget()
+        box = QtWidgets.QWidget()
+        box.setMinimumWidth(wider)
+        content.layout().addWidget(box)
         try:
-            self._process_events(500)
-            # Its minimumSize(), rather than the hint, is what Qt holds the panel to
+            self._settle(overlay)
             self.assertGreaterEqual(tasks.width(), wider, "the panel did not get its room")
             self.assertLessEqual(tasks.width(), overlay.width(), "the panel is cut off")
             self.assertLessEqual(overlay.geometry().right(), self._mdi().geometry().right())
         finally:
-            tasks.widget().setMinimumWidth(0)
+            content.layout().removeWidget(box)
+            box.deleteLater()
 
     def testTheChosenWidthIsKeptAndComesBack(self):
         FreeCADGui.ActiveDocument.setEdit(self.sketch.Name)
