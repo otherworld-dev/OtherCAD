@@ -823,6 +823,58 @@ class TestOriginNames(TreeFoldersBase):
         xy = self._origin_feature(self.body, "XY_Plane")
         self.assertNotEqual(xy.Label, "XY plane")  # the document keeps the real label
 
+    def _edit_row(self, row, text=None):
+        """Opens the row's editor as F2 would, sets `text` if given, and presses Enter.
+
+        Returns the text the editor opened with.
+        """
+        if QtTest is None:
+            self.skipTest("QtTest is not available in this build")
+        self.tree.setCurrentItem(row)
+        self.tree.editItem(row, 0)
+        _process_events()
+        editors = [
+            e for e in self.tree.viewport().findChildren(QtWidgets.QLineEdit) if e.isVisible()
+        ]
+        if not editors:
+            self.skipTest("The row editor is not on screen in this test environment")
+        editor = editors[0]
+        opened_with = editor.text()
+        if text is not None:
+            editor.setText(text)
+        QtTest.QTest.keyClick(editor, QtCore.Qt.Key_Return)
+        _process_events(300)
+        return opened_with
+
+    def test_renaming_an_origin_row_edits_its_label(self):
+        origin_row = self._item_of(self.body.Origin, self._item_of(self.body), text="Origin")
+        self.assertIsNotNone(origin_row)
+        origin_row.setExpanded(True)
+        _process_events()
+        xy = self._origin_feature(self.body, "XY_Plane")
+        label = xy.Label
+        undo = self.doc.UndoCount
+
+        # F2 and Enter with nothing typed leaves the Label as it was, not the role name
+        row = self._item_of(xy, origin_row, text="XY plane")
+        self.assertIsNotNone(row)
+        self._edit_row(row)
+        self.assertEqual(xy.Label, label)
+        self.assertEqual(self.doc.UndoCount, undo)
+
+        # A real rename edits the Label, and the row still reads by role
+        row = self._item_of(xy, origin_row, text="XY plane")
+        self.assertIsNotNone(row, "the row stopped reading by role")
+        opened_with = self._edit_row(row, "Base plane")
+        self.assertEqual(opened_with, label, "the editor did not open with the Label")
+        self.assertEqual(xy.Label, "Base plane")
+        self.assertEqual(self.doc.UndoCount, undo + 1)
+        _process_events(300)
+        self.assertIsNotNone(
+            self._item_of(xy, origin_row, text="XY plane"),
+            "the renamed row stopped reading by role",
+        )
+
     def test_role_names_go_away_with_the_preference(self):
         # A distinctive Label: App::Origin's own default Label is literally "Origin", so
         # without this, either state's row text could match by coincidence and hide a

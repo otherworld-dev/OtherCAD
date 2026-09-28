@@ -7159,6 +7159,10 @@ QVariant DocumentObjectItem::data(int column, int role) const
             return tip;
         }
     }
+    // A row reading by role (an origin plane's "XY plane") is renamed through its Label
+    if (column == 0 && role == Qt::EditRole && object() && !object()->getTreeLabel().isEmpty()) {
+        return QString::fromUtf8(object()->getObject()->Label.getValue());
+    }
     return QTreeWidgetItem::data(column, role);
 }
 
@@ -7203,6 +7207,14 @@ void DocumentObjectItem::setData(int column, int role, const QVariant& value)
         auto obj = object()->getObject();
         auto& label = column ? obj->Label2 : obj->Label;
 
+        // A row reading by role keeps doing so. Its editor opens with the Label, so
+        // committing it untouched is no rename and leaves no undo entry.
+        const bool byRole = column == 0 && !object()->getTreeLabel().isEmpty();
+        if (byRole && value.toString() == QString::fromUtf8(label.getValue())) {
+            QTreeWidgetItem::setData(column, role, treeText(*myData));
+            return;
+        }
+
         std::ostringstream str;
         str << TreeWidget::tr("Rename").toStdString() << ' ' << getName() << '.' << label.getName();
 
@@ -7213,7 +7225,7 @@ void DocumentObjectItem::setData(int column, int role, const QVariant& value)
         label.setValue(value.toString().toUtf8().constData());
         doc->commitTransaction();
 
-        myValue = QString::fromUtf8(label.getValue());
+        myValue = byRole ? treeText(*myData) : QString::fromUtf8(label.getValue());
     }
     QTreeWidgetItem::setData(column, role, myValue);
 }
