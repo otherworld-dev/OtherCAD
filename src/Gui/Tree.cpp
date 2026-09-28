@@ -505,11 +505,11 @@ void TreeWidgetItemDelegate::initStyleOption(QStyleOptionViewItem* option, const
         return;
     }
 
-    // Clear State_Enabled for invisible objects so QSS ::item:disabled rules can
+    // Clear State_Enabled for greyed out objects so QSS ::item:disabled rules can
     // override the overlay stylesheet's blanket ::item { color } for text fading.
     if (item->type() == TreeWidget::ObjectType) {
         if (auto* docItem = static_cast<DocumentObjectItem*>(item);
-            docItem->object() && !docItem->isVisibleInTree()) {
+            docItem->object() && docItem->isGreyed()) {
             option->state &= ~QStyle::State_Enabled;
         }
     }
@@ -6833,9 +6833,44 @@ enum Status
     Error = 1 << 2,
     Hidden = 1 << 3,
     External = 1 << 4,
-    Freezed = 1 << 5
+    Freezed = 1 << 5,
+    FolderBody = 1 << 6,
+    RolledBack = 1 << 7
 };
+
+// Whether a row is greyed out. In a group showing folders that means rolled back, and a
+// hidden row there keeps its text and only crosses its eye. Anywhere else it means hidden.
+bool isGreyStatus(int status)
+{
+    return (status & Status::FolderBody) ? (status & Status::RolledBack) != 0
+                                         : (status & Status::Visible) == 0;
 }
+
+// The view provider of the group an object belongs to, when that group shows folders. Per
+// object, not per row: DocumentObjectData::testStatus shares one icon across every row of
+// an object. The folders are the ones cached from the group's last children update, as
+// testStatus runs for every object on every status update.
+ViewProviderDocumentObject* folderOwnerOf(
+    App::DocumentObject* obj,
+    const std::unordered_map<App::DocumentObject*, std::set<DocumentObjectDataPtr>>& objectTable
+)
+{
+    auto* group = App::GeoFeatureGroupExtension::getGroupOfObject(obj);
+    if (!group) {
+        return nullptr;
+    }
+    auto it = objectTable.find(group);
+    if (it == objectTable.end()) {
+        return nullptr;
+    }
+    for (const auto& data : it->second) {
+        if (!data->folders.empty()) {
+            return data->viewObject;
+        }
+    }
+    return nullptr;
+}
+}  // namespace
 
 // currentStatus is the status enum built by testStatus()
 // overlays is a reference to the main QIcon that needs overlays added
@@ -7014,6 +7049,11 @@ bool DocumentObjectItem::isVisibleInTree() const
     return visible != 0;
 }
 
+bool DocumentObjectItem::isGreyed() const
+{
+    return previousStatus >= 0 && isGreyStatus(previousStatus);
+}
+
 void DocumentObjectItem::testStatus(bool resetStatus, QIcon& icon1, QIcon& icon2)
 {
     // guard against calling this during destruction when tree widget may be nullptr
@@ -7034,6 +7074,12 @@ void DocumentObjectItem::testStatus(bool resetStatus, QIcon& icon1, QIcon& icon2
         | ((object()->showInTree() ? 0 : 1) << 3) | ((pObject->isError() ? 1 : 0) << 2)
         | ((pObject->isTouched() || pObject->mustExecute() == 1 ? 1 : 0) << 1) | (visible ? 1 : 0);
 
+    if (auto* owner = folderOwnerOf(pObject, getTree()->ObjectTable)) {
+        currentStatus |= Status::FolderBody;
+        if (owner->isChildRolledBack(pObject)) {
+            currentStatus |= Status::RolledBack;
+        }
+    }
 
     if (!resetStatus && previousStatus == currentStatus) {
         return;
@@ -7047,7 +7093,7 @@ void DocumentObjectItem::testStatus(bool resetStatus, QIcon& icon1, QIcon& icon2
     }
 
     QIcon::Mode mode = QIcon::Normal;
-    if (currentStatus & Status::Visible) {
+    if (!isGreyStatus(currentStatus)) {
         // Note: By default the foreground, i.e. text color is invalid
         // to make use of the default color of the tree widget's palette.
         // If we temporarily set this color to dark and reset to an invalid
@@ -7060,7 +7106,7 @@ void DocumentObjectItem::testStatus(bool resetStatus, QIcon& icon1, QIcon& icon2
             this->setData(column, Qt::ForegroundRole, QVariant());
         }
     }
-    else {  // invisible
+    else {  // greyed out
         QStyleOptionViewItem opt;
         // it can happen that a tree item is not attached to the tree widget (#0003025)
         if (this->treeWidget()) {
@@ -7072,7 +7118,13 @@ void DocumentObjectItem::testStatus(bool resetStatus, QIcon& icon1, QIcon& icon2
         mode = QIcon::Disabled;
     }
 
-    QIcon& icon = mode == QIcon::Normal ? icon1 : icon2;
+    // The icons are shared by the object's rows, whose eyes can differ (a row under a link
+    // asks the link). Elsewhere the mode tells the eye apart; in a group showing folders the
+    // mode is the same for every row of an object, so the eye picks the icon instead.
+    const bool firstIcon = (currentStatus & Status::FolderBody)
+        ? (currentStatus & Status::Visible) != 0
+        : mode == QIcon::Normal;
+    QIcon& icon = firstIcon ? icon1 : icon2;
 
     if (icon.isNull()) {
         generateIcon(currentStatus, mode, icon);

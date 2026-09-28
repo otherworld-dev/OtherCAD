@@ -993,6 +993,11 @@ std::vector<TreeFolder> ViewProvider::claimChildrenFolders() const
     return {};
 }
 
+bool ViewProvider::isChildRolledBack(const App::DocumentObject* /*child*/) const
+{
+    return false;
+}
+
 std::vector<App::DocumentObject*> ViewProvider::claimChildrenRecursive() const
 {
     std::vector<App::DocumentObject*> children = claimChildren();

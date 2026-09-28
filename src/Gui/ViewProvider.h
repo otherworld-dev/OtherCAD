@@ -473,6 +473,11 @@ public:
      */
     virtual std::vector<TreeFolder> claimChildrenFolders() const;
 
+    /** Whether a child is past this object's rollback point, i.e. not part of the model
+     * as it stands. The tree greys such rows when this object shows folders.
+     */
+    virtual bool isChildRolledBack(const App::DocumentObject* child) const;
+
     /** deliver the children belonging to this object recursively.
      */
     virtual std::vector<App::DocumentObject*> claimChildrenRecursive() const;

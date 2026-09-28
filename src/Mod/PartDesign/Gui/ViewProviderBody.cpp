@@ -23,6 +23,9 @@
  ***************************************************************************/
 
 
+#include <algorithm>
+#include <unordered_map>
+
 #include <Inventor/actions/SoGetBoundingBoxAction.h>
 #include <QMenu>
 
@@ -46,6 +49,7 @@
 #include <Mod/PartDesign/App/Body.h>
 #include <Mod/PartDesign/App/FeatureSketchBased.h>
 #include <Mod/PartDesign/App/FeatureBase.h>
+#include <Mod/PartDesign/App/FeatureMultiTransform.h>
 #include <Mod/PartDesign/App/ShapeBinder.h>
 
 #include "ViewProviderBody.h"
@@ -89,10 +93,7 @@ ViewProviderBody::ViewProviderBody()
         (),
         "Timeline",
         App::Prop_Hidden,
-        QT_TRANSLATE_NOOP(
-            "App::Property",
-            "Sketches and datums hidden by rolling the timeline back"
-        )
+        QT_TRANSLATE_NOOP("App::Property", "Sketches and datums hidden by rolling the timeline back")
     );
 
     sPixmap = "PartDesign_Body.svg";
@@ -363,8 +364,10 @@ std::vector<Gui::TreeFolder> ViewProviderBody::claimChildrenFolders() const
         if (obj->isDerivedFrom<Part::Part2DObject>()) {
             sketches.objects.push_back(obj);
         }
-        else if (obj->isDerivedFrom<Part::Datum>() || obj->isDerivedFrom<PartDesign::ShapeBinder>()
-                 || obj->isDerivedFrom<PartDesign::SubShapeBinder>()) {
+        else if (
+            obj->isDerivedFrom<Part::Datum>() || obj->isDerivedFrom<PartDesign::ShapeBinder>()
+            || obj->isDerivedFrom<PartDesign::SubShapeBinder>()
+        ) {
             construction.objects.push_back(obj);
         }
         else {
@@ -379,6 +382,94 @@ std::vector<Gui::TreeFolder> ViewProviderBody::claimChildrenFolders() const
         }
     }
     return folders;
+}
+
+bool ViewProviderBody::isChildRolledBack(const App::DocumentObject* child) const
+{
+    auto* body = getObject<PartDesign::Body>();
+    if (!body || !child) {
+        return false;
+    }
+
+    // The timeline's markers (TimelineWidget::collectBodyFeatures): the base feature, then
+    // the Group less the steps of a MultiTransform. A step makes no shape of its own and the
+    // tree shows it under its MultiTransform, so it reads as that does.
+    const auto& group = body->Group.getValues();
+    std::unordered_map<const App::DocumentObject*, const App::DocumentObject*> stepOwner;
+    for (auto* obj : group) {
+        if (auto* multi = freecad_cast<PartDesign::MultiTransform*>(obj)) {
+            for (auto* step : multi->Transformations.getValues()) {
+                stepOwner.emplace(step, multi);
+            }
+        }
+    }
+    if (auto it = stepOwner.find(child); it != stepOwner.end()) {
+        child = it->second;
+    }
+
+    const App::DocumentObject* base = body->BaseFeature.getValue();
+    std::vector<const App::DocumentObject*> markers;
+    markers.reserve(group.size() + 1);
+    if (base && base->isAttachedToDocument()) {
+        markers.push_back(base);
+    }
+    for (auto* obj : group) {
+        if (obj && obj->isAttachedToDocument() && !stepOwner.contains(obj)) {
+            markers.push_back(obj);
+        }
+    }
+
+    const int count = static_cast<int>(markers.size());
+    const App::DocumentObject* tip = body->Tip.getValue();
+    int tipIndex = -1;
+    int childIndex = -1;
+    for (int i = 0; i < count; ++i) {
+        if (markers[i] == tip) {
+            tipIndex = i;
+        }
+        if (markers[i] == child) {
+            childIndex = i;
+        }
+    }
+    if (childIndex < 0) {
+        return false;
+    }
+
+    // Everything from the first solid the tip does not include onwards
+    int cut = count;
+    for (int i = tipIndex + 1; i < count; ++i) {
+        if (markers[i] == base || markers[i]->isDerivedFrom<PartDesign::Feature>()) {
+            cut = i;
+            break;
+        }
+    }
+    // A sketch or datum the timeline hid by rolling back is behind the playhead too
+    for (const std::string& name : RollbackHidden.getValues()) {
+        for (int i = 0; i < count; ++i) {
+            if (name == markers[i]->getNameInDocument()) {
+                cut = std::min(cut, i);
+                break;
+            }
+        }
+    }
+    // The tip itself and what comes before it are always in the model
+    cut = std::max(cut, tipIndex + 1);
+    return childIndex >= cut;
+}
+
+void ViewProviderBody::refreshRollbackRows(bool includeFeatures)
+{
+    // A document being loaded has its rows styled once it is in
+    auto* body = getObject<PartDesign::Body>();
+    if (!body || isRestoring()) {
+        return;
+    }
+    for (auto* obj : body->Group.getValues()) {
+        Gui::ViewProvider* vp = Gui::Application::Instance->getViewProvider(obj);
+        if (vp && (includeFeatures || !vp->isDerivedFrom<PartDesignGui::ViewProvider>())) {
+            vp->signalChangeIcon();
+        }
+    }
 }
 
 void ViewProviderBody::updateData(const App::Property* prop)
@@ -403,6 +494,8 @@ void ViewProviderBody::updateData(const App::Property* prop)
                 static_cast<PartDesignGui::ViewProvider*>(vp)->setTipIcon(feature == tip);
             }
         }
+        // Moving the tip rolls the sketches and datums after it back or forward too
+        refreshRollbackRows(false);
     }
 
     PartGui::ViewProviderPart::updateData(prop);
@@ -442,6 +535,9 @@ void ViewProviderBody::onChanged(const App::Property* prop)
 
         // #0002559: Body becomes visible upon changing DisplayModeBody
         Visibility.touch();
+    }
+    else if (prop == &RollbackHidden) {
+        refreshRollbackRows(true);
     }
     else {
         unifyVisualProperty(prop);

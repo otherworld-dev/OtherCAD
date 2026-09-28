@@ -808,3 +808,76 @@ class TestOriginNames(TreeFoldersBase):
         texts = [t for _, t in self._rows(origin_row)]
         self.assertIn(xy.Label, texts)
         self.assertNotIn("XY plane", texts)
+
+
+class TestFolderStyling(TreeFoldersBase):
+    """In a body showing folders grey means rolled back; a hidden row only crosses its eye."""
+
+    def _is_grey(self, item):
+        # testStatus sets the palette's disabled text colour on a greyed row and clears the
+        # foreground of any other row, so the tree's own text colour shows
+        disabled = self.tree.palette().color(QtGui.QPalette.Disabled, QtGui.QPalette.Text)
+        brush = item.foreground(0)
+        return brush.style() != QtCore.Qt.NoBrush and brush.color() == disabled
+
+    def _second_pad(self):
+        xy = self._origin_feature(self.body, "XY_Plane")
+        sketch = self.body.newObject("Sketcher::SketchObject", "Sketch002")
+        sketch.AttachmentSupport = (xy, [""])
+        sketch.MapMode = "FlatFace"
+        _draw_rectangle(sketch, 3.0, 2.0)
+        self.doc.recompute()
+        pad = self.body.newObject("PartDesign::Pad", "Pad001")
+        pad.Profile = sketch
+        pad.Length = 5.0
+        self.doc.recompute()
+        _process_events(300)
+        return sketch, pad
+
+    def test_a_hidden_row_keeps_normal_text(self):
+        self.free_sketch.Visibility = False
+        _process_events(300)
+        row = self._item_of(self.free_sketch, self._folder("Sketches"))
+        self.assertFalse(self._is_grey(row))
+
+    def test_rolled_back_rows_are_grey_until_rolled_forward(self):
+        sketch2, pad2 = self._second_pad()
+        self.body.Tip = self.pad
+        self.doc.recompute()
+        _process_events(300)
+        history = self._folder("History")
+        history.setExpanded(True)
+        _process_events()
+        sketches = self._folder("Sketches")
+        self.assertTrue(self._is_grey(self._item_of(pad2, history)))
+        self.assertFalse(self._is_grey(self._item_of(self.pad, history)))
+        # As the timeline's playhead reads it, a sketch after the tip is only rolled back
+        # once a roll has hidden it, which the roll records in RollbackHidden
+        self.assertFalse(self._is_grey(self._item_of(sketch2, sketches)))
+        self.body.ViewObject.RollbackHidden = [sketch2.Name]
+        _process_events(300)
+        self.assertTrue(self._is_grey(self._item_of(sketch2, sketches)))
+        # Moving the tip past a list the roll left behind rolls forward all the same
+        self.body.Tip = pad2
+        self.doc.recompute()
+        _process_events(300)
+        self.assertFalse(self._is_grey(self._item_of(pad2, history)))
+        self.assertFalse(self._is_grey(self._item_of(sketch2, sketches)))
+
+    def test_suppressed_keeps_its_strike_out(self):
+        self.pad.Suppressed = True
+        self.doc.recompute()
+        _process_events(300)
+        row = self._item_of(self.pad, self._folder("History"))
+        self.assertTrue(row.font(0).strikeOut())
+
+    def test_stock_layout_still_greys_hidden_rows(self):
+        # Hidden before the switch, so the switch alone has to restyle the row
+        self.free_sketch.Visibility = False
+        _process_events(300)
+        self.params.SetBool("BodyFolders", False)
+        _process_events(300)
+        self.assertTrue(self._is_grey(self._item_of(self.free_sketch, self._item_of(self.body))))
+        self.params.SetBool("BodyFolders", True)
+        _process_events(300)
+        self.assertFalse(self._is_grey(self._item_of(self.free_sketch, self._folder("Sketches"))))

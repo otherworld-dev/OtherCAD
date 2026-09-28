@@ -519,6 +519,8 @@ public:
     void testStatus(bool resetStatus, QIcon& icon1, QIcon& icon2);
     void testStatus(bool resetStatus);
     bool isVisibleInTree() const;
+    /// Whether the row's text is greyed out, as of its last status update
+    bool isGreyed() const;
     void displayStatusInfo();
 
     QVariant data(int column, int role) const override;
