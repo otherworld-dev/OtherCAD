@@ -79,6 +79,24 @@ bool hasBaseFeatureShape(const App::DocumentObject* object)
     return false;
 }
 
+// Each step of a MultiTransform in the group, mapped to its MultiTransform. A step makes no
+// shape of its own: the timeline has no marker for it (TimelineWidget::collectBodyFeatures)
+// and the tree shows it under its MultiTransform only.
+std::unordered_map<const App::DocumentObject*, const App::DocumentObject*> multiTransformSteps(
+    const std::vector<App::DocumentObject*>& group
+)
+{
+    std::unordered_map<const App::DocumentObject*, const App::DocumentObject*> stepOwner;
+    for (auto* obj : group) {
+        if (auto* multi = freecad_cast<PartDesign::MultiTransform*>(obj)) {
+            for (auto* step : multi->Transformations.getValues()) {
+                stepOwner.emplace(step, multi);
+            }
+        }
+    }
+    return stepOwner;
+}
+
 }  // namespace
 
 PROPERTY_SOURCE_WITH_EXTENSIONS(PartDesignGui::ViewProviderBody, PartGui::ViewProviderPart)
@@ -357,7 +375,9 @@ std::vector<Gui::TreeFolder> ViewProviderBody::claimChildrenFolders() const
     Gui::TreeFolder construction {"Construction", tr("Construction"), folderIcon, false, false, {}};
     Gui::TreeFolder history {"History", tr("History"), folderIcon, true, false, {}};
 
-    for (auto* obj : body->Group.getValues()) {
+    const auto& group = body->Group.getValues();
+    const auto steps = multiTransformSteps(group);
+    for (auto* obj : group) {
         if (!obj || !obj->isAttachedToDocument()) {
             continue;
         }
@@ -370,7 +390,7 @@ std::vector<Gui::TreeFolder> ViewProviderBody::claimChildrenFolders() const
         ) {
             construction.objects.push_back(obj);
         }
-        else {
+        else if (!steps.contains(obj)) {
             history.objects.push_back(obj);
         }
     }
@@ -395,14 +415,7 @@ bool ViewProviderBody::isChildRolledBack(const App::DocumentObject* child) const
     // the Group less the steps of a MultiTransform. A step makes no shape of its own and the
     // tree shows it under its MultiTransform, so it reads as that does.
     const auto& group = body->Group.getValues();
-    std::unordered_map<const App::DocumentObject*, const App::DocumentObject*> stepOwner;
-    for (auto* obj : group) {
-        if (auto* multi = freecad_cast<PartDesign::MultiTransform*>(obj)) {
-            for (auto* step : multi->Transformations.getValues()) {
-                stepOwner.emplace(step, multi);
-            }
-        }
-    }
+    const auto stepOwner = multiTransformSteps(group);
     if (auto it = stepOwner.find(child); it != stepOwner.end()) {
         child = it->second;
     }

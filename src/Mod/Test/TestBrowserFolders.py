@@ -295,6 +295,28 @@ class TestFolderRows(TreeFoldersBase):
         pad = self._item_of(self.pad, self._folder("History"))
         self.assertEqual([t for _, t in self._rows(pad)], ["Sketch"])
 
+    def test_multitransform_steps_only_under_their_feature(self):
+        # A step makes no shape of its own: the timeline has no marker for it, and the
+        # tree shows it under its MultiTransform only, not in History as well
+        multi = self.body.newObject("PartDesign::MultiTransform", "MultiTransform")
+        multi.Originals = [self.pad]
+        linear = self.body.newObject("PartDesign::LinearPattern", "LinearPattern")
+        linear.Direction = (self.sketch, ["H_Axis"])
+        linear.Length = 30.0
+        linear.Occurrences = 2
+        mirrored = self.body.newObject("PartDesign::Mirrored", "Mirrored")
+        mirrored.MirrorPlane = (self.sketch, ["V_Axis"])
+        multi.Transformations = [linear, mirrored]
+        self.doc.recompute()
+        _process_events(300)
+        contents = {f[0]: [o.Name for o in f[2]] for f in self._folders()}
+        self.assertEqual(contents["History"], ["Pad", "MultiTransform"])
+        history = self._folder("History")
+        self.assertEqual(history.text(0), "History (2)")
+        self.assertEqual([t for _, t in self._rows(history)], ["Pad", "MultiTransform"])
+        multi_row = self._item_of(multi, history)
+        self.assertEqual([t for _, t in self._rows(multi_row)], ["LinearPattern", "Mirrored"])
+
     def test_the_tip_has_no_row_of_its_own_at_body_level(self):
         texts = [t for _, t in self._rows(self._item_of(self.body))]
         self.assertNotIn(self.pad.Label, texts)
