@@ -266,6 +266,10 @@ class TreeFoldersBase(BrowserFoldersBase):
 
 class TestFolderRows(TreeFoldersBase):
     def test_body_rows_are_origin_then_three_folders(self):
+        # A distinctive Label: App::Origin's own default Label is literally "Origin", so
+        # without this the row reading "Origin" could just be its Label showing through.
+        self.body.Origin.Label = "MyOrigin"
+        _process_events(200)
         rows = self._rows(self._item_of(self.body))
         self.assertEqual(rows[0][0], OBJECT_TYPE)
         self.assertEqual(rows[0][1], "Origin")
@@ -766,7 +770,12 @@ class TestOriginNames(TreeFoldersBase):
     """A body's Origin row and its features read by role while folders are shown."""
 
     def test_origin_rows_show_role_names_and_keep_their_labels(self):
+        # A distinctive Label: App::Origin's own default Label is literally "Origin", so
+        # without this the row reading "Origin" could just be its Label showing through.
+        self.body.Origin.Label = "MyOrigin"
+        _process_events(200)
         origin_row = self._item_of(self.body.Origin, self._item_of(self.body), text="Origin")
+        self.assertIsNotNone(origin_row, "the Origin row did not read by role")
         self.assertEqual(origin_row.text(0), "Origin")
         texts = sorted(t for _, t in self._rows(origin_row))
         self.assertEqual(
@@ -779,7 +788,23 @@ class TestOriginNames(TreeFoldersBase):
         self.assertNotEqual(xy.Label, "XY plane")  # the document keeps the real label
 
     def test_role_names_go_away_with_the_preference(self):
+        # A distinctive Label: App::Origin's own default Label is literally "Origin", so
+        # without this, either state's row text could match by coincidence and hide a
+        # getTreeLabel() that never turns on, or a refreshFolders() that forgets to turn it off.
+        self.body.Origin.Label = "MyOrigin"
+        _process_events(200)
+        origin_row = self._item_of(self.body.Origin, self._item_of(self.body), text="Origin")
+        self.assertIsNotNone(
+            origin_row, "the Origin row did not read by role while folders are shown"
+        )
+        self.assertEqual(origin_row.text(0), "Origin")
+
         self.params.SetBool("BodyFolders", False)
         _process_events(300)
         origin_row = self._item_of(self.body.Origin, self._item_of(self.body))
-        self.assertEqual(origin_row.text(0), self.body.Origin.Label)
+        self.assertIsNotNone(origin_row, "the Origin row did not revert to its Label")
+        self.assertEqual(origin_row.text(0), "MyOrigin")
+        xy = self._origin_feature(self.body, "XY_Plane")
+        texts = [t for _, t in self._rows(origin_row)]
+        self.assertIn(xy.Label, texts)
+        self.assertNotIn("XY plane", texts)
