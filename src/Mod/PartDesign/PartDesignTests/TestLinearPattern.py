@@ -170,6 +170,16 @@ class TestLinearPattern(unittest.TestCase):
         # self.assertEqual(len(self.LinearPattern.Shape.ElementReverseMap), 170)
         self.assertEqual(self.LinearPattern.Shape.ElementMapSize, 26)
 
+    def testOccurrencesAreClampedToMaximumPatternOccurrences(self):
+        maximum = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Part").GetInt(
+            "MaximumPatternOccurrences", 1000
+        )
+        pattern = self.Doc.addObject("PartDesign::LinearPattern", "LinearPattern")
+        pattern.Occurrences = pattern.Occurrences2 = 1 << 30
+        self.assertEqual(pattern.Occurrences, maximum)
+        self.assertEqual(pattern.Occurrences2, maximum)
+        self.assertEqual(len(pattern.Spacings2), maximum - 1)
+
     def tearDown(self):
         # closing doc
         FreeCAD.closeDocument("PartDesignTestLinearPattern")
