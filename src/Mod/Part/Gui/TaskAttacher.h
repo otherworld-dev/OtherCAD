@@ -88,6 +88,14 @@ public:
 
     bool getFlip() const;
 
+    /// Resolve a reference relative to the attaching object's coordinate-system container.
+    /// Set rootObj to nullptr if the reference points to a shared container itself.
+    static void resolveAttachmentSupportInContext(
+        App::DocumentObject* context,
+        App::DocumentObject*& rootObj,
+        std::string& sub
+    );
+
     /**
      * @brief setSingleReferenceMode restricts picking to one reference.
      * Attaching a sketch to a plane or face needs exactly one reference, but the
