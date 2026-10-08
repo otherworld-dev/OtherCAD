@@ -2,6 +2,7 @@
 
 #include <QDebug>
 #include <QLineEdit>
+#include <QSignalSpy>
 #include <QTest>
 
 #include <App/Application.h>
@@ -306,6 +307,24 @@ private Q_SLOTS:
         QVERIFY(!value.isDimensionless());
         QCOMPARE(value.getUnit(), Base::Unit::Length);
         QCOMPARE(value, Base::Quantity(10.0, "mm"));
+    }
+
+    void test_IncompatibleExpressionResultIsRejected()  // NOLINT
+    {
+        ScopedExpressionOwner owner;
+        QuantitySpinBoxWithExpression spinBox;
+        spinBox.bind(owner.getPath());
+        spinBox.setUnit(Base::Unit::Length);
+
+        std::shared_ptr<App::Expression> length(App::Expression::parse(owner.getObject(), "10 mm"));
+        spinBox.setExpression(length);
+
+        QSignalSpy spy(&spinBox, qOverload<double>(&Gui::QuantitySpinBox::valueChanged));
+        std::shared_ptr<App::Expression> angle(App::Expression::parse(owner.getObject(), "30 deg"));
+        spinBox.setExpression(angle);
+
+        QCOMPARE(spy.count(), 0);
+        QCOMPARE(spinBox.value(), Base::Quantity(10.0, "mm"));
     }
 
 private:

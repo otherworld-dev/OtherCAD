@@ -443,8 +443,15 @@ void Gui::QuantitySpinBox::setNumberExpression(App::NumberExpression* expr)
     // without rescaling, matching expression/property assignment semantics.
     // The displayed input unit may use a different scale.
     // see: https://github.com/FreeCAD/FreeCAD/issues/32968
-    if (quantity.isDimensionless() && d->unit != Base::Unit::One) {
-        quantity.setUnit(d->unit);
+    if (d->unit != Base::Unit::One) {
+        if (quantity.isDimensionless()) {
+            quantity.setUnit(d->unit);
+        }
+        else if (quantity.getUnit() != d->unit) {
+            // showValidExpression() turns this into an invalid-expression marker and leaves
+            // the value alone
+            throw Base::UnitsMismatchError(tr("Incompatible unit").toStdString());
+        }
     }
     updateEdit(getUserString(quantity));
     handlePendingEmit();
