@@ -157,6 +157,12 @@ class DrawViewPart(DrawView):
         """formatGeometricEdge(index, style, weight, color, visible). Returns None."""
         ...
 
+    def decorateLine(self) -> Any:
+        """decorateLine(edgeName, lineNumber, weight, color, visible). Applies appearance attributes
+        to geometric edge edgeName ("Edge1"). Handles standard line numbers (0-15 (ISO) or 1-17
+        (ASME)). Returns None."""
+        ...
+
     def getEdgeByIndex(self) -> Any:
         """getEdgeByIndex(edgeIndex). Returns Part.TopoShape."""
         ...
