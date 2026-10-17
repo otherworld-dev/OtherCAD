@@ -21,6 +21,8 @@
  *                                                                         *
  **************************************************************************/
 
+#include <format>
+
 #include <QDir>
 #include <QMetaType>
 #include <QUuid>
@@ -1838,36 +1840,40 @@ void Material::validate(Material& other) const
     }
 
     if (_tags.size() != other._tags.size()) {
-        Base::Console().log("Local tags count %d\n", _tags.size());
-        Base::Console().log("Remote tags count %d\n", other._tags.size());
-        throw InvalidMaterial("Material tags counts don't match");
+        throw InvalidMaterial(
+            std::format("Material tags counts don't match (local {}, remote {})",
+                        _tags.size(),
+                        other._tags.size()));
     }
     if (!other._tags.contains(_tags)) {
         throw InvalidMaterial("Material tags don't match");
     }
 
     if (_physicalUuids.size() != other._physicalUuids.size()) {
-        Base::Console().log("Local physical model count %d\n", _physicalUuids.size());
-        Base::Console().log("Remote physical model count %d\n", other._physicalUuids.size());
-        throw InvalidMaterial("Material physical model counts don't match");
+        throw InvalidMaterial(
+            std::format("Material physical model counts don't match (local {}, remote {})",
+                        _physicalUuids.size(),
+                        other._physicalUuids.size()));
     }
     if (!other._physicalUuids.contains(_physicalUuids)) {
         throw InvalidMaterial("Material physical models don't match");
     }
 
     if (_physicalUuids.size() != other._physicalUuids.size()) {
-        Base::Console().log("Local appearance model count %d\n", _physicalUuids.size());
-        Base::Console().log("Remote appearance model count %d\n", other._physicalUuids.size());
-        throw InvalidMaterial("Material appearance model counts don't match");
+        throw InvalidMaterial(
+            std::format("Material appearance model counts don't match (local {}, remote {})",
+                        _physicalUuids.size(),
+                        other._physicalUuids.size()));
     }
     if (!other._physicalUuids.contains(_physicalUuids)) {
         throw InvalidMaterial("Material appearance models don't match");
     }
 
     if (_allUuids.size() != other._allUuids.size()) {
-        Base::Console().log("Local model count %d\n", _allUuids.size());
-        Base::Console().log("Remote model count %d\n", other._allUuids.size());
-        throw InvalidMaterial("Material model counts don't match");
+        throw InvalidMaterial(
+            std::format("Material model counts don't match (local {}, remote {})",
+                        _allUuids.size(),
+                        other._allUuids.size()));
     }
     if (!other._allUuids.contains(_allUuids)) {
         throw InvalidMaterial("Material models don't match");
