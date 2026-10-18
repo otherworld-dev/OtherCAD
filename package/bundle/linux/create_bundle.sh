@@ -15,8 +15,8 @@ find ${conda_env} -name \*.a -delete
 
 mv ${conda_env}/bin ${conda_env}/bin_tmp
 mkdir ${conda_env}/bin
-cp ${conda_env}/bin_tmp/fucadup ${conda_env}/bin/
-cp ${conda_env}/bin_tmp/fucadupcmd ${conda_env}/bin
+cp ${conda_env}/bin_tmp/othercad ${conda_env}/bin/
+cp ${conda_env}/bin_tmp/othercadcmd ${conda_env}/bin
 cp ${conda_env}/bin_tmp/ccx ${conda_env}/bin/
 cp ${conda_env}/bin_tmp/python ${conda_env}/bin/
 cp ${conda_env}/bin_tmp/pip ${conda_env}/bin/
@@ -29,9 +29,9 @@ rm -rf ${conda_env}/bin_tmp
 sed -i '1s|.*|#!/usr/bin/env python|' ${conda_env}/bin/pip
 
 echo -e "\nCopying Icon and Desktop file"
-cp ${conda_env}/share/applications/org.fucadup.FuCadUp.desktop AppDir/
-sed -i 's/Exec=FuCadUp/Exec=AppRun/g' AppDir/org.fucadup.FuCadUp.desktop
-cp ${conda_env}/share/icons/hicolor/scalable/apps/org.fucadup.FuCadUp.svg AppDir/
+cp ${conda_env}/share/applications/dev.otherworld.OtherCAD.desktop AppDir/
+sed -i 's/Exec=OtherCAD/Exec=AppRun/g' AppDir/dev.otherworld.OtherCAD.desktop
+cp ${conda_env}/share/icons/hicolor/scalable/apps/dev.otherworld.OtherCAD.svg AppDir/
 
 # Remove __pycache__ folders and .pyc files
 find . -path "*/__pycache__/*" -delete
@@ -93,7 +93,7 @@ rm -rf ${conda_env}/x86_64-conda-linux-gnu
 find . -name "*.h" -type f -delete
 find . -name "*.cmake" -type f -delete
 
-version_name="FuCadUp_${BUILD_TAG}-Linux-$(uname -m)"
+version_name="OtherCAD_${BUILD_TAG}-Linux-$(uname -m)"
 
 echo -e "\################"
 echo -e "version_name:  ${version_name}"
@@ -102,15 +102,15 @@ echo -e "################"
 pixi list -e default > AppDir/packages.txt
 sed -i "1s/.*/\nLIST OF PACKAGES:/" AppDir/packages.txt
 
-echo "Running FuCadUp command-line smoke test..."
-if ! "${conda_env}/bin/fucadupcmd" --safe-mode --version; then
-    echo "FuCadUp command-line smoke test failed; the Linux bundle cannot start."
+echo "Running OtherCAD command-line smoke test..."
+if ! "${conda_env}/bin/othercadcmd" --safe-mode --version; then
+    echo "OtherCAD command-line smoke test failed; the Linux bundle cannot start."
     exit 1
 fi
 
-echo "Running FuCadUp bundled Pivy smoke test..."
-if ! "${conda_env}/bin/fucadupcmd" --safe-mode --console "import pivy; from pivy import coin; print(pivy.__file__); print(coin.SoDB.getVersion())"; then
-    echo "FuCadUp bundled Pivy smoke test failed; the Linux bundle cannot import the bundled Coin/Pivy runtime."
+echo "Running OtherCAD bundled Pivy smoke test..."
+if ! "${conda_env}/bin/othercadcmd" --safe-mode --console "import pivy; from pivy import coin; print(pivy.__file__); print(coin.SoDB.getVersion())"; then
+    echo "OtherCAD bundled Pivy smoke test failed; the Linux bundle cannot import the bundled Coin/Pivy runtime."
     exit 1
 fi
 
@@ -138,7 +138,7 @@ chmod a+x ./AppDir/AppRun
   --comp zstd \
   --mksquashfs-opt -Xcompression-level \
   --mksquashfs-opt 22 \
-  -u "gh-releases-zsync|otherworld-dev|FuCadUp|${GH_UPDATE_TAG}|FuCadUp*$(uname -m)*.AppImage.zsync" \
+  -u "gh-releases-zsync|otherworld-dev|OtherCAD|${GH_UPDATE_TAG}|OtherCAD*$(uname -m)*.AppImage.zsync" \
   AppDir ${version_name}.AppImage
   # -s --sign-key ${GPG_KEY_ID} \
 
@@ -148,7 +148,7 @@ sha256sum ${version_name}.AppImage > ${version_name}.AppImage-SHA256.txt
 if [ "${UPLOAD_RELEASE}" == "true" ]; then
     gh release upload --clobber ${BUILD_TAG} "${version_name}.AppImage" "${version_name}.AppImage.zsync" "${version_name}.AppImage-SHA256.txt"
     if [ "${GH_UPDATE_TAG}" == "weeklies" ]; then
-        generic_name="FuCadUp_weekly-Linux-$(uname -m)"
+        generic_name="OtherCAD_weekly-Linux-$(uname -m)"
         mv "${version_name}.AppImage" "${generic_name}.AppImage"
         mv "${version_name}.AppImage.zsync" "${generic_name}.AppImage.zsync"
         mv "${version_name}.AppImage-SHA256.txt" "${generic_name}.AppImage-SHA256.txt"

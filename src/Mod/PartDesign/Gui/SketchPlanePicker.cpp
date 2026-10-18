@@ -175,7 +175,7 @@ TaskDlgWaitForPick::~TaskDlgWaitForPick()
     // Like TaskDlgAttacher, the follow-up runs from here: the dialog has already left
     // the task panel, so the editor that comes next is free to take it. A document on
     // its way out takes its pending command with it, so there is nothing to do then.
-    // Nothing may leave a destructor: an exception here would end FuCadUp outright.
+    // Nothing may leave a destructor: an exception here would end OtherCAD outright.
     if (onDone && !documentClosing) {
         try {
             onDone(picked);

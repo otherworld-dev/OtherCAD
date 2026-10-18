@@ -5,13 +5,13 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>English</string>
 	<key>CFBundleExecutable</key>
-	<string>FuCadUp</string>
+	<string>OtherCAD</string>
 	<key>CFBundleGetInfoString</key>
 	<string></string>
 	<key>CFBundleIconFile</key>
-	<string>fucad.icns</string>
+	<string>othercad.icns</string>
 	<key>CFBundleIdentifier</key>
-	<string>org.fucadup.FuCadUp</string>
+	<string>dev.otherworld.OtherCAD</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleLongVersionString</key>
@@ -48,7 +48,7 @@
 				<string>FCParam</string>
 			</array>
 			<key>CFBundleTypeIconFile</key>
-			<string>fucad-doc.icns</string>
+			<string>othercad-doc.icns</string>
 			<key>LSIsAppleDefaultForType</key>
 			<true/>
 		</dict>
@@ -61,7 +61,7 @@
 				<string>FCScript</string>
 			</array>
 			<key>CFBundleTypeIconFile</key>
-			<string>fucad-script.icns</string>
+			<string>othercad-script.icns</string>
 			<key>LSIsAppleDefaultForType</key>
 			<true/>
 		</dict>
@@ -74,9 +74,9 @@
 				<string>public.data</string>
 			</array>
 			<key>UTTypeDescription</key>
-			<string>FuCadUp Document</string>
+			<string>OtherCAD Document</string>
 			<key>UTTypeIdentifier</key>
-			<string>org.fucadup.fcstd</string>
+			<string>dev.otherworld.othercad.fcstd</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>

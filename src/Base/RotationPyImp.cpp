@@ -232,7 +232,7 @@ int RotationPy::PyInit(PyObject* args, PyObject* kwds)
         }
         catch (Exception& e) {
             std::string str;
-            str += "FuCadUp exception thrown (";
+            str += "OtherCAD exception thrown (";
             str += e.what();
             str += ")";
             PyErr_SetString(PyExc_FC_GeneralError, str.c_str());

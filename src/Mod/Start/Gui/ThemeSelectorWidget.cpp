@@ -115,13 +115,13 @@ void ThemeSelectorWidget::setupButtons(QBoxLayout* layout)
         {Theme::Classic, tr("Classic")},
         {Theme::Dark, tr("Dark")},
         {Theme::Light, tr("Light")},
-        {Theme::FuCadDark, tr("FuCad Dark")}
+        {Theme::OtherCADDark, tr("OtherCAD Dark")}
     };
     std::map<Theme, QIcon> iconMap {
         {Theme::Classic, QIcon(QLatin1String(":/thumbnails/Theme_thumbnail_classic.png"))},
         {Theme::Light, QIcon(QLatin1String(":/thumbnails/Theme_thumbnail_light.png"))},
         {Theme::Dark, QIcon(QLatin1String(":/thumbnails/Theme_thumbnail_dark.png"))},
-        {Theme::FuCadDark, QIcon(QLatin1String(":/thumbnails/Theme_thumbnail_dark.png"))}
+        {Theme::OtherCADDark, QIcon(QLatin1String(":/thumbnails/Theme_thumbnail_dark.png"))}
     };
     auto hGrp = App::GetApplication().GetParameterGroupByPath(
         "User parameter:BaseApp/Preferences/MainWindow"
@@ -152,7 +152,7 @@ void ThemeSelectorWidget::setupButtons(QBoxLayout* layout)
         else if (theme.first == Theme::Dark && themeName == QLatin1String("Dark")) {
             button->setChecked(true);
         }
-        else if (theme.first == Theme::FuCadDark && themeName == QLatin1String("FuCad Dark")) {
+        else if (theme.first == Theme::OtherCADDark && themeName == QLatin1String("OtherCAD Dark")) {
             button->setChecked(true);
         }
         connect(button, &QToolButton::clicked, this, [this, theme] { themeChanged(theme.first); });
@@ -206,7 +206,7 @@ void ThemeSelectorWidget::preselectThemeFromSystemSettings()
     );
     auto styleSheetName = QString::fromStdString(hGrp->GetASCII("StyleSheet", nullStyle));
     if (styleSheetName == QString::fromStdString(nullStyle)) {
-        auto theme = isSystemInDarkMode() ? Theme::FuCadDark : Theme::Light;
+        auto theme = isSystemInDarkMode() ? Theme::OtherCADDark : Theme::Light;
         themeChanged(theme);
     }
 }
@@ -225,8 +225,8 @@ void ThemeSelectorWidget::themeChanged(Theme newTheme)
         case Theme::Light:
             prefPackManager->apply("Light");
             break;
-        case Theme::FuCadDark:
-            prefPackManager->apply("FuCad Dark");
+        case Theme::OtherCADDark:
+            prefPackManager->apply("OtherCAD Dark");
             break;
         default:
             return;
@@ -268,5 +268,5 @@ void ThemeSelectorWidget::retranslateUi()
     _buttons[static_cast<int>(Theme::Dark)]->setText(tr("Dark", "Visual theme name"));
     _buttons[static_cast<int>(Theme::Light)]->setText(tr("Light", "Visual theme name"));
     _buttons[static_cast<int>(Theme::Classic)]->setText(tr("Classic", "Visual theme name"));
-    _buttons[static_cast<int>(Theme::FuCadDark)]->setText(tr("FuCad Dark", "Visual theme name"));
+    _buttons[static_cast<int>(Theme::OtherCADDark)]->setText(tr("OtherCAD Dark", "Visual theme name"));
 }

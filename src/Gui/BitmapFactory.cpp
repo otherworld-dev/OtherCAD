@@ -82,10 +82,10 @@ BitmapFactoryInst& BitmapFactoryInst::instance()
         _pcSingleton->addPath(
             QStringLiteral("%1/icons").arg(QString::fromStdString(App::Application::getUserAppDataDir()))
         );
-        // FuCad's flat icons for the solid modelling commands, under the same names as
+        // OtherCAD's flat icons for the solid modelling commands, under the same names as
         // the stock ones they replace, so they win over those wherever a command, tree
         // item or timeline marker asks for one. The user's own paths above still win.
-        _pcSingleton->addPath(QLatin1String(":/icons/fucad/"));
+        _pcSingleton->addPath(QLatin1String(":/icons/othercad/"));
         _pcSingleton->addPath(QLatin1String(":/icons/"));
         _pcSingleton->addPath(QLatin1String(":/Icons/"));
     }

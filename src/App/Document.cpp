@@ -2037,7 +2037,7 @@ bool Document::saveToFile(const char* filename) const
             throw Base::FileException("Failed to open file", tmp);
         }
 
-        writer.setComment("FuCadUp Document");
+        writer.setComment("OtherCAD Document");
         writer.setLevel(compression);
         writer.putNextEntry("Document.xml");
 
@@ -2047,7 +2047,7 @@ bool Document::saveToFile(const char* filename) const
 
         writer.Stream() << "<?xml version='1.0' encoding='utf-8'?>" << '\n'
                         << "<!--" << '\n'
-                        << " FuCadUp Document, see https://github.com/otherworld-dev/FuCadUp for more"
+                        << " OtherCAD Document, see https://github.com/otherworld-dev/OtherCAD for more"
                            " information..."
                         << '\n'
                         << "-->" << '\n';

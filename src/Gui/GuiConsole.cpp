@@ -55,7 +55,7 @@ GUIConsole::GUIConsole(void)
         ::GetConsoleScreenBufferInfo(::GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
         csbi.dwSize.Y = s_nMaxLines;
         ::SetConsoleScreenBufferSize(::GetStdHandle(STD_OUTPUT_HANDLE), csbi.dwSize);
-        ::SetConsoleTitleA("FuCadUp Console");
+        ::SetConsoleTitleA("OtherCAD Console");
 
         *stdout = *::_fdopen(
             ::_open_osfhandle(reinterpret_cast<intptr_t>(::GetStdHandle(STD_OUTPUT_HANDLE)), _O_TEXT),

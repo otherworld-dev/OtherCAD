@@ -263,7 +263,7 @@ private:
 
     Gui::SoNaviCube* soNaviCube = nullptr;
     Gui::SoViewCube* soViewCube = nullptr;
-    NaviCube::Style style = NaviCube::Style::FuCadUp;
+    NaviCube::Style style = NaviCube::Style::OtherCAD;
 
 public:
     void setStyle(NaviCube::Style newStyle);

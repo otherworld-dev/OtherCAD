@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="64px"
+   height="64px"
+   viewBox="0 0 64 64"
+   version="1.1"
+   id="PartDesign_Thickness"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <metadata id="metadata1">
+    <rdf:RDF>
+      <cc:Work rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title>PartDesign_Thickness</dc:title>
+        <dc:description>A solid hollowed into a shell</dc:description>
+        <dc:publisher>
+          <cc:Agent>
+            <dc:title>OtherCAD</dc:title>
+          </cc:Agent>
+        </dc:publisher>
+        <dc:rights>
+          <cc:Agent>
+            <dc:title>FreeCAD LGPL2+</dc:title>
+          </cc:Agent>
+        </dc:rights>
+        <cc:license>https://www.gnu.org/copyleft/lesser.html</cc:license>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g id="layer1">
+    <path d="M 32.00,5.85 L 4.50,21.73 L 32.00,37.60 L 59.50,21.73 Z" style="fill:#ffc94d;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 4.50,42.27 L 32.00,58.15 L 32.00,37.60 L 4.50,21.73 Z" style="fill:#a9c9e8;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 59.50,42.27 L 59.50,21.73 L 32.00,37.60 L 32.00,58.15 Z" style="fill:#7ea8d1;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 32.00,10.05 L 11.78,21.73 L 32.00,33.40 L 52.22,21.73 Z" style="fill:#d3e5f6;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 32.00,25.93 L 11.78,37.60 L 11.78,21.73 L 32.00,10.05 Z" style="fill:#7ea8d1;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 32.00,25.93 L 32.00,10.05 L 52.22,21.73 L 52.22,37.60 Z" style="fill:#a9c9e8;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+  </g>
+</svg>

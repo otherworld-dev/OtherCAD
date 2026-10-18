@@ -38,7 +38,7 @@ enum class Theme
     Classic,
     Light,
     Dark,
-    FuCadDark
+    OtherCADDark
 };
 
 /// A widget to allow selection of the UI theme (color scheme).

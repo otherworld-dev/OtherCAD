@@ -4,11 +4,11 @@
 # SPDX-FileCopyrightText: 2026 The FreeCAD project association AISBL
 # SPDX-FileNotice: Part of the FreeCAD project.
 
-# Assemble an experimental Windows FuCadUp bundle from a LibPack-based build.
+# Assemble an experimental Windows OtherCAD bundle from a LibPack-based build.
 #
 # Unlike package/rattler-build/windows/create_bundle.sh (which sources everything from a conda
 # environment), this script sources the redistributable tree from a "cmake --install" staging
-# prefix produced by a LibPack build. The LibPack supplies OCCT, Qt6 and Python; FuCadUp supplies
+# prefix produced by a LibPack build. The LibPack supplies OCCT, Qt6 and Python; OtherCAD supplies
 # its own bundled Coin/Pivy. The resulting tree matches the layout the NSIS installer expects
 # (bin/ data/ doc/ Ext/ lib/ Mod/).
 #
@@ -40,7 +40,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 nsi_dir="${repo_root}/package/WindowsInstaller"
 
-version_name="FuCadUp_${BUILD_TAG}-Windows-${TARGET_ARCH}-experimental"
+version_name="OtherCAD_${BUILD_TAG}-Windows-${TARGET_ARCH}-experimental"
 copy_dir="${version_name}"
 
 echo "################"
@@ -126,7 +126,7 @@ fi
 
 # Record what went into the bundle.
 {
-    echo "FuCadUp experimental LibPack build"
+    echo "OtherCAD experimental LibPack build"
     echo "Build tag:    ${BUILD_TAG}"
     echo "Architecture: ${TARGET_ARCH}"
     if [ -n "${LIBPACK_DIR:-}" ] && [ -f "${LIBPACK_DIR}/FREECAD_LIBPACK_VERSION" ]; then
@@ -204,23 +204,23 @@ if [[ "${sign_available}" == "1" ]]; then
             exit 1
         fi
     done
-    signtool verify -pa "${sign_dir}/bin/FuCadUp.exe" || echo "signtool verify failed (continuing)"
+    signtool verify -pa "${sign_dir}/bin/OtherCAD.exe" || echo "signtool verify failed (continuing)"
     echo "Signing completed."
 else
     echo "No Azure Artifact Signing available -- skipping signing."
 fi
 
 # --- Smoke tests ------------------------------------------------------------------------------
-echo "Running FuCadUp command-line smoke test..."
-if ! "${copy_dir}/bin/fucadupcmd.exe" --safe-mode --version; then
-    echo "FuCadUp command-line smoke test failed; the Windows bundle cannot start."
+echo "Running OtherCAD command-line smoke test..."
+if ! "${copy_dir}/bin/othercadcmd.exe" --safe-mode --version; then
+    echo "OtherCAD command-line smoke test failed; the Windows bundle cannot start."
     exit 1
 fi
 
-echo "Running FuCadUp bundled Pivy smoke test..."
-if ! "${copy_dir}/bin/fucadupcmd.exe" --safe-mode --console \
+echo "Running OtherCAD bundled Pivy smoke test..."
+if ! "${copy_dir}/bin/othercadcmd.exe" --safe-mode --console \
         "import pivy; from pivy import coin; print(pivy.__file__); print(coin.SoDB.getVersion())"; then
-    echo "FuCadUp bundled Pivy smoke test failed; the bundle cannot import the bundled Coin/Pivy runtime."
+    echo "OtherCAD bundled Pivy smoke test failed; the bundle cannot import the bundled Coin/Pivy runtime."
     exit 1
 fi
 
@@ -257,14 +257,14 @@ if [ "${MAKE_INSTALLER}" == "true" ]; then
         exit 1
     fi
 
-    files_fucad="$(cygpath -w "$(pwd)")\\${version_name}"
+    files_othercad="$(cygpath -w "$(pwd)")\\${version_name}"
     files_deps="$(cygpath -w "$(pwd)")\\${msvc_redist_dir}"
     "${makensis_cmd}" -V4 \
         -D"ExeFile=${version_name}-installer.exe" \
-        -D"FILES_FUCAD=${files_fucad}" \
+        -D"FILES_OTHERCAD=${files_othercad}" \
         -D"FILES_DEPS=${files_deps}" \
         -X'SetCompressor /FINAL lzma' \
-        "${nsi_dir}/FuCadUp-installer.nsi"
+        "${nsi_dir}/OtherCAD-installer.nsi"
     mv "${nsi_dir}/${version_name}-installer.exe" .
     echo "Created installer ${version_name}-installer.exe"
 

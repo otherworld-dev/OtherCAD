@@ -25,18 +25,18 @@ endif()
 message(STATUS "Modern QuickLook: Using macOS SDK: ${MACOS_SDK_PATH}")
 
 # Bundle identifiers (inherited from parent)
-set(FREECAD_BUNDLE_ID "org.fucadup.FuCadUp")
+set(FREECAD_BUNDLE_ID "dev.otherworld.OtherCAD")
 set(THUMBNAIL_BUNDLE_ID "${FREECAD_BUNDLE_ID}.quicklook.thumbnail")
 set(PREVIEW_BUNDLE_ID "${FREECAD_BUNDLE_ID}.quicklook.preview")
 
 # Paths (inherited from parent)
-set(TARGET_APP_BUNDLE "${CMAKE_BINARY_DIR}/src/MacAppBundle/FuCadUp.app")
+set(TARGET_APP_BUNDLE "${CMAKE_BINARY_DIR}/src/MacAppBundle/OtherCAD.app")
 set(EXTENSIONS_DIR "${TARGET_APP_BUNDLE}/Contents/PlugIns")
 
 # Build directories
 set(BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}")
-set(THUMBNAIL_EXT_DIR "${BUILD_DIR}/FuCadUpThumbnailExtension.appex")
-set(PREVIEW_EXT_DIR "${BUILD_DIR}/FuCadUpPreviewExtension.appex")
+set(THUMBNAIL_EXT_DIR "${BUILD_DIR}/OtherCADThumbnailExtension.appex")
+set(PREVIEW_EXT_DIR "${BUILD_DIR}/OtherCADPreviewExtension.appex")
 
 # Detect target architecture
 if(CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" OR CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
@@ -86,18 +86,18 @@ process_plist(
     "${CMAKE_CURRENT_SOURCE_DIR}/ThumbnailExtensionInfo.plist"
     "${THUMBNAIL_EXT_DIR}/Contents/Info.plist"
     ${THUMBNAIL_BUNDLE_ID}
-    "FuCadUpThumbnailExtension"
-    "FuCadUpThumbnailExtension"
-    "FuCadUpThumbnailExtension.ThumbnailProvider"
+    "OtherCADThumbnailExtension"
+    "OtherCADThumbnailExtension"
+    "OtherCADThumbnailExtension.ThumbnailProvider"
 )
 
 process_plist(
     "${CMAKE_CURRENT_SOURCE_DIR}/PreviewExtensionInfo.plist"
     "${PREVIEW_EXT_DIR}/Contents/Info.plist"
     ${PREVIEW_BUNDLE_ID}
-    "FuCadUpPreviewExtension"
-    "FuCadUpPreviewExtension"
-    "FuCadUpPreviewExtension.PreviewProvider"
+    "OtherCADPreviewExtension"
+    "OtherCADPreviewExtension"
+    "OtherCADPreviewExtension.PreviewProvider"
 )
 
 # Compile Thumbnail Extension
@@ -105,7 +105,7 @@ add_custom_target(compile_thumbnail_extension ALL
     COMMAND ${SWIFTC_EXECUTABLE}
         ${SWIFT_FLAGS}
         -emit-executable
-        -module-name FuCadUpThumbnailExtension
+        -module-name OtherCADThumbnailExtension
         -parse-as-library
         -Xlinker -e -Xlinker _NSExtensionMain
         -Xlinker -rpath -Xlinker @executable_path/../Frameworks
@@ -116,7 +116,7 @@ add_custom_target(compile_thumbnail_extension ALL
         -framework QuickLookThumbnailing
         -framework AppKit
         -lcompression
-        -o ${THUMBNAIL_EXT_DIR}/Contents/MacOS/FuCadUpThumbnailExtension
+        -o ${THUMBNAIL_EXT_DIR}/Contents/MacOS/OtherCADThumbnailExtension
         ${CMAKE_CURRENT_SOURCE_DIR}/ThumbnailProvider.swift
         ${CMAKE_CURRENT_SOURCE_DIR}/ZipExtractor.swift
     DEPENDS
@@ -132,7 +132,7 @@ add_custom_target(compile_preview_extension ALL
     COMMAND ${SWIFTC_EXECUTABLE}
         ${SWIFT_FLAGS}
         -emit-executable
-        -module-name FuCadUpPreviewExtension
+        -module-name OtherCADPreviewExtension
         -parse-as-library
         -Xlinker -e -Xlinker _NSExtensionMain
         -Xlinker -rpath -Xlinker @executable_path/../Frameworks
@@ -144,7 +144,7 @@ add_custom_target(compile_preview_extension ALL
         -framework Cocoa
         -framework UniformTypeIdentifiers
         -lcompression
-        -o ${PREVIEW_EXT_DIR}/Contents/MacOS/FuCadUpPreviewExtension
+        -o ${PREVIEW_EXT_DIR}/Contents/MacOS/OtherCADPreviewExtension
         ${CMAKE_CURRENT_SOURCE_DIR}/PreviewProvider.swift
         ${CMAKE_CURRENT_SOURCE_DIR}/ZipExtractor.swift
     DEPENDS
@@ -155,18 +155,18 @@ add_custom_target(compile_preview_extension ALL
     COMMENT "Compiling Preview Extension"
 )
 
-# Embed unsigned extensions in main FuCadUp.app
+# Embed unsigned extensions in main OtherCAD.app
 add_custom_target(embed_modern_extensions ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${THUMBNAIL_EXT_DIR}
-        ${EXTENSIONS_DIR}/FuCadUpThumbnailExtension.appex
+        ${EXTENSIONS_DIR}/OtherCADThumbnailExtension.appex
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${PREVIEW_EXT_DIR}
-        ${EXTENSIONS_DIR}/FuCadUpPreviewExtension.appex
+        ${EXTENSIONS_DIR}/OtherCADPreviewExtension.appex
     DEPENDS
         compile_thumbnail_extension
         compile_preview_extension
-    COMMENT "Embedding modern extensions in main FuCadUp.app"
+    COMMENT "Embedding modern extensions in main OtherCAD.app"
 )
 
 # Main modern extensions target
@@ -176,13 +176,13 @@ add_custom_target(FreeCADModernQuickLook ALL
 )
 
 # Install targets for modern extensions
-install(DIRECTORY ${EXTENSIONS_DIR}/FuCadUpThumbnailExtension.appex
+install(DIRECTORY ${EXTENSIONS_DIR}/OtherCADThumbnailExtension.appex
     DESTINATION "${CMAKE_INSTALL_PREFIX}/PlugIns"
     COMPONENT ModernQuickLook
     USE_SOURCE_PERMISSIONS
 )
 
-install(DIRECTORY ${EXTENSIONS_DIR}/FuCadUpPreviewExtension.appex
+install(DIRECTORY ${EXTENSIONS_DIR}/OtherCADPreviewExtension.appex
     DESTINATION "${CMAKE_INSTALL_PREFIX}/PlugIns"
     COMPONENT ModernQuickLook
     USE_SOURCE_PERMISSIONS
@@ -190,17 +190,17 @@ install(DIRECTORY ${EXTENSIONS_DIR}/FuCadUpPreviewExtension.appex
 
 # Verification target
 add_custom_target(verify_modern_build
-    COMMAND test -f ${EXTENSIONS_DIR}/FuCadUpThumbnailExtension.appex/Contents/MacOS/FuCadUpThumbnailExtension
-    COMMAND test -f ${EXTENSIONS_DIR}/FuCadUpPreviewExtension.appex/Contents/MacOS/FuCadUpPreviewExtension
-    COMMAND echo "Modern extensions successfully embedded in FuCadUp.app"
+    COMMAND test -f ${EXTENSIONS_DIR}/OtherCADThumbnailExtension.appex/Contents/MacOS/OtherCADThumbnailExtension
+    COMMAND test -f ${EXTENSIONS_DIR}/OtherCADPreviewExtension.appex/Contents/MacOS/OtherCADPreviewExtension
+    COMMAND echo "Modern extensions successfully embedded in OtherCAD.app"
     DEPENDS FreeCADModernQuickLook
     COMMENT "Verifying modern QuickLook extension integration"
 )
 
 # Test registration target
 add_custom_target(test_modern_registration
-    COMMAND pluginkit -a ${EXTENSIONS_DIR}/FuCadUpThumbnailExtension.appex
-    COMMAND pluginkit -a ${EXTENSIONS_DIR}/FuCadUpPreviewExtension.appex
+    COMMAND pluginkit -a ${EXTENSIONS_DIR}/OtherCADThumbnailExtension.appex
+    COMMAND pluginkit -a ${EXTENSIONS_DIR}/OtherCADPreviewExtension.appex
     COMMAND pluginkit -e use -i ${THUMBNAIL_BUNDLE_ID}
     COMMAND pluginkit -e use -i ${PREVIEW_BUNDLE_ID}
     COMMAND pluginkit -m -v -i ${THUMBNAIL_BUNDLE_ID} || echo "Thumbnail extension registration status unknown"

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="64px"
+   height="64px"
+   viewBox="0 0 64 64"
+   version="1.1"
+   id="Part_SectionCut"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <metadata id="metadata1">
+    <rdf:RDF>
+      <cc:Work rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title>Part_SectionCut</dc:title>
+        <dc:description>A solid cut open along a section</dc:description>
+        <dc:publisher>
+          <cc:Agent>
+            <dc:title>OtherCAD</dc:title>
+          </cc:Agent>
+        </dc:publisher>
+        <dc:rights>
+          <cc:Agent>
+            <dc:title>FreeCAD LGPL2+</dc:title>
+          </cc:Agent>
+        </dc:rights>
+        <cc:license>https://www.gnu.org/copyleft/lesser.html</cc:license>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g id="layer1">
+    <path d="M 23.04,4.50 L 8.89,12.67 L 40.96,31.18 L 55.11,23.01 Z" style="fill:#d3e5f6;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 8.89,40.99 L 40.96,59.50 L 40.96,31.18 L 8.89,12.67 Z" style="fill:#f0a202;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 55.11,51.33 L 55.11,23.01 L 40.96,31.18 L 40.96,59.50 Z" style="fill:#7ea8d1;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 8.89,19.20 L 14.55,15.94" style="fill:none;stroke:#0b1521;stroke-width:2.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 8.89,27.92 L 22.10,20.29" style="fill:none;stroke:#0b1521;stroke-width:2.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 8.89,36.63 L 29.64,24.65" style="fill:none;stroke:#0b1521;stroke-width:2.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 12.66,43.16 L 37.19,29.00" style="fill:none;stroke:#0b1521;stroke-width:2.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 20.21,47.52 L 40.96,35.54" style="fill:none;stroke:#0b1521;stroke-width:2.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 27.76,51.88 L 40.96,44.25" style="fill:none;stroke:#0b1521;stroke-width:2.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 35.30,56.23 L 40.96,52.97" style="fill:none;stroke:#0b1521;stroke-width:2.00;stroke-linejoin:round;stroke-linecap:round" />
+  </g>
+</svg>

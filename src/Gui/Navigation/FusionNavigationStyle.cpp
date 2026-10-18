@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 /***************************************************************************
- *   Copyright (c) 2026 FuCadUp contributors                               *
+ *   Copyright (c) 2026 OtherCAD contributors                               *
  *                                                                         *
  *   This file is part of the FreeCAD CAx development system.              *
  *                                                                         *

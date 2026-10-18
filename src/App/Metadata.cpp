@@ -117,7 +117,7 @@ Metadata::Metadata(const DOMNode* domNode, int format)
                 break;
             default:
                 throw Base::XMLBaseException(
-                    "package.xml format version is not supported by this version of FuCadUp");
+                    "package.xml format version is not supported by this version of OtherCAD");
         }
     }
 }
@@ -160,7 +160,7 @@ void Metadata::loadFromInputSource(const InputSource& source)
             break;
         default:
             throw Base::XMLBaseException(
-                "package.xml format version is not supported by this version of FuCadUp");
+                "package.xml format version is not supported by this version of OtherCAD");
     }
 }
 

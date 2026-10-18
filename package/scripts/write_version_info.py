@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# call this file from within the FuCadUp git repo
+# call this file from within the OtherCAD git repo
 # this script creates a file with the important version information
 import os
 import sys

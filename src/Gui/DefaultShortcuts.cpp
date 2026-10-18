@@ -46,7 +46,7 @@ namespace
  * prefix (S against "S, B"/"S, F"/"S, G"/"S, D", and so on) instead of waiting
  * ShortcutTimeout for one of those chords to complete. `ShortcutManager::
  * checkShortcut` resolves that by priority: giving every entry here
- * `fuCadPriority` below is what lets its exact match fire immediately, ahead
+ * `otherCadPriority` below is what lets its exact match fire immediately, ahead
  * of any enabled longer sequence with a lower priority. Modelling commands
  * that must stay off while a sketch is open (PartDesign's tools,
  * `Std_Placement`, `Std_Measure`) are guarded in their own `isActive()`
@@ -83,7 +83,7 @@ namespace
  * "U, F"/"U, C" (Mod/Part/Gui/CommandFilter.cpp).
  *
  * A user who wants a shadowed chord back does not have to give up the letter:
- * raising that chord's command above `fuCadPriority` (100) in
+ * raising that chord's command above `otherCadPriority` (100) in
  * Preferences -> Keyboard restores the wait, because `checkShortcut` only
  * flushes the letter when its priority beats every other candidate's.
  *
@@ -137,7 +137,7 @@ const std::unordered_map<std::string_view, const char*> shortcuts = {
 
 /// High enough to beat the commands that never asked for an order of their own,
 /// low enough to leave room for a user who wants something else on top.
-constexpr int fuCadPriority = 100;
+constexpr int otherCadPriority = 100;
 }  // namespace
 
 
@@ -157,7 +157,7 @@ void Gui::applyDefaultShortcutPriorities()
     for (const auto& [command, accel] : shortcuts) {
         const std::string name(command);
         if (manager->getPriority(name.c_str()) == 0) {
-            manager->setPriority(name.c_str(), fuCadPriority);
+            manager->setPriority(name.c_str(), otherCadPriority);
         }
     }
 }

@@ -26,7 +26,7 @@ long-lived profile carries values that a fresh one never has, and a test run
 starts from a fresh one on CI. Three suites passed for months on a developer's
 machine and failed on every clean profile for that reason:
 
-- the FuCad Dark preference pack is never applied during a test run, since the
+- the OtherCAD Dark preference pack is never applied during a test run, since the
   first-start theme selector that would apply it returns early for one, so its
   colours and stylesheet were only there because the profile had saved them;
 - a default the fork has since changed (DatumScale went from 100 to 300) was only
@@ -101,19 +101,19 @@ class PinnedPreferences:
         self._saved = None
 
 
-def fucad_dark(group_path, names=None):
-    """One group of the FuCad Dark preference pack, as {name: (kind, value)}.
+def othercad_dark(group_path, names=None):
+    """One group of the OtherCAD Dark preference pack, as {name: (kind, value)}.
 
     Read from the pack file that ships with the build, so a test pins what a
-    FuCad Dark user actually gets rather than a copy of it that can drift. `names`
+    OtherCAD Dark user actually gets rather than a copy of it that can drift. `names`
     narrows it to those entries, and every one of them must be in the pack.
     """
 
     path = os.path.join(
-        FreeCAD.getResourceDir(), "Gui", "PreferencePacks", "FuCad Dark", "FuCad Dark.cfg"
+        FreeCAD.getResourceDir(), "Gui", "PreferencePacks", "OtherCAD Dark", "OtherCAD Dark.cfg"
     )
     if not os.path.isfile(path):
-        raise FileNotFoundError("no FuCad Dark preference pack at %s" % path)
+        raise FileNotFoundError("no OtherCAD Dark preference pack at %s" % path)
 
     wanted = ["Root"] + group_path.replace(_USER_PREFIX, "").split("/")
     root = ElementTree.parse(path).getroot()
@@ -128,7 +128,7 @@ def fucad_dark(group_path, names=None):
 
     group = find(root, 0)
     if group is None:
-        raise KeyError("the FuCad Dark pack has no %s group" % group_path)
+        raise KeyError("the OtherCAD Dark pack has no %s group" % group_path)
 
     values = {}
     for entry in group:
@@ -151,6 +151,6 @@ def fucad_dark(group_path, names=None):
     if names is not None:
         missing = [name for name in names if name not in values]
         if missing:
-            raise KeyError("the FuCad Dark pack sets none of %s in %s" % (missing, group_path))
+            raise KeyError("the OtherCAD Dark pack sets none of %s in %s" % (missing, group_path))
         values = {name: values[name] for name in names}
     return values

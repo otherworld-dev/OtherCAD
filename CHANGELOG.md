@@ -1,10 +1,11 @@
 # Changelog
 
-All notable changes to FuCadUp are listed here. The format follows
+All notable changes to OtherCAD are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-FuCadUp is built on FuCad 26.3.2, which is itself built on FreeCAD. Changes that come in
-from upstream FreeCAD merges are not listed, only the work done in this fork.
+OtherCAD is a fork of FreeCAD. It was called FuCadUp up to 26.4.0, and began from FuCad
+26.3.2. Changes that come in from upstream FreeCAD merges are not listed, only the work
+done in this fork.
 
 ## [Unreleased]
 
@@ -27,6 +28,10 @@ from upstream FreeCAD merges are not listed, only the work done in this fork.
 
 ### Changed
 
+- FuCadUp is now OtherCAD. It has a new logo, a padded O in place of the F, and new
+  executable names (OtherCAD and OtherCADCmd). Settings now live in an OtherCAD folder, so
+  nothing carries over from FuCadUp. The theme, stylesheets and icons that came from FuCad
+  are renamed to match.
 - Extrude, Revolve, Hole, Sweep, Loft and Coil with nothing selected wait for a click
   in the 3D view, as in Fusion, instead of listing sketches by name. Click a region of
   a sketch to build from that region, or a curve to use the whole sketch. The body's

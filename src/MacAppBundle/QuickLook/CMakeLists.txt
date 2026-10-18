@@ -67,8 +67,8 @@ if(NOT BUILD_MODERN_EXTENSIONS AND NOT BUILD_LEGACY_GENERATOR)
 endif()
 
 # Global configuration
-set(FREECAD_BUNDLE_ID "org.fucadup.FuCadUp")
-set(TARGET_APP_BUNDLE "${CMAKE_BINARY_DIR}/src/MacAppBundle/FuCadUp.app")
+set(FREECAD_BUNDLE_ID "dev.otherworld.OtherCAD")
+set(TARGET_APP_BUNDLE "${CMAKE_BINARY_DIR}/src/MacAppBundle/OtherCAD.app")
 
 # Detect target architecture
 if(CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" OR CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
@@ -153,7 +153,7 @@ message(STATUS "FreeCAD QuickLook Configuration Summary:")
 message(STATUS "  Generator: ${CMAKE_GENERATOR}")
 message(STATUS "  Target Architecture: ${TARGET_ARCH}")
 message(STATUS "  Deployment Target: ${CMAKE_OSX_DEPLOYMENT_TARGET}")
-message(STATUS "  Target FuCadUp.app: ${TARGET_APP_BUNDLE}")
+message(STATUS "  Target OtherCAD.app: ${TARGET_APP_BUNDLE}")
 message(STATUS "  Modern Extensions (.appex): ${BUILD_MODERN_EXTENSIONS}")
 message(STATUS "  Legacy Generator (.qlgenerator): ${BUILD_LEGACY_GENERATOR}")
 

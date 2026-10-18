@@ -429,7 +429,7 @@ App.__cmake__ = globals().get("cmake", [])
 # store unit test names
 App.__unit_test__ = []
 
-App.addImportType("FuCadUp document (*.FCStd)", "FreeCAD")
+App.addImportType("OtherCAD document (*.FCStd)", "FreeCAD")
 
 # set to no gui, is overwritten by InitGui
 App.GuiUp = 0

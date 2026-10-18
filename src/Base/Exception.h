@@ -163,7 +163,7 @@ class BaseExport Exception: public BaseClass
     TYPESYSTEM_HEADER_WITH_OVERRIDE();
 
 public:
-    explicit Exception(std::string message = "FuCadUp Exception");
+    explicit Exception(std::string message = "OtherCAD Exception");
     Exception(const Exception& inst);
     Exception(Exception&& inst) noexcept;
 

@@ -1,17 +1,18 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # Copyright (c) 2026 FuCad contributors
 
-"""Single source of truth for the FuCadUp visual identity.
+"""Single source of truth for the OtherCAD visual identity.
 
-The palette and the geometry of the FuCadUp mark are defined here once and are
+The palette and the geometry of the OtherCAD mark are defined here once and are
 consumed by ``generate_brand_assets.py`` to emit every logo, icon, splash and
 packaging graphic in the repository. Nothing else should hard-code brand
 colours or redraw the mark.
 
-The mark is a padded "F": the letter sketched on an isometric plane and pushed
+The mark is a padded "O": a ring sketched on an isometric plane and pushed
 straight up out of it, the operation every parametric CAD model starts with.
 The top face reads as the letter, the walls give it the depth and the accent
-colour, and the sketch plane it rises from stays visible underneath.
+colour, and the sketch plane it rises from shows underneath and through the
+middle of the ring.
 """
 
 import math
@@ -56,25 +57,20 @@ def rgba(rgb, alpha=255):
 # page; the projection below lays that page flat and views it from the front.
 # --------------------------------------------------------------------------
 
-# Clockwise profile of the letter as drawn on the sketch plane.
-F_PROFILE = (
-    (11.0, 14.0),
-    (31.0, 14.0),
-    (31.0, 20.5),
-    (17.5, 20.5),
-    (17.5, 24.0),
-    (27.0, 24.0),
-    (27.0, 29.5),
-    (17.5, 29.5),
-    (17.5, 37.0),
-    (11.0, 37.0),
-)
+# The ring of the letter as drawn on the sketch plane: centre and radii.
+RING_CENTRE = (22.0, 24.0)
+RING_OUTER = 13.0
+RING_INNER = 6.5
 
-# The rectangle of sketch plane the profile sits on, in the same coordinates.
-SKETCH_PLANE = ((7.0, 10.0), (35.0, 10.0), (35.0, 41.0), (7.0, 41.0))
+# Straight segments each circle is drawn with. Fine enough to read as round
+# on the splash, coarse enough to keep the vector masters small.
+RING_SEGMENTS = 96
 
-# How far the profile is padded up out of the plane, in screen units.
-PAD_HEIGHT = 13.0
+# The square of sketch plane the ring sits on, in the same coordinates.
+SKETCH_PLANE = ((6.0, 8.0), (38.0, 8.0), (38.0, 40.0), (6.0, 40.0))
+
+# How far the ring is padded up out of the plane, in screen units.
+PAD_HEIGHT = 8.5
 
 # Width of the sketch plane's outline, in screen units.
 PLANE_LINE = 0.9
@@ -93,30 +89,66 @@ def _project(point):
     return ((x - y) * _COS30, (x + y) * _SIN30)
 
 
-def _pad_faces(profile, height):
-    """Return the top face of the padded profile and the walls that face the viewer.
+def _circle(radius, start=0.0, end=2.0 * math.pi, segments=RING_SEGMENTS):
+    """Return points on a ring circle, projected, running clockwise from ``start``.
 
-    The walls hang straight down from the projected outline, so an edge only has a
-    visible wall when its projection runs leftwards; every other wall sits behind
-    the solid. Walls come back sorted far to near, each tagged with whether it faces
-    the light, so painting them in order produces the right overlaps.
+    Angles grow clockwise because sketch y points down the page. The arc keeps
+    the spacing of a full circle drawn with ``segments`` steps.
     """
-    top = [_project(p) for p in profile]
+    steps = max(1, round((end - start) / (2.0 * math.pi) * segments))
+    cx, cy = RING_CENTRE
+    points = []
+    for step in range(steps + 1):
+        angle = start + (end - start) * step / steps
+        points.append(_project((cx + radius * math.cos(angle), cy + radius * math.sin(angle))))
+    return points
+
+
+def _walls(points, height, visible, lit):
+    """Return the wall quads hanging ``height`` below the edges that ``visible`` keeps.
+
+    Each quad is tagged with whether ``lit`` says it faces the light. Walls come
+    back sorted far to near, so painting them in order gives the right overlaps.
+    """
     walls = []
-    count = len(top)
-    for index in range(count):
-        p1 = top[index]
-        p2 = top[(index + 1) % count]
+    for p1, p2 in zip(points, points[1:]):
         dx, dy = p2[0] - p1[0], p2[1] - p1[1]
-        if dx >= 0:
+        if not visible(dx):
             continue
         quad = [p1, p2, (p2[0], p2[1] + height), (p1[0], p1[1] + height)]
-        walls.append((quad, dy > 0))
+        walls.append((quad, lit(dy)))
     walls.sort(key=lambda wall: max(y for _, y in wall[0]))
-    return top, walls
+    return walls
 
 
-PAD_TOP, PAD_WALLS = _pad_faces(F_PROFILE, PAD_HEIGHT)
+def _pad_faces(height):
+    """Return the top face of the padded ring and the walls that face the viewer.
+
+    The walls hang straight down from the projected circles. Round the outside,
+    only the near half shows: the edges whose projection runs leftwards. Inside
+    the hole it is the other way round, and the far half of the inner wall shows
+    above the patch of sketch plane at the bottom of the hole. That inner wall
+    hangs past the hole, so it is painted first: the outer walls and the top
+    face then cover everything of it that should be hidden, and nothing needs
+    clipping.
+
+    The top face has a hole, which flat polygon fills cannot draw, so it comes
+    back as two half rings that overlap by one segment and leave no seam.
+    """
+    outer = _circle(RING_OUTER)
+    inner = _circle(RING_INNER)
+    outer_walls = _walls(outer, height, lambda dx: dx < 0, lambda dy: dy > 0)
+    inner_walls = _walls(inner, height, lambda dx: dx > 0, lambda dy: dy < 0)
+
+    overlap = 2.0 * math.pi / RING_SEGMENTS
+    halves = []
+    for start in (0.0, math.pi):
+        arc = (start - overlap, start + math.pi + overlap)
+        halves.append(_circle(RING_OUTER, *arc) + _circle(RING_INNER, *arc)[::-1])
+    return outer, halves, outer_walls, inner_walls
+
+
+PAD_OUTLINE, PAD_TOP, PAD_WALLS, PAD_INNER_WALLS = _pad_faces(PAD_HEIGHT)
 PLANE_OUTLINE = [(x, y + PAD_HEIGHT) for x, y in map(_project, SKETCH_PLANE)]
 
 
@@ -126,7 +158,7 @@ def _bounds(polygons):
     return min(xs), min(ys), max(xs), max(ys)
 
 
-MARK_BOUNDS = _bounds([PLANE_OUTLINE] + [quad for quad, _ in PAD_WALLS] + [PAD_TOP])
+MARK_BOUNDS = _bounds([PLANE_OUTLINE] + [quad for quad, _ in PAD_WALLS] + [PAD_OUTLINE])
 MARK_ASPECT = (MARK_BOUNDS[2] - MARK_BOUNDS[0]) / (MARK_BOUNDS[3] - MARK_BOUNDS[1])
 
 
@@ -162,8 +194,8 @@ def mark_polygons(box, face, lit, shade, plane_line=None, plane_fill=None):
     ``box`` is ``(x, y, width, height)``; the mark keeps its aspect ratio and is
     centred inside it. Shapes are returned back to front, so painting them in
     order produces the correct silhouette: the sketch plane first (only when a
-    colour is given for its fill or outline), then the walls, then the top face
-    that carries the letter.
+    colour is given for its fill or outline), then the inner and outer walls,
+    then the top face that carries the letter.
     """
     x, y, width, height = box
     min_x, min_y, max_x, max_y = MARK_BOUNDS
@@ -179,8 +211,9 @@ def mark_polygons(box, face, lit, shade, plane_line=None, plane_fill=None):
         shapes.append((place(PLANE_OUTLINE), plane_fill))
     if plane_line is not None:
         shapes += [(place(band), plane_line) for band in _edge_bands(PLANE_OUTLINE, PLANE_LINE)]
-    shapes += [(place(quad), lit if is_lit else shade) for quad, is_lit in PAD_WALLS]
-    shapes.append((place(PAD_TOP), face))
+    for walls in (PAD_INNER_WALLS, PAD_WALLS):
+        shapes += [(place(quad), lit if is_lit else shade) for quad, is_lit in walls]
+    shapes += [(place(half), face) for half in PAD_TOP]
     return shapes
 
 
@@ -317,7 +350,7 @@ def load_font(pixels, weight="SemiBold"):
             except OSError:
                 pass
         return font
-    raise RuntimeError("no usable font found for the FuCadUp wordmark")
+    raise RuntimeError("no usable font found for the OtherCAD wordmark")
 
 
 def tracked_width(font, text, tracking):

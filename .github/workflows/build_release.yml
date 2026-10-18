@@ -112,7 +112,7 @@ jobs:
           set -euo pipefail
           # write_version_info.py bakes the git info into Version.h.cmake, disables the rewrite in
           # SubWCRev.py, and commits the result itself, so the tarball archives that commit as HEAD.
-          python3 package/scripts/write_version_info.py ../fucad_version.txt
+          python3 package/scripts/write_version_info.py ../othercad_version.txt
           git archive HEAD -o freecad_source_${BUILD_TAG}.tar
           git submodule foreach --recursive \
             "git archive HEAD --prefix=\$path/ -o \$sha1.tar && \
@@ -200,7 +200,7 @@ jobs:
           fi
           # create variables
           CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
-          PP_PATH=$RUNNER_TEMP/FuCadUp_bundle.provisionprofile
+          PP_PATH=$RUNNER_TEMP/OtherCAD_bundle.provisionprofile
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
 
           export KEYCHAIN_PASSWORD=$(openssl rand -base64 8)
@@ -223,7 +223,7 @@ jobs:
           mkdir -p ~/Library/Provisioning\ Profiles
           cp $PP_PATH ~/Library/Provisioning\ Profiles
 
-          xcrun notarytool store-credentials "FuCadUp" --keychain "$KEYCHAIN_PATH" --apple-id "${APPLE_ID}" --password "${APP_SPECIFIC_PASSWORD}" --team-id "${DEVELOPER_TEAM_ID}"
+          xcrun notarytool store-credentials "OtherCAD" --keychain "$KEYCHAIN_PATH" --apple-id "${APPLE_ID}" --password "${APP_SPECIFIC_PASSWORD}" --team-id "${DEVELOPER_TEAM_ID}"
 
       - name: Setup .NET 10 SDK
         if: runner.os == 'Windows' && env.HAS_WINDOWS_SIGNING == 'true'
@@ -251,7 +251,7 @@ jobs:
           if [[ "${{ runner.os }}" == "macOS" ]]; then
             export MACOS_DEPLOYMENT_TARGET="${{ matrix.deploy_target }}"
           fi
-          python3 package/scripts/write_version_info.py ../fucad_version.txt
+          python3 package/scripts/write_version_info.py ../othercad_version.txt
           pixi run --locked "bash package/bundle/build.sh"
 
       - name: Azure login for Windows build code signing

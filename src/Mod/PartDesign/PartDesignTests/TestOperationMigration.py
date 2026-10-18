@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 # ***************************************************************************
-# *   Copyright (c) 2026 FuCadUp contributors                               *
+# *   Copyright (c) 2026 OtherCAD contributors                               *
 # *                                                                         *
 # *   This program is free software; you can redistribute it and/or modify  *
 # *   it under the terms of the GNU Lesser General Public License (LGPL)    *
@@ -25,7 +25,7 @@
 
 Upstream FreeCAD gives each feature class only the operations it can perform:
 an additive feature offers {"Union"}, a subtractive one {"Subtraction",
-"Common"}. FuCadUp offers all four operations on every feature, because one
+"Common"}. OtherCAD offers all four operations on every feature, because one
 tool is both. A document stores the index into the list, so the numbering does
 not line up and a pocket saved by FreeCAD as index 0 would read here as Join
 and quietly turn into a pad.

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// SPDX-FileCopyrightText: 2026 FuCadUp contributors
+// SPDX-FileCopyrightText: 2026 OtherCAD contributors
 // SPDX-FileNotice: Part of the FreeCAD project.
 
 /******************************************************************************
@@ -49,7 +49,7 @@ namespace Gui
 {
 
 /**
- * FuCadUp's navigation cube: flat, see-through faces, each split into 3x3 tiles
+ * OtherCAD's navigation cube: flat, see-through faces, each split into 3x3 tiles
  * (centre = the face, sides = edges, corners = corners), with faint guide lines on
  * the tile borders and small line controls that show while the pointer is over it.
  *

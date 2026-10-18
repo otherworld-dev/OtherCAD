@@ -90,7 +90,7 @@ jobs:
         fetch-depth: 2
         submodules: recursive
 
-    # Install FuCadUp dependencies (cpp)
+    # Install OtherCAD dependencies (cpp)
     - name: Setup build environment
       run: ./package/ubuntu/install-apt-packages.sh
 

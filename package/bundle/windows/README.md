@@ -75,7 +75,7 @@ The script verifies two files after signing: the launcher, and a nested binary f
 remainder went unnoticed. To audit a built bundle by hand:
 
 ```powershell
-$root = 'C:\Program Files\FuCadUp'
+$root = 'C:\Program Files\OtherCAD'
 Get-ChildItem $root -Recurse -Include *.dll,*.pyd,*.exe -File |
   ForEach-Object { Get-AuthenticodeSignature $_.FullName } |
   Group-Object Status

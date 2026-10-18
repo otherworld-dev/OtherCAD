@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
-"""GUI tests for FuCadUp's view cube (Gui::SoViewCube) and the cube style setting.
+"""GUI tests for OtherCAD's view cube (Gui::SoViewCube) and the cube style setting.
 
 To run tests:
-    FuCadUp -t TestViewCube
+    OtherCAD -t TestViewCube
 """
 
 import time
@@ -65,7 +65,7 @@ class ViewCubeTestBase(unittest.TestCase):
 
 
 class TestCubeStyle(ViewCubeTestBase):
-    def test_a_fresh_install_uses_the_fucadup_cube(self):
+    def test_a_fresh_install_uses_the_othercad_cube(self):
         self.group.RemInt("CubeStyle")
         process_events()
         self.assertEqual(self.cube_type(), "SoViewCube")
@@ -76,7 +76,7 @@ class TestCubeStyle(ViewCubeTestBase):
         self.assertEqual(self.cube_type(), "SoNaviCube", "Classic did not bring the old cube back")
         self.group.SetInt("CubeStyle", 0)
         process_events()
-        self.assertEqual(self.cube_type(), "SoViewCube", "FuCadUp did not come back")
+        self.assertEqual(self.cube_type(), "SoViewCube", "OtherCAD did not come back")
 
     def test_the_new_cube_gets_the_controllers_values(self):
         self.group.SetInt("CubeStyle", 0)
@@ -280,4 +280,4 @@ class TestCubeStylePreference(unittest.TestCase):
         self.assertEqual(props["prefEntry"].find("cstring").text, "CubeStyle")
         self.assertEqual(props["prefPath"].find("cstring").text, "NaviCube")
         items = [i.find("property/string").text for i in combo.findall("item")]
-        self.assertEqual(items, ["FuCadUp", "Classic"], "item order must match CubeStyle 0 and 1")
+        self.assertEqual(items, ["OtherCAD", "Classic"], "item order must match CubeStyle 0 and 1")

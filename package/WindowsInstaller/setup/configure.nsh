@@ -2,7 +2,7 @@
 
 configure.nsh
 
-Write registry information and configure FuCadUp
+Write registry information and configure OtherCAD
 
 */
 
@@ -46,9 +46,9 @@ Section -InstallData
   WriteRegStr SHCTX ${APP_UNINST_KEY} "DisplayVersion" "${APP_VERSION}"
   WriteRegStr SHCTX ${APP_UNINST_KEY} "DisplayIcon" "$INSTDIR\${APP_RUN}"
   WriteRegStr SHCTX ${APP_UNINST_KEY} "URLUpdateInfo" "${APP_WEBPAGE}"
-  WriteRegStr SHCTX ${APP_UNINST_KEY} "URLInfoAbout" "https://github.com/otherworld-dev/FuCadUp"
+  WriteRegStr SHCTX ${APP_UNINST_KEY} "URLInfoAbout" "https://github.com/otherworld-dev/OtherCAD"
   WriteRegStr SHCTX ${APP_UNINST_KEY} "Publisher" "${APP_NAME} Team"
-  WriteRegStr SHCTX ${APP_UNINST_KEY} "HelpLink" "https://github.com/otherworld-dev/FuCadUp/issues"
+  WriteRegStr SHCTX ${APP_UNINST_KEY} "HelpLink" "https://github.com/otherworld-dev/OtherCAD/issues"
   WriteRegDWORD SHCTX ${APP_UNINST_KEY} "NoModify" 0x00000001
   WriteRegDWORD SHCTX ${APP_UNINST_KEY} "NoRepair" 0x00000001
   WriteRegStr SHCTX ${APP_UNINST_KEY} "StartMenu" "$SMPROGRAMS\$StartmenuFolder"
@@ -68,22 +68,22 @@ Section -InstallData
 SectionEnd
 
 #--------------------------------
-# Write FuCadUp file associations
+# Write OtherCAD file associations
 
 Section -Configure
 
-  # Associate .FCStd files with FuCadUp for current user or all users
+  # Associate .FCStd files with OtherCAD for current user or all users
 
   ${if} $CreateFileAssociations == "true"
    WriteRegStr SHCTX "${APP_DIR_REGKEY}" "" "$INSTDIR\${APP_RUN}"
    WriteRegStr SHCTX "Software\Classes\${APP_REGNAME_DOC}" "" "${APP_NAME} Document"
    WriteRegStr SHCTX "Software\Classes\${APP_REGNAME_DOC}\DefaultIcon" "" "$INSTDIR\${APP_RUN},0"
    WriteRegStr SHCTX "Software\Classes\${APP_REGNAME_DOC}\Shell\open\command" "" '"$INSTDIR\${APP_RUN}" --single-instance "%1"'
-   # we need to update also the automatically created entry about the FuCadUp.exe
-   # otherwise .FCStd-files will could be opened with an older FuCadUp version
-   ReadRegStr $0 SHCTX "Software\Classes\Applications\${BIN_FUCAD}\shell\open\command" ""
+   # we need to update also the automatically created entry about the OtherCAD.exe
+   # otherwise .FCStd-files will could be opened with an older OtherCAD version
+   ReadRegStr $0 SHCTX "Software\Classes\Applications\${BIN_OTHERCAD}\shell\open\command" ""
    ${if} $0 != "" # if something was found
-    WriteRegStr SHCTX "Software\Classes\Applications\${BIN_FUCAD}\shell\open\command" "" '"$INSTDIR\${APP_RUN}" --single-instance "%1"'
+    WriteRegStr SHCTX "Software\Classes\Applications\${BIN_OTHERCAD}\shell\open\command" "" '"$INSTDIR\${APP_RUN}" --single-instance "%1"'
    ${endif}
    # .FCStd
    WriteRegStr SHCTX "Software\Classes\${APP_EXT}" "" "${APP_REGNAME_DOC}"

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="64px"
+   height="64px"
+   viewBox="0 0 64 64"
+   version="1.1"
+   id="Std_Import"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <metadata id="metadata1">
+    <rdf:RDF>
+      <cc:Work rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title>Std_Import</dc:title>
+        <dc:description>A file brought into the model</dc:description>
+        <dc:publisher>
+          <cc:Agent>
+            <dc:title>OtherCAD</dc:title>
+          </cc:Agent>
+        </dc:publisher>
+        <dc:rights>
+          <cc:Agent>
+            <dc:title>FreeCAD LGPL2+</dc:title>
+          </cc:Agent>
+        </dc:rights>
+        <cc:license>https://www.gnu.org/copyleft/lesser.html</cc:license>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g id="layer1">
+    <path d="M 32.00,15.66 L 9.22,28.81 L 32.00,41.96 L 54.78,28.81 Z" style="fill:#d3e5f6;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 9.22,46.35 L 32.00,59.50 L 32.00,41.96 L 9.22,28.81 Z" style="fill:#a9c9e8;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 54.78,46.35 L 54.78,28.81 L 32.00,41.96 L 32.00,59.50 Z" style="fill:#7ea8d1;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 9.38,7.54 L 24.95,23.76 L 22.74,25.89 L 32.00,27.94 L 30.33,18.60 L 28.12,20.73 L 12.54,4.50 Z" style="fill:#f4f6f8;stroke:#0b1521;stroke-width:2.50;stroke-linejoin:round;stroke-linecap:round" />
+  </g>
+</svg>

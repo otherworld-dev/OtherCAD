@@ -42,7 +42,7 @@ PrimaryColorLighten5: "lighten(@PrimaryColor,6)"
 PrimaryColorLighten6: "lighten(@PrimaryColor,7)"
 RadioButtonBackgroundColor: "@CheckBoxBackgroundColor"
 RadioButtonBorderColor: "@GeneralBorderColor"
-# Panel and tab captions of the ribbon, see src/Gui/Stylesheets/FuCad.qss.
+# Panel and tab captions of the ribbon, see src/Gui/Stylesheets/OtherCAD.qss.
 # @TextDisabledColor reads at 4.4:1 on @PrimaryColor, just under the 4.5:1 WCAG
 # 2.1 asks of body text. darken() scales the HSV value and so cannot darken a
 # black @TextForegroundColor at all, which would leave a caption at full body

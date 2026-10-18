@@ -81,45 +81,45 @@ unittest.TextTestRunner().run(alltest)
 ## examples from shell in build dir:
 ### all FreeCAD tests
 ```python
-./bin/FuCadUpCmd --run-test 0
-./bin/FuCadUp --run-test 0
+./bin/OtherCADCmd --run-test 0
+./bin/OtherCAD --run-test 0
 ```
 
 ### all FEM tests
 ```bash
-./bin/FuCadUpCmd --run-test "TestFemApp"
-./bin/FuCadUp --run-test "TestFemApp"
+./bin/OtherCADCmd --run-test "TestFemApp"
+./bin/OtherCAD --run-test "TestFemApp"
 ```
 
 ### import Fem and FemGui
 
 ```bash
-./bin/FuCadUpCmd --run-test "femtest.app.test_femimport"
-./bin/FuCadUp --run-test "femtest.app.test_femimport"
+./bin/OtherCADCmd --run-test "femtest.app.test_femimport"
+./bin/OtherCAD --run-test "femtest.app.test_femimport"
 ```
 
 ### module
 
 ```bash
-./bin/FuCadUp --run-test "femtest.app.test_femimport"
+./bin/OtherCAD --run-test "femtest.app.test_femimport"
 ```
 
 ### class
 
 ```bash
-./bin/FuCadUp --run-test "femtest.app.test_common.TestFemCommon"
+./bin/OtherCAD --run-test "femtest.app.test_common.TestFemCommon"
 ```
 
 ### method
 
 ```bash
-./bin/FuCadUp --run-test "femtest.app.test_common.TestFemCommon.test_pyimport_all_FEM_modules"
+./bin/OtherCAD --run-test "femtest.app.test_common.TestFemCommon.test_pyimport_all_FEM_modules"
 ```
 
 ### Gui
 
 ```bash
-./bin/FuCadUp --run-test "femtest.gui.test_open.TestObjectOpen"
+./bin/OtherCAD --run-test "femtest.gui.test_open.TestObjectOpen"
 ```
 
 

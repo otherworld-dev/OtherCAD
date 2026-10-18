@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 #
-# Build and install QuickLook for FCStd files (org.fucadup.fcstd)
+# Build and install QuickLook for FCStd files (dev.otherworld.othercad.fcstd)
 # This is used by Homebrew and Conda/Mamba scripts alike.
 #
 if(FREECAD_CREATE_MAC_APP OR (APPLE AND BUILD_WITH_CONDA))
@@ -174,7 +174,7 @@ else()
     message(WARNING "Qt Assistant not found at ${QT_ASSISTANT_PATH}, skipping installation")
 endif()
 
-# Install specific Qt plugin subdirectories that FuCadUp needs
+# Install specific Qt plugin subdirectories that OtherCAD needs
 foreach(_subdir ${QT_PLUGIN_SUBDIRS})
     if(IS_DIRECTORY "${QT_PLUGINS_DIR}/${_subdir}")
         set(_resolved_files "")

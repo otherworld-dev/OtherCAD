@@ -1,5 +1,5 @@
 > [!IMPORTANT]
-> Bleeding edge FuCadUp development builds for testing bugfixes, regressions, and recently implemented features. Do not use in a production environment.
+> Bleeding edge OtherCAD development builds for testing bugfixes, regressions, and recently implemented features. Do not use in a production environment.
 
 **Changes since last weekly:** <!--DIFF_LINK-->
 
@@ -9,8 +9,8 @@
 2. Unpack the bundle to any folder on your system
 3. Launch the application
     - **Windows**
-    Run `\FuCadUp.exe` in the extracted directory
+    Run `\OtherCAD.exe` in the extracted directory
     - **macOS**
-    Launch `/FuCadUp.app` in the extracted directory
+    Launch `/OtherCAD.app` in the extracted directory
     - **Linux**
     Open the `*.AppImage`

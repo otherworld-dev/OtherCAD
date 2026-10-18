@@ -1,5 +1,5 @@
 ﻿/*
-FuCadUp Installer Language File
+OtherCAD Installer Language File
 Language: Swedish
 */
 
@@ -14,18 +14,18 @@ ${LangFileString} TEXT_WELCOME "Denna guide tar dig igenom installationen av $(^
 #${LangFileString} TEXT_CONFIGURE_PYTHON "Kompilerar Pythonskript..."
 
 ${LangFileString} TEXT_FINISH_DESKTOP "Skapa skrivbordsgenväg"
-${LangFileString} TEXT_FINISH_WEBSITE "Besök github.com/otherworld-dev/FuCadUp för de senaste nyheterna, support och tips"
+${LangFileString} TEXT_FINISH_WEBSITE "Besök github.com/otherworld-dev/OtherCAD för de senaste nyheterna, support och tips"
 
-#${LangFileString} FileTypeTitle "FuCadUp-dokument"
+#${LangFileString} FileTypeTitle "OtherCAD-dokument"
 
 #${LangFileString} SecAllUsersTitle "Installera för alla användare?"
 ${LangFileString} SecFileAssocTitle "Filassociationer"
 ${LangFileString} SecDesktopTitle "Skrivbordsikon"
 
-${LangFileString} SecCoreDescription "FuCadUp-filerna."
-#${LangFileString} SecAllUsersDescription "Installera FuCadUp för alla användare, eller enbart för den aktuella användaren."
-${LangFileString} SecFileAssocDescription "Filer med ändelsen .FCStd kommer att automatiskt öppnas i FuCadUp."
-${LangFileString} SecDesktopDescription "En FuCadUp-ikon på skrivbordet."
+${LangFileString} SecCoreDescription "OtherCAD-filerna."
+#${LangFileString} SecAllUsersDescription "Installera OtherCAD för alla användare, eller enbart för den aktuella användaren."
+${LangFileString} SecFileAssocDescription "Filer med ändelsen .FCStd kommer att automatiskt öppnas i OtherCAD."
+${LangFileString} SecDesktopDescription "En OtherCAD-ikon på skrivbordet."
 #${LangFileString} SecDictionaries "Ordböcker"
 #${LangFileString} SecDictionariesDescription "Stavningskontrollens ordböcker som kan laddas ned och installeras."
 
@@ -34,37 +34,37 @@ ${LangFileString} SecDesktopDescription "En FuCadUp-ikon på skrivbordet."
 
 #${LangFileString} DictionariesFailed 'Nedladdning av ordbok för språk $\"$R3$\" misslyckades.'
 
-#${LangFileString} ConfigInfo "Följande konfigurering av FuCadUp kommer att ta en stund."
+#${LangFileString} ConfigInfo "Följande konfigurering av OtherCAD kommer att ta en stund."
 
 #${LangFileString} RunConfigureFailed "Kunde inte köra konfigurationsskriptet"
 ${LangFileString} InstallRunning "Installationsprogrammet körs redan!"
-${LangFileString} AlreadyInstalled "FuCadUp ${APP_SERIES_KEY2} är redan installerad!$\r$\n\
-				Vill du ändå installera FuCadUp över den nuvarande versionen?"
-${LangFileString} NewerInstalled "Du försöker att installera en äldre version av FuCadUp än vad du har installerad.$\r$\n\
-				  Om du verkligen vill detta måste du avinstallera den befintliga FuCadUp $OldVersionNumber innan."
+${LangFileString} AlreadyInstalled "OtherCAD ${APP_SERIES_KEY2} är redan installerad!$\r$\n\
+				Vill du ändå installera OtherCAD över den nuvarande versionen?"
+${LangFileString} NewerInstalled "Du försöker att installera en äldre version av OtherCAD än vad du har installerad.$\r$\n\
+				  Om du verkligen vill detta måste du avinstallera den befintliga OtherCAD $OldVersionNumber innan."
 
-#${LangFileString} FinishPageMessage "Gratulerar! FuCadUp har installerats framgångsrikt.$\r$\n\
+#${LangFileString} FinishPageMessage "Gratulerar! OtherCAD har installerats framgångsrikt.$\r$\n\
 #					$\r$\n\
-#					(Den första starten av FuCadUp kan ta en stund.)"
-${LangFileString} FinishPageRun "Kör FuCadUp"
+#					(Den första starten av OtherCAD kan ta en stund.)"
+${LangFileString} FinishPageRun "Kör OtherCAD"
 
-${LangFileString} UnNotInRegistryLabel "Kan inte hitta FuCadUp i registret.$\r$\n\
+${LangFileString} UnNotInRegistryLabel "Kan inte hitta OtherCAD i registret.$\r$\n\
 					Genvägar på skrivbordet och i startmenyn kommer inte att tas bort."
-${LangFileString} UnInstallRunning "Du måste stänga FuCadUp först!"
-${LangFileString} UnNotAdminLabel "Du måste ha administratörsbehörighet för att avinstallera FuCadUp!"
-${LangFileString} UnReallyRemoveLabel "Är du säker på att du verkligen vill fullständigt ta bort FuCadUp och alla dess komponenter?"
-${LangFileString} UnFuCadUpPreferencesTitle 'FuCadUp-användarinställningar'
+${LangFileString} UnInstallRunning "Du måste stänga OtherCAD först!"
+${LangFileString} UnNotAdminLabel "Du måste ha administratörsbehörighet för att avinstallera OtherCAD!"
+${LangFileString} UnReallyRemoveLabel "Är du säker på att du verkligen vill fullständigt ta bort OtherCAD och alla dess komponenter?"
+${LangFileString} UnOtherCADPreferencesTitle 'OtherCAD-användarinställningar'
 
 #${LangFileString} SecUnProgDescription "Avinstallerar xxx."
-${LangFileString} SecUnPreferencesDescription 'Raderar FuCadUp-konfiguration$\r$\n\
+${LangFileString} SecUnPreferencesDescription 'Raderar OtherCAD-konfiguration$\r$\n\
 						(katalog $\"$AppPre\username\$\r$\n\
 						$AppSuff\$\r$\n\
 						${APP_DIR_USERDATA}$\")$\r$\n\
 						för dig eller för alla användare (om du är admin).'
-${LangFileString} DialogUnPreferences 'You chose to delete the FuCadUps user configuration.$\r$\n\
-						This will also delete all installed FuCadUp addons.$\r$\n\
+${LangFileString} DialogUnPreferences 'You chose to delete the OtherCADs user configuration.$\r$\n\
+						This will also delete all installed OtherCAD addons.$\r$\n\
 						Do you agree with this?'
-${LangFileString} SecUnProgramFilesDescription "Avinstallera FuCadUp och alla dess komponenter."
+${LangFileString} SecUnProgramFilesDescription "Avinstallera OtherCAD och alla dess komponenter."
 
 ${LangFileString} DirNotEmptyWarning "The selected folder '$INSTDIR' is not empty.$\r$\n\
                         The installer will remove all its content before installing. Continue?"

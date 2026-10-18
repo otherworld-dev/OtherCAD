@@ -34,7 +34,7 @@
 			<true/>
 			<key>QLSupportedContentTypes</key>
 			<array>
-				<string>org.fucadup.fcstd</string>
+				<string>dev.otherworld.othercad.fcstd</string>
 			</array>
 			<key>QLSupportsSearchableItems</key>
 			<false/>

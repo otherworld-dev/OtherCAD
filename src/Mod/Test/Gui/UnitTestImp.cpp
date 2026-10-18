@@ -184,7 +184,7 @@ void UnitTestDialog::onAboutButtonClicked()
 {
     QMessageBox::information(
         this,
-        tr("About FuCadUp UnitTest"),
+        tr("About OtherCAD UnitTest"),
         tr("Copyright (c) Werner Mayer\n\n"
            "FreeCAD UnitTest is part of FreeCAD and supports writing Unit Tests for "
            "ones own modules.")

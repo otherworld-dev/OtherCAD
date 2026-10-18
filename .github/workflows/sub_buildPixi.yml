@@ -21,8 +21,8 @@
 # *                                                                         *
 # ***************************************************************************
 
-# This is a build and test workflow for CI of FuCadUp.
-# This workflow aims at building and testing FuCadUp on a Conda environment on macOS.
+# This is a build and test workflow for CI of OtherCAD.
+# This workflow aims at building and testing OtherCAD on a Conda environment on macOS.
 
 name: Pixi Builds
 
@@ -171,18 +171,18 @@ jobs:
       run: |
         pixi run ccache -s
 
-    - name: FuCadUp CLI tests on build dir
+    - name: OtherCAD CLI tests on build dir
       if: inputs.testOnBuildDir && !inputs.skipBuild
       timeout-minutes: 10
       uses: ./.github/workflows/actions/runPythonTests
       with:
         testDescription: "CLI tests on build dir"
-        testCommand: ${{ env.builddir }}/bin/FuCadUpCmd -t 0
+        testCommand: ${{ env.builddir }}/bin/OtherCADCmd -t 0
         logFile: ${{ env.logdir }}TestCLIBuild.log
         reportFile: ${{env.reportdir}}${{ env.reportfilename }}
         shellCmd: ${{ env.shellCmd }}
 
-    - name: FuCadUp GUI tests on build dir
+    - name: OtherCAD GUI tests on build dir
       if: runner.os == 'Linux' && inputs.testOnBuildDir && !inputs.skipBuild
       # A backstop only: each module has its own limit in the runner.
       timeout-minutes: 60
@@ -204,9 +204,9 @@ jobs:
       with:
         testDescription: "Coin node snapshot visual tests on build dir"
         testCommand: |
-          FC_VISUAL_OUT_DIR="/tmp/FuCadUpTesting/CoinNodeSnapshots" \
+          FC_VISUAL_OUT_DIR="/tmp/OtherCADTesting/CoinNodeSnapshots" \
           xvfb-run -a -s "-screen 0 1024x768x24" \
-            "${{ env.builddir }}/bin/FuCadUp" -t TestCoinNodeSnapshots
+            "${{ env.builddir }}/bin/OtherCAD" -t TestCoinNodeSnapshots
         logFile: ${{ env.logdir }}TestCoinNodeSnapshotsBuild.log
         reportFile: ${{env.reportdir}}${{ env.reportfilename }}
         shellCmd: ${{ env.shellCmd }}
@@ -216,7 +216,7 @@ jobs:
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: ${{ inputs.artifactBasename }}-${{ matrix.os }}-CoinNodeSnapshots
-        path: /tmp/FuCadUpTesting/CoinNodeSnapshots
+        path: /tmp/OtherCADTesting/CoinNodeSnapshots
 
     - name: src/Tools tests
       if: "!inputs.skipBuild"
@@ -237,18 +237,18 @@ jobs:
       run: |
         pixi run install-${{ env.config }}
 
-    - name: FuCadUp CLI tests on install
+    - name: OtherCAD CLI tests on install
       if: runner.os != 'Windows' && !inputs.skipBuild
       timeout-minutes: 10
       uses: ./.github/workflows/actions/runPythonTests
       with:
         testDescription: "CLI tests on install"
-        testCommand: FuCadUpCmd -t 0
+        testCommand: OtherCADCmd -t 0
         logFile: ${{ env.logdir }}TestCLIInstall.log
         reportFile: ${{env.reportdir}}${{ env.reportfilename }}
         shellCmd: ${{ env.shellCmd }}
 
-    - name: FuCadUp GUI tests on install
+    - name: OtherCAD GUI tests on install
       # if: runner.os == 'Linux' && !inputs.skipBuild
       # currently broken on Qt6 builds
       if: false
@@ -256,7 +256,7 @@ jobs:
       uses: ./.github/workflows/actions/runPythonTests
       with:
         testDescription: "GUI tests on install"
-        testCommand: xvfb-run FuCadUp -t 0
+        testCommand: xvfb-run OtherCAD -t 0
         logFile: ${{ env.logdir }}TestGUIInstall.log
         reportFile: ${{env.reportdir}}${{ env.reportfilename }}
         shellCmd: ${{ env.shellCmd }}
@@ -276,7 +276,7 @@ jobs:
         name: ${{ inputs.artifactBasename }}-${{ matrix.os }}-Logs
         path: |
           ${{ env.logdir }}
-          /var/crash/*FuCadUp*
+          /var/crash/*OtherCAD*
 
     - name: Upload report
       if: "!inputs.skipBuild"

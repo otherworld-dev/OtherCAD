@@ -1,72 +1,72 @@
 /tests:
     /TestAssemblyWorkbench :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestAssemblyWorkbench
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestAssemblyWorkbench
     /TestArch              :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestArch
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestArch
     /TestCAMApp            :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestCAMApp
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestCAMApp
     /TestDraft             :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestDraft
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestDraft
     /TestFemApp            :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestFemApp
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestFemApp
     /TestMaterialsApp      :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestMaterialsApp
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestMaterialsApp
     /MeshTestsApp          :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  MeshTestsApp
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  MeshTestsApp
     /TestPartApp           :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestPartApp
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestPartApp
     /TestPartDesignApp     :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestPartDesignApp
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestPartDesignApp
     /TestSketcherApp       :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestSketcherApp
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestSketcherApp
     /TestSpreadsheet       :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestSpreadsheet
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestSpreadsheet
     /TestSurfaceApp        :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestSurfaceApp
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestSurfaceApp
     /TestTechDrawApp       :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestTechDrawApp
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestTechDrawApp
     /BaseTests             :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  BaseTests
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  BaseTests
     /UnitTests             :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  UnitTests
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  UnitTests
     /Document              :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  Document
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  Document
     /Metadata              :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  Metadata
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  Metadata
     /StringHasher          :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  StringHasher
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  StringHasher
     /UnicodeTests          :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  UnicodeTests
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  UnicodeTests
     /TestPythonSyntax      :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestPythonSyntax
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestPythonSyntax
     /TestArchGui           :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestArchGui
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestArchGui
     /TestCAMGui           :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestCAMGui
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestCAMGui
     /TestDraftGui          :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestDraftGui
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestDraftGui
     /TestFemGui            :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestFemGui
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestFemGui
     /TestImportGui         :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestImportGui
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestImportGui
     /TestMaterialsGui      :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestMaterialsGui
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestMaterialsGui
     /TestOpenSCADGui       :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestOpenSCADGui
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestOpenSCADGui
     /TestPartGui           :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestPartGui
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestPartGui
     /TestPartDesignGui     :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestPartDesignGui
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestPartDesignGui
     /TestTechDrawGui       :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  TestTechDrawGui
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  TestTechDrawGui
     /Workbench             :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  Workbench
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  Workbench
     /Menu                  :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  Menu
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  Menu
     /Menu.MenuDeleteCases  :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  Menu.MenuDeleteCases
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  Menu.MenuDeleteCases
     /Menu.MenuCreateCases  :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  Menu.MenuCreateCases
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  Menu.MenuCreateCases
     /GuiDocument           :
-        test: wlheadless-run -- /usr/bin/FuCadUp  -t  GuiDocument
+        test: wlheadless-run -- /usr/bin/OtherCAD  -t  GuiDocument
 

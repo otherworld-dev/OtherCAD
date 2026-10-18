@@ -5,10 +5,10 @@ set -x
 
 conda_env="$(pwd | sed 's#\\#/#g')/../../../.pixi/envs/default"
 
-copy_dir="FuCadUp_Windows"
+copy_dir="OtherCAD_Windows"
 mkdir -p ${copy_dir}/bin
 
-# Copy Conda's Python and (U)CRT to FuCadUp/bin
+# Copy Conda's Python and (U)CRT to OtherCAD/bin
 cp -a ${conda_env}/DLLs ${copy_dir}/bin/DLLs
 cp -a ${conda_env}/Lib ${copy_dir}/bin/Lib
 cp -a ${conda_env}/Scripts ${copy_dir}/bin/Scripts
@@ -25,9 +25,9 @@ cp -a ${conda_env}/Library/mingw-w64/bin/* ${copy_dir}/bin
 cp -a ${conda_env}/Library/share ${copy_dir}/share
 # get all the dependency .dlls
 cp -a ${conda_env}/Library/bin/*.dll ${copy_dir}/bin
-# Copy FuCadUp build. The conda package lowercases the executables (fucadup.exe, fucadupcmd.exe) and the
+# Copy OtherCAD build. The conda package lowercases the executables (othercad.exe, othercadcmd.exe) and the
 # Python module keeps the FreeCAD name (FreeCAD.pyd); globs are case-sensitive here, so match both.
-cp -a ${conda_env}/Library/bin/fucadup* ${copy_dir}/bin
+cp -a ${conda_env}/Library/bin/othercad* ${copy_dir}/bin
 cp -a ${conda_env}/Library/bin/FreeCAD* ${copy_dir}/bin
 cp -a ${conda_env}/Library/data ${copy_dir}/data
 cp -a ${conda_env}/Library/Ext ${copy_dir}/Ext
@@ -67,12 +67,12 @@ echo 'Prefix = ../lib/qt6' >> ${copy_dir}/bin/qt6.conf
 # convenient shortcuts to run the binaries
 if [ -x /c/ProgramData/chocolatey/tools/shimgen.exe ]; then
     pushd ${copy_dir}
-    /c/ProgramData/chocolatey/tools/shimgen.exe -p bin/fucadupcmd.exe -i "$(pwd)/../../../WindowsInstaller/icons/FuCadUp.ico" -o "$(pwd)/FuCadUpCmd.exe"
-    /c/ProgramData/chocolatey/tools/shimgen.exe --gui -p bin/fucadup.exe -i "$(pwd)/../../../WindowsInstaller/icons/FuCadUp.ico" -o "$(pwd)/FuCadUp.exe"
+    /c/ProgramData/chocolatey/tools/shimgen.exe -p bin/othercadcmd.exe -i "$(pwd)/../../../WindowsInstaller/icons/OtherCAD.ico" -o "$(pwd)/OtherCADCmd.exe"
+    /c/ProgramData/chocolatey/tools/shimgen.exe --gui -p bin/othercad.exe -i "$(pwd)/../../../WindowsInstaller/icons/OtherCAD.ico" -o "$(pwd)/OtherCAD.exe"
     popd
 fi
 
-version_name="FuCadUp_${BUILD_TAG}-Windows-$(uname -m)"
+version_name="OtherCAD_${BUILD_TAG}-Windows-$(uname -m)"
 
 echo -e "################"
 echo -e "version_name:  ${version_name}"
@@ -140,7 +140,7 @@ if [[ "${WINDOWS_SIGN_RELEASE:-0}" == "1" ]]; then
     done
 
     # Manually check the important one!
-    signtool verify -pa "$SIGN_DIR/bin/FuCadUp.exe"
+    signtool verify -pa "$SIGN_DIR/bin/OtherCAD.exe"
 
     # ...and a nested one, which is what proves the walk reached the plugins and extension modules
     # that Smart App Control blocks. Verifying only the launcher is how the gap went unnoticed.
@@ -159,15 +159,15 @@ else
   echo "Not logged into Azure -- skipping signing."
 fi
 
-echo "Running FuCadUp command-line smoke test..."
-if ! "$SIGN_DIR/bin/fucadupcmd.exe" --safe-mode --version; then
-  echo "FuCadUp command-line smoke test failed; the Windows bundle cannot start."
+echo "Running OtherCAD command-line smoke test..."
+if ! "$SIGN_DIR/bin/othercadcmd.exe" --safe-mode --version; then
+  echo "OtherCAD command-line smoke test failed; the Windows bundle cannot start."
   exit 1
 fi
 
-echo "Running FuCadUp bundled Pivy smoke test..."
-if ! "$SIGN_DIR/bin/fucadupcmd.exe" --safe-mode --console "import pivy; from pivy import coin; print(pivy.__file__); print(coin.SoDB.getVersion())"; then
-  echo "FuCadUp bundled Pivy smoke test failed; the Windows bundle cannot import the bundled Coin/Pivy runtime."
+echo "Running OtherCAD bundled Pivy smoke test..."
+if ! "$SIGN_DIR/bin/othercadcmd.exe" --safe-mode --console "import pivy; from pivy import coin; print(pivy.__file__); print(coin.SoDB.getVersion())"; then
+  echo "OtherCAD bundled Pivy smoke test failed; the Windows bundle cannot import the bundled Coin/Pivy runtime."
   exit 1
 fi
 
@@ -176,13 +176,13 @@ fi
 sha256sum ${version_name}.7z > ${version_name}.7z-SHA256.txt
 
 if [ "${MAKE_INSTALLER}" == "true" ]; then
-    FILES_FUCAD="$(cygpath -w $(pwd))\\${version_name}"
+    FILES_OTHERCAD="$(cygpath -w $(pwd))\\${version_name}"
     nsis_cmd="${CONDA_PREFIX}/NSIS/makensis.exe"
     "${nsis_cmd}" -V4 \
         -D"ExeFile=${version_name}-installer.exe" \
-        -D"FILES_FUCAD=${FILES_FUCAD}" \
+        -D"FILES_OTHERCAD=${FILES_OTHERCAD}" \
         -X'SetCompressor /FINAL lzma' \
-        ../../WindowsInstaller/FuCadUp-installer.nsi
+        ../../WindowsInstaller/OtherCAD-installer.nsi
     mv ../../WindowsInstaller/${version_name}-installer.exe .
     echo "Created installer ${version_name}-installer.exe"
     # See if we can sign the installer exe as well:

@@ -10,7 +10,7 @@ Var FileAssociation
 
 # ----------------------------------
 
-Section "un.FuCadUp" un.SecUnProgramFiles
+Section "un.OtherCAD" un.SecUnProgramFiles
 
   SectionIn RO
 
@@ -59,7 +59,7 @@ Section "un.FuCadUp" un.SecUnProgramFiles
   DeleteRegKey SHCTX "${APP_REGKEY_SETUP}"
   DeleteRegKey SHCTX "${APP_REGKEY}"
   DeleteRegKey SHCTX "${APP_UNINST_KEY}"
-  DeleteRegKey HKCR "Applications\${BIN_FUCAD}"
+  DeleteRegKey HKCR "Applications\${BIN_OTHERCAD}"
   DeleteRegValue HKCR "${APP_NAME}.Document\Shell\open\command" ""
   DeleteRegValue HKCR "${APP_NAME}.Document\DefaultIcon" ""
 
@@ -80,12 +80,12 @@ SectionEnd
 
 #---------------------------------
 # user preferences
-Section /o "un.$(UnFuCadUpPreferencesTitle)" un.SecUnPreferences
+Section /o "un.$(UnOtherCADPreferencesTitle)" un.SecUnPreferences
 
  # issue a warning dialog
  MessageBox MB_YESNO|MB_DEFBUTTON2|MB_ICONEXCLAMATION $(DialogUnPreferences) /SD IDYES IDYES +2 # continue if yes
   Goto NotPreferences
- # remove FuCadUp's config files
+ # remove OtherCAD's config files
  StrCpy $AppSubfolder ${APP_DIR_USERDATA}
  Call un.DelAppPathSub # function from Utils.nsh
  # remove the registry key that stores the main window parameters

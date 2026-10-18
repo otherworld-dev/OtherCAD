@@ -343,7 +343,7 @@
                 },
                 "CMAKE_INSTALL_PREFIX": {
                     "type": "PATH",
-                    "value": "/usr/lib64/fucadup"
+                    "value": "/usr/lib64/othercad"
                 },
                 "CMAKE_INSTALL_FULL_SBINDIR": {
                     "type": "PATH",
@@ -379,7 +379,7 @@
                 },
                 "CMAKE_INSTALL_DOCDIR": {
                     "type": "PATH",
-                    "value": "/usr/share/doc/fucadup"
+                    "value": "/usr/share/doc/othercad"
                 },
                 "CMAKE_INSTALL_INCLUDEDIR": {
                     "type": "PATH",
@@ -387,7 +387,7 @@
                 },
                 "RESOURCEDIR": {
                     "type": "PATH",
-                    "value": "/usr/share/fucadup"
+                    "value": "/usr/share/othercad"
                 },
                 "FREECAD_USE_EXTERNAL_PIVY": {
                     "type": "BOOL",

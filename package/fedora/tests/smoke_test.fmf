@@ -1,4 +1,4 @@
-summary: Run All FuCadUpCmd python tests
-test: /usr/bin/FuCadUpCmd -v
-require: /usr/bin/FuCadUpCmd
+summary: Run All OtherCADCmd python tests
+test: /usr/bin/OtherCADCmd -v
+require: /usr/bin/OtherCADCmd
 duration: 1m

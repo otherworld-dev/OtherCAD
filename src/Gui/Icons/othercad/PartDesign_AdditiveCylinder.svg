@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="64px"
+   height="64px"
+   viewBox="0 0 64 64"
+   version="1.1"
+   id="PartDesign_AdditiveCylinder"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <metadata id="metadata1">
+    <rdf:RDF>
+      <cc:Work rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title>PartDesign_AdditiveCylinder</dc:title>
+        <dc:description>An additive cylinder primitive</dc:description>
+        <dc:publisher>
+          <cc:Agent>
+            <dc:title>OtherCAD</dc:title>
+          </cc:Agent>
+        </dc:publisher>
+        <dc:rights>
+          <cc:Agent>
+            <dc:title>FreeCAD LGPL2+</dc:title>
+          </cc:Agent>
+        </dc:rights>
+        <cc:license>https://www.gnu.org/copyleft/lesser.html</cc:license>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g id="layer1">
+    <path d="M 11.47,16.35 L 11.47,47.65 L 11.51,48.42 L 11.64,49.19 L 11.86,49.96 L 12.17,50.71 L 12.56,51.46 L 13.03,52.18 L 13.59,52.89 L 14.22,53.57 L 14.93,54.23 L 15.71,54.86 L 16.56,55.46 L 17.48,56.03 L 18.46,56.56 L 19.50,57.05 L 20.59,57.50 L 21.73,57.91 L 22.92,58.28 L 24.14,58.60 L 25.40,58.87 L 26.69,59.10 L 27.99,59.27 L 29.32,59.40 L 30.66,59.47 L 32.00,59.50 L 32.00,16.35 Z" style="fill:#f0a202;stroke:none" />
+    <path d="M 32.00,16.35 L 32.00,59.50 L 33.34,59.47 L 34.68,59.40 L 36.01,59.27 L 37.31,59.10 L 38.60,58.87 L 39.86,58.60 L 41.08,58.28 L 42.27,57.91 L 43.41,57.50 L 44.50,57.05 L 45.54,56.56 L 46.52,56.03 L 47.44,55.46 L 48.29,54.86 L 49.07,54.23 L 49.78,53.57 L 50.41,52.89 L 50.97,52.18 L 51.44,51.46 L 51.83,50.71 L 52.14,49.96 L 52.36,49.19 L 52.49,48.42 L 52.53,47.65 L 52.53,16.35 Z" style="fill:#c47f00;stroke:none" />
+    <path d="M 11.47,16.35 L 11.47,47.65 L 11.51,48.42 L 11.64,49.19 L 11.86,49.96 L 12.17,50.71 L 12.56,51.46 L 13.03,52.18 L 13.59,52.89 L 14.22,53.57 L 14.93,54.23 L 15.71,54.86 L 16.56,55.46 L 17.48,56.03 L 18.46,56.56 L 19.50,57.05 L 20.59,57.50 L 21.73,57.91 L 22.92,58.28 L 24.14,58.60 L 25.40,58.87 L 26.69,59.10 L 27.99,59.27 L 29.32,59.40 L 30.66,59.47 L 32.00,59.50 L 33.34,59.47 L 34.68,59.40 L 36.01,59.27 L 37.31,59.10 L 38.60,58.87 L 39.86,58.60 L 41.08,58.28 L 42.27,57.91 L 43.41,57.50 L 44.50,57.05 L 45.54,56.56 L 46.52,56.03 L 47.44,55.46 L 48.29,54.86 L 49.07,54.23 L 49.78,53.57 L 50.41,52.89 L 50.97,52.18 L 51.44,51.46 L 51.83,50.71 L 52.14,49.96 L 52.36,49.19 L 52.49,48.42 L 52.53,47.65 L 52.53,16.35" style="fill:none;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 46.52,24.74 L 44.50,25.76 L 42.27,26.62 L 39.86,27.31 L 37.31,27.80 L 34.68,28.11 L 32.00,28.21 L 29.32,28.11 L 26.69,27.80 L 24.14,27.31 L 21.73,26.62 L 19.50,25.76 L 17.48,24.74 L 15.71,23.57 L 14.22,22.28 L 13.03,20.89 L 12.17,19.42 L 11.64,17.90 L 11.47,16.35 L 11.64,14.81 L 12.17,13.29 L 13.03,11.82 L 14.22,10.43 L 15.71,9.14 L 17.48,7.97 L 19.50,6.95 L 21.73,6.09 L 24.14,5.40 L 26.69,4.90 L 29.32,4.60 L 32.00,4.50 L 34.68,4.60 L 37.31,4.90 L 39.86,5.40 L 42.27,6.09 L 44.50,6.95 L 46.52,7.97 L 48.29,9.14 L 49.78,10.43 L 50.97,11.82 L 51.83,13.29 L 52.36,14.81 L 52.53,16.35 L 52.36,17.90 L 51.83,19.42 L 50.97,20.89 L 49.78,22.28 L 48.29,23.57 L 46.52,24.74 Z" style="fill:#ffc94d;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+  </g>
+</svg>

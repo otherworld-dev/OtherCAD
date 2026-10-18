@@ -873,7 +873,7 @@ void PythonConsole::runSource(const QString& line)
         QMessageBox::critical(this, tr("Python Console"), tr("Unhandled PyCXX exception."));
     }
     catch (const Base::Exception&) {
-        QMessageBox::critical(this, tr("Python Console"), tr("Unhandled FuCadUp exception."));
+        QMessageBox::critical(this, tr("Python Console"), tr("Unhandled OtherCAD exception."));
     }
     catch (const std::exception&) {
         QMessageBox::critical(this, tr("Python Console"), tr("Unhandled std C++ exception."));

@@ -25,7 +25,7 @@
              "request": "launch",
              "name": "Debug LLDB",
              "stopOnEntry": false,
-             "program": "${workspaceFolder}/build/bin/FuCadUp",
+             "program": "${workspaceFolder}/build/bin/OtherCAD",
              "args": [],
              "cwd": "${workspaceFolder}/build/",
              "preLaunchTask": "CMake: build",

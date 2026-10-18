@@ -620,9 +620,9 @@ void NaviCubeSettings::parameterChanged(const char* Name)
         nc->setChamfer(hGrp->GetFloat("ChamferSize", 0.06f));
     }
     else if (strcmp(Name, "CubeStyle") == 0) {
-        // 0: FuCadUp's flat tiled cube (the default); 1: FreeCAD's classic chamfered cube.
+        // 0: OtherCAD's flat tiled cube (the default); 1: FreeCAD's classic chamfered cube.
         const long value = hGrp->GetInt("CubeStyle", 0);
-        nc->setStyle(value == 1 ? NaviCube::Style::Classic : NaviCube::Style::FuCadUp);
+        nc->setStyle(value == 1 ? NaviCube::Style::Classic : NaviCube::Style::OtherCAD);
     }
     else if (strcmp(Name, "CubeSize") == 0) {
         nc->setSize(hGrp->GetInt("CubeSize", 150));

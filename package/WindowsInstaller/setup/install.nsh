@@ -30,7 +30,7 @@ Section -ProgramFiles SecProgramFiles
   # to $INSTDIR must have a valid path before logging can be turned on
   LogSet on
 
-  # Install and register the core FuCadUp files
+  # Install and register the core OtherCAD files
 
   # Initializes the plug-ins dir ($PLUGINSDIR) if not already initialized.
   # $PLUGINSDIR is automatically deleted when the installer exits.
@@ -42,7 +42,7 @@ Section -ProgramFiles SecProgramFiles
   ${DetailPrintToBoth} "Extracting files to '$INSTDIR\bin\'"
   SetOutPath "$INSTDIR\bin"
   # recursively copy all files under bin
-  File /r "${FILES_FUCAD}\bin\*.*"
+  File /r "${FILES_OTHERCAD}\bin\*.*"
 
   # MSVC redistributable DLLs
   !ifdef FILES_DEPS
@@ -54,19 +54,19 @@ Section -ProgramFiles SecProgramFiles
   # Others
   ${DetailPrintToBoth} "Extracting files to '$INSTDIR\data\'"
   SetOutPath "$INSTDIR\data"
-  File /r "${FILES_FUCAD}\data\*.*"
+  File /r "${FILES_OTHERCAD}\data\*.*"
   ${DetailPrintToBoth} "Extracting files to '$INSTDIR\doc\'"
   SetOutPath "$INSTDIR\doc"
-  File /r "${FILES_FUCAD}\doc\*.*"
+  File /r "${FILES_OTHERCAD}\doc\*.*"
   ${DetailPrintToBoth} "Extracting files to '$INSTDIR\Ext\'"
   SetOutPath "$INSTDIR\Ext"
-  File /r "${FILES_FUCAD}\Ext\*.*"
+  File /r "${FILES_OTHERCAD}\Ext\*.*"
   ${DetailPrintToBoth} "Extracting files to '$INSTDIR\lib\'"
   SetOutPath "$INSTDIR\lib"
-  File /r "${FILES_FUCAD}\lib\*.*"
+  File /r "${FILES_OTHERCAD}\lib\*.*"
   ${DetailPrintToBoth} "Extracting files to '$INSTDIR\Mod\'"
   SetOutPath "$INSTDIR\Mod"
-  File /r "${FILES_FUCAD}\Mod\*.*"
+  File /r "${FILES_OTHERCAD}\Mod\*.*"
   ${DetailPrintToBoth} "Extracting thumbnailer"
   SetOutPath "$INSTDIR"
   File /r "${FILES_THUMBS}"
