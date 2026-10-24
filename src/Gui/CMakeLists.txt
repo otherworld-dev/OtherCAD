@@ -1610,13 +1610,13 @@ else(WIN32)
     INSTALL(TARGETS FreeCADGui
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     )
-    INSTALL(FILES Icons/fucad-icon-16.png DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/16x16/apps RENAME org.fucadup.FuCadUp.png)
-    INSTALL(FILES Icons/fucad-icon-32.png DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/32x32/apps RENAME org.fucadup.FuCadUp.png)
-    INSTALL(FILES Icons/fucad-icon-48.png DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/48x48/apps RENAME org.fucadup.FuCadUp.png)
-    INSTALL(FILES Icons/fucad-icon-64.png DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/64x64/apps RENAME org.fucadup.FuCadUp.png)
-    INSTALL(FILES Icons/fucad.svg DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps RENAME org.fucadup.FuCadUp.svg)
-    INSTALL(FILES Icons/fucad.svg DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/pixmaps)
-    INSTALL(FILES Icons/fucad-doc.svg DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/mimetypes RENAME application-x-extension-fcstd.svg)
+    INSTALL(FILES Icons/othercad-icon-16.png DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/16x16/apps RENAME dev.otherworld.OtherCAD.png)
+    INSTALL(FILES Icons/othercad-icon-32.png DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/32x32/apps RENAME dev.otherworld.OtherCAD.png)
+    INSTALL(FILES Icons/othercad-icon-48.png DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/48x48/apps RENAME dev.otherworld.OtherCAD.png)
+    INSTALL(FILES Icons/othercad-icon-64.png DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/64x64/apps RENAME dev.otherworld.OtherCAD.png)
+    INSTALL(FILES Icons/othercad.svg DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps RENAME dev.otherworld.OtherCAD.svg)
+    INSTALL(FILES Icons/othercad.svg DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/pixmaps)
+    INSTALL(FILES Icons/othercad-doc.svg DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/mimetypes RENAME application-x-extension-fcstd.svg)
 endif(WIN32)
 
 set(FreeCADGui_Scripts

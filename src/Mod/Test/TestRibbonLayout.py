@@ -59,7 +59,7 @@ MENU_ONLY_COMMAND = "PartDesign_Sweep"
 SUBMENU_COMMAND = "PartDesign_PolarPattern"
 
 # What RibbonPanel and RibbonPanelMenu exchange when an entry is dragged.
-MIME_TYPE = "application/x-fucadup-ribbon-command"
+MIME_TYPE = "application/x-othercad-ribbon-command"
 
 RIBBON_BUTTON_NAMES = ("RibbonButton", "RibbonPrimaryButton")
 STANDARD_TOOLBARS = (

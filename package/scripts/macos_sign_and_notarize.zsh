@@ -3,12 +3,12 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 # Default values
-SIGNING_KEY_ID="${FUCAD_SIGNING_KEY_ID}"
-KEYCHAIN_PROFILE="FuCadUp"
+SIGNING_KEY_ID="${OTHERCAD_SIGNING_KEY_ID}"
+KEYCHAIN_PROFILE="OtherCAD"
 CONTAINING_FOLDER="."
-APP_NAME="FuCadUp.app"
-VOLUME_NAME="FuCadUp"
-DMG_NAME="FuCadUp-macOS-$(uname -m).dmg"
+APP_NAME="OtherCAD.app"
+VOLUME_NAME="OtherCAD"
+DMG_NAME="OtherCAD-macOS-$(uname -m).dmg"
 DMG_SETTINGS="dmg_settings.py"
 
 # Function to display usage information
@@ -18,12 +18,12 @@ function usage {
     echo "                [-v|--volume-name <volume_name>] [-o|--output <image_name.dmg>]"
     echo "                [-s|--dmg-settings <dmg_settings.py>]"
     echo
-    echo "This script signs and notarizes a FuCadUp.app bundle. It expects that the bundle is in a folder"
+    echo "This script signs and notarizes a OtherCAD.app bundle. It expects that the bundle is in a folder"
     echo "by itself (that folder will be used as the basis for the created disk image file, so anything"
     echo "else in it will become part of the image). That folder should be located in the same folder as"
     echo "this script."
     echo
-    echo "If <signing_key_id> is not passed it defaults to env variable FUCAD_SIGNING_KEY_ID, it should"
+    echo "If <signing_key_id> is not passed it defaults to env variable OTHERCAD_SIGNING_KEY_ID, it should"
     echo "be a Developer ID Application certificate that has been installed into the login keychain."
     echo "For a list of available keys see the output of"
     echo "    security find-identity -p basic -v"
@@ -177,19 +177,19 @@ if [ -d "${CONTAINING_FOLDER}/${APP_NAME}/Contents/PlugIns" ]; then
     THUMBNAIL_ENTITLEMENTS="${SCRIPT_DIR}/../../src/MacAppBundle/QuickLook/modern/ThumbnailExtension.entitlements"
 
     # Sign individual executables within .appex bundles first
-    if [ -f "${CONTAINING_FOLDER}/${APP_NAME}/Contents/PlugIns/FuCadUpThumbnailExtension.appex/Contents/MacOS/FuCadUpThumbnailExtension" ]; then
-        run_codesign "${CONTAINING_FOLDER}/${APP_NAME}/Contents/PlugIns/FuCadUpThumbnailExtension.appex/Contents/MacOS/FuCadUpThumbnailExtension"
+    if [ -f "${CONTAINING_FOLDER}/${APP_NAME}/Contents/PlugIns/OtherCADThumbnailExtension.appex/Contents/MacOS/OtherCADThumbnailExtension" ]; then
+        run_codesign "${CONTAINING_FOLDER}/${APP_NAME}/Contents/PlugIns/OtherCADThumbnailExtension.appex/Contents/MacOS/OtherCADThumbnailExtension"
     fi
-    if [ -f "${CONTAINING_FOLDER}/${APP_NAME}/Contents/PlugIns/FuCadUpPreviewExtension.appex/Contents/MacOS/FuCadUpPreviewExtension" ]; then
-        run_codesign "${CONTAINING_FOLDER}/${APP_NAME}/Contents/PlugIns/FuCadUpPreviewExtension.appex/Contents/MacOS/FuCadUpPreviewExtension"
+    if [ -f "${CONTAINING_FOLDER}/${APP_NAME}/Contents/PlugIns/OtherCADPreviewExtension.appex/Contents/MacOS/OtherCADPreviewExtension" ]; then
+        run_codesign "${CONTAINING_FOLDER}/${APP_NAME}/Contents/PlugIns/OtherCADPreviewExtension.appex/Contents/MacOS/OtherCADPreviewExtension"
     fi
 
     # Then sign the .appex bundles themselves with extension-specific entitlements
-    if [ -d "${CONTAINING_FOLDER}/${APP_NAME}/Contents/PlugIns/FuCadUpThumbnailExtension.appex" ] && [ -f "$THUMBNAIL_ENTITLEMENTS" ]; then
-        run_codesign_extension "${CONTAINING_FOLDER}/${APP_NAME}/Contents/PlugIns/FuCadUpThumbnailExtension.appex" "$THUMBNAIL_ENTITLEMENTS"
+    if [ -d "${CONTAINING_FOLDER}/${APP_NAME}/Contents/PlugIns/OtherCADThumbnailExtension.appex" ] && [ -f "$THUMBNAIL_ENTITLEMENTS" ]; then
+        run_codesign_extension "${CONTAINING_FOLDER}/${APP_NAME}/Contents/PlugIns/OtherCADThumbnailExtension.appex" "$THUMBNAIL_ENTITLEMENTS"
     fi
-    if [ -d "${CONTAINING_FOLDER}/${APP_NAME}/Contents/PlugIns/FuCadUpPreviewExtension.appex" ] && [ -f "$PREVIEW_ENTITLEMENTS" ]; then
-        run_codesign_extension "${CONTAINING_FOLDER}/${APP_NAME}/Contents/PlugIns/FuCadUpPreviewExtension.appex" "$PREVIEW_ENTITLEMENTS"
+    if [ -d "${CONTAINING_FOLDER}/${APP_NAME}/Contents/PlugIns/OtherCADPreviewExtension.appex" ] && [ -f "$PREVIEW_ENTITLEMENTS" ]; then
+        run_codesign_extension "${CONTAINING_FOLDER}/${APP_NAME}/Contents/PlugIns/OtherCADPreviewExtension.appex" "$PREVIEW_ENTITLEMENTS"
     fi
 fi
 

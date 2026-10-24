@@ -22,7 +22,7 @@ TaskFeatureAddSubParameters::TaskFeatureAddSubParameters(
 void TaskFeatureAddSubParameters::setupOperation(QLabel* label, QComboBox* combo)
 {
     // Upstream offers this control on subtractive features only, listing the two
-    // operations one of those can perform. Every FuCadUp feature can perform all
+    // operations one of those can perform. Every OtherCAD feature can perform all
     // four, so each panel carries its own operation combo covering Join, Cut,
     // Intersect and New body, and showing upstream's alongside it would put two
     // operation controls in the same dialog disagreeing about the choices.

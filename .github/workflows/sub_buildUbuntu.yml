@@ -21,8 +21,8 @@
 # *                                                                         *
 # ***************************************************************************
 
-# This is a build and test workflow for CI of FuCadUp.
-# This workflow aims at building and testing FuCadUp on Ubuntu 24.04 using GCC.
+# This is a build and test workflow for CI of OtherCAD.
+# This workflow aims at building and testing OtherCAD on Ubuntu 24.04 using GCC.
 
 name: Build Ubuntu 24.04
 
@@ -93,10 +93,10 @@ jobs:
         with:
           submodules: true
 
-      - name: Install FuCadUp dependencies
+      - name: Install OtherCAD dependencies
         run: ./package/ubuntu/install-apt-packages.sh
 
-      - name: Install FuCadUp Python test dependencies
+      - name: Install OtherCAD Python test dependencies
         run: |
           sudo apt-get update -y -qq
           sudo apt-get install -y -qq python3-pip
@@ -164,17 +164,17 @@ jobs:
         run: |
           ccache -s
 
-      - name: FuCadUp CLI tests on build dir
+      - name: OtherCAD CLI tests on build dir
         if: inputs.testOnBuildDir
         timeout-minutes: 10
         uses: ./.github/workflows/actions/runPythonTests
         with:
           testDescription: "CLI tests on build dir"
-          testCommand: ${{ env.builddir }}/bin/FuCadUpCmd -t 0
+          testCommand: ${{ env.builddir }}/bin/OtherCADCmd -t 0
           logFile: ${{ env.logdir }}TestCLIBuild.log
           reportFile: ${{env.reportdir}}${{ env.reportfilename }}
 
-      - name: FuCadUp GUI tests on build dir
+      - name: OtherCAD GUI tests on build dir
         if: inputs.testOnBuildDir
         # A backstop only: each module has its own limit below, so a hang is killed
         # and named long before this is reached.
@@ -201,9 +201,9 @@ jobs:
         with:
           testDescription: "Coin node snapshot visual tests on build dir"
           testCommand: |
-            FC_VISUAL_OUT_DIR="/tmp/FuCadUpTesting/CoinNodeSnapshots" \
+            FC_VISUAL_OUT_DIR="/tmp/OtherCADTesting/CoinNodeSnapshots" \
             xvfb-run -a -s "-screen 0 1024x768x24" \
-              "${{ env.builddir }}/bin/FuCadUp" -t TestCoinNodeSnapshots
+              "${{ env.builddir }}/bin/OtherCAD" -t TestCoinNodeSnapshots
           logFile: ${{ env.logdir }}TestCoinNodeSnapshotsBuild.log
           reportFile: ${{env.reportdir}}${{ env.reportfilename }}
 
@@ -212,7 +212,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ inputs.artifactBasename }}-CoinNodeSnapshots
-          path: /tmp/FuCadUpTesting/CoinNodeSnapshots
+          path: /tmp/OtherCADTesting/CoinNodeSnapshots
 
       - name: C++ tests
         timeout-minutes: 1
@@ -230,16 +230,16 @@ jobs:
           errorFile: ${{ env.logdir }}InstallErrors.log
           reportFile: ${{env.reportdir}}${{ env.reportfilename }}
 
-      - name: FuCadUp CLI tests on install
+      - name: OtherCAD CLI tests on install
         timeout-minutes: 10
         uses: ./.github/workflows/actions/runPythonTests
         with:
           testDescription: "CLI tests on install"
-          testCommand: FuCadUpCmd -t 0
+          testCommand: OtherCADCmd -t 0
           logFile: ${{ env.logdir }}TestCLIInstall.log
           reportFile: ${{env.reportdir}}${{ env.reportfilename }}
 
-      - name: FuCadUp GUI tests on install
+      - name: OtherCAD GUI tests on install
         # The installed tree cannot initialise PySide on a Qt6 build: the binary
         # reports name '_init_pyside_extension' is not defined, runs no tests and
         # exits 0. The pixi job disables its own copy of this step for the same
@@ -249,7 +249,7 @@ jobs:
         uses: ./.github/workflows/actions/runPythonTests
         with:
           testDescription: "GUI tests on install"
-          testCommand: xvfb-run FuCadUp -t 0
+          testCommand: xvfb-run OtherCAD -t 0
           logFile: ${{ env.logdir }}TestGUIInstall.log
           reportFile: ${{env.reportdir}}${{ env.reportfilename }}
 
@@ -268,7 +268,7 @@ jobs:
           name: ${{ inputs.artifactBasename }}-Logs
           path: |
             ${{ env.logdir }}
-            /var/crash/*FuCadUp*
+            /var/crash/*OtherCAD*
 
       - name: Upload report
         if: always()

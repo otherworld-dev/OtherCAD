@@ -1,5 +1,5 @@
 ﻿/*
-FuCadUp Installer Language File
+OtherCAD Installer Language File
 Language: Indonesian
 */
 
@@ -7,25 +7,25 @@ Language: Indonesian
 
 ${LangFileString} TEXT_INSTALL_CURRENTUSER "(Pasang untuk Pengguna Yang Ini)"
 
-${LangFileString} TEXT_WELCOME "Program ini akan memandu anda dalam melakukan instalasi FuCadUp.$\r$\n\
+${LangFileString} TEXT_WELCOME "Program ini akan memandu anda dalam melakukan instalasi OtherCAD.$\r$\n\
 				$\r$\n\
 				$_CLICK"
 
 #${LangFileString} TEXT_CONFIGURE_PYTHON "Proses kompilasi skrip Python ..."
 
 ${LangFileString} TEXT_FINISH_DESKTOP "Membuat pintasan ikon di destop"
-${LangFileString} TEXT_FINISH_WEBSITE "Kunjungi github.com/otherworld-dev/FuCadUp untuk berita terbaru serta dukungan"
+${LangFileString} TEXT_FINISH_WEBSITE "Kunjungi github.com/otherworld-dev/OtherCAD untuk berita terbaru serta dukungan"
 
-#${LangFileString} FileTypeTitle "Dokumen-FuCadUp"
+#${LangFileString} FileTypeTitle "Dokumen-OtherCAD"
 
 #${LangFileString} SecAllUsersTitle "Pasang untuk semua pengguna?"
 ${LangFileString} SecFileAssocTitle "Berkas yang terkait"
 ${LangFileString} SecDesktopTitle "Ikon Desktop"
 
-${LangFileString} SecCoreDescription "Berkas-berkas FuCadUp."
-#${LangFileString} SecAllUsersDescription "Pasang FuCadUp untuk semua pengguna atau hanya untuk pengguna ini saja."
-${LangFileString} SecFileAssocDescription "Berkas dengan ekstensi .FCStd akan otomatis dibuka menggunakan FuCadUp."
-${LangFileString} SecDesktopDescription "Ikon FuCadUp muncul di desktop."
+${LangFileString} SecCoreDescription "Berkas-berkas OtherCAD."
+#${LangFileString} SecAllUsersDescription "Pasang OtherCAD untuk semua pengguna atau hanya untuk pengguna ini saja."
+${LangFileString} SecFileAssocDescription "Berkas dengan ekstensi .FCStd akan otomatis dibuka menggunakan OtherCAD."
+${LangFileString} SecDesktopDescription "Ikon OtherCAD muncul di desktop."
 #${LangFileString} SecDictionaries "Kamus"
 #${LangFileString} SecDictionariesDescription "Kamus pemeriksa ejaan yang dapat diunduh dan dipasang."
 
@@ -34,37 +34,37 @@ ${LangFileString} SecDesktopDescription "Ikon FuCadUp muncul di desktop."
 
 #${LangFileString} DictionariesFailed 'Download of dictionary for language $\"$R3$\" failed.'
 
-#${LangFileString} ConfigInfo "Proses konfigurasi FuCadUp selanjutnya akan memerlukan waktu beberapa saat."
+#${LangFileString} ConfigInfo "Proses konfigurasi OtherCAD selanjutnya akan memerlukan waktu beberapa saat."
 
 #${LangFileString} RunConfigureFailed "Tidak bisa menjalankan skrip konfigurasi"
 ${LangFileString} InstallRunning "Program instalasi sedang berjalan!"
-${LangFileString} AlreadyInstalled "FuCadUp ${APP_SERIES_KEY2} sudah pernah diinstal!$\r$\n\
-				Dou you nevertheles want to install FuCadUp over the existing version?"
-${LangFileString} NewerInstalled "Anda akan memasang versi FuCadUp yang lama dari yang sudah terpasang.$\r$\n\
-				  Jika memang dikehendaki, anda harus menghapus dulu FuCadUp yang ada, FuCadUp $OldVersionNumber."
+${LangFileString} AlreadyInstalled "OtherCAD ${APP_SERIES_KEY2} sudah pernah diinstal!$\r$\n\
+				Dou you nevertheles want to install OtherCAD over the existing version?"
+${LangFileString} NewerInstalled "Anda akan memasang versi OtherCAD yang lama dari yang sudah terpasang.$\r$\n\
+				  Jika memang dikehendaki, anda harus menghapus dulu OtherCAD yang ada, OtherCAD $OldVersionNumber."
 
-#${LangFileString} FinishPageMessage "Selamat! FuCadUp berhasil diinstal dengan sukses.$\r$\n\
+#${LangFileString} FinishPageMessage "Selamat! OtherCAD berhasil diinstal dengan sukses.$\r$\n\
 #					$\r$\n\
-#					(Menjalankan FuCadUp untuk pertama kali memerlukan waktu beberapa detik.)"
-${LangFileString} FinishPageRun "Menjalankan FuCadUp"
+#					(Menjalankan OtherCAD untuk pertama kali memerlukan waktu beberapa detik.)"
+${LangFileString} FinishPageRun "Menjalankan OtherCAD"
 
-${LangFileString} UnNotInRegistryLabel "Tidak bisa menemukan FuCadUp di catatan registry.$\r$\n\
+${LangFileString} UnNotInRegistryLabel "Tidak bisa menemukan OtherCAD di catatan registry.$\r$\n\
 					Shortcuts pada desktop dan yang ada di Menu Start tidak dihapus."
-${LangFileString} UnInstallRunning "Anda harus menutup FuCadUp terlebih dahulu!"
-${LangFileString} UnNotAdminLabel "Anda harus berlaku dan mempunyai hak sebagai administrator untuk menghapus FuCadUp!"
-${LangFileString} UnReallyRemoveLabel "Apakah anda yakin akan menghapus FuCadUp secara menyeluruh termasuk semua komponen yang ada?"
-${LangFileString} UnFuCadUpPreferencesTitle 'Preferensi pengguna FuCadUp'
+${LangFileString} UnInstallRunning "Anda harus menutup OtherCAD terlebih dahulu!"
+${LangFileString} UnNotAdminLabel "Anda harus berlaku dan mempunyai hak sebagai administrator untuk menghapus OtherCAD!"
+${LangFileString} UnReallyRemoveLabel "Apakah anda yakin akan menghapus OtherCAD secara menyeluruh termasuk semua komponen yang ada?"
+${LangFileString} UnOtherCADPreferencesTitle 'Preferensi pengguna OtherCAD'
 
 #${LangFileString} SecUnProgDescription "Penghapusan program xxx."
-${LangFileString} SecUnPreferencesDescription 'Menghapus berkas konfigurasi FuCadUp pada folder$\r$\n\
+${LangFileString} SecUnPreferencesDescription 'Menghapus berkas konfigurasi OtherCAD pada folder$\r$\n\
 						$\"$AppPre\username\$\r$\n\
 						$AppSuff\$\r$\n\
 						${APP_DIR_USERDATA}$\")$\r$\n\
 						untuk semua pengguna.'
-${LangFileString} DialogUnPreferences 'You chose to delete the FuCadUps user configuration.$\r$\n\
-						This will also delete all installed FuCadUp addons.$\r$\n\
+${LangFileString} DialogUnPreferences 'You chose to delete the OtherCADs user configuration.$\r$\n\
+						This will also delete all installed OtherCAD addons.$\r$\n\
 						Do you agree with this?'
-${LangFileString} SecUnProgramFilesDescription "Penghapusan FuCadUp serta semua komponen yang ada."
+${LangFileString} SecUnProgramFilesDescription "Penghapusan OtherCAD serta semua komponen yang ada."
 
 ${LangFileString} DirNotEmptyWarning "The selected folder '$INSTDIR' is not empty.$\r$\n\
                         The installer will remove all its content before installing. Continue?"

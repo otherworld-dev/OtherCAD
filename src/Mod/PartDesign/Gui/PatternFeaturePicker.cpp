@@ -93,7 +93,7 @@ TaskDlgPatternFeaturePick::~TaskDlgPatternFeaturePick()
         }
     }
     // The dialog has left the task panel, so the pattern's own panel is free to open.
-    // Nothing may leave a destructor: an exception here would end FuCadUp outright.
+    // Nothing may leave a destructor: an exception here would end OtherCAD outright.
     if (onDone && !documentClosing) {
         try {
             onDone(feature);

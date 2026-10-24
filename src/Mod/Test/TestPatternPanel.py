@@ -229,10 +229,10 @@ class PatternPanelCase(unittest.TestCase):
 
     @staticmethod
     def _save_grab(widget, name):
-        """Keeps a picture of widget for a person to look at, when FUCAD_TEST_GRAB_DIR
+        """Keeps a picture of widget for a person to look at, when OTHERCAD_TEST_GRAB_DIR
         names a folder for it."""
 
-        folder = os.environ.get("FUCAD_TEST_GRAB_DIR")
+        folder = os.environ.get("OTHERCAD_TEST_GRAB_DIR")
         if folder:
             widget.grab().save(os.path.join(folder, name))
 

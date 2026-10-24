@@ -1,5 +1,5 @@
 @echo off
-rem Build FuCadUp on Windows without the pixi launcher.
+rem Build OtherCAD on Windows without the pixi launcher.
 rem Activates MSVC, then puts the pixi conda environment on PATH so the Qt
 rem tools (rcc, uic, moc) can resolve their DLLs from Library\bin.
 rem Usage: tools\build-win.bat [ninja target ...]

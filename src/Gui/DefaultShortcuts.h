@@ -28,7 +28,7 @@ namespace Gui
 {
 
 /**
- * The accelerator FuCadUp gives \a command instead of the one it registered with,
+ * The accelerator OtherCAD gives \a command instead of the one it registered with,
  * or nullptr when it keeps its own.
  *
  * Kept in one table rather than spread over the command sources so that the

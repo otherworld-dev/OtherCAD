@@ -1,5 +1,5 @@
 ﻿/*
-FuCadUp Installer Language File
+OtherCAD Installer Language File
 Language: Catalan
 */
 
@@ -7,25 +7,25 @@ Language: Catalan
 
 ${LangFileString} TEXT_INSTALL_CURRENTUSER "(Installed for Current User)"
 
-${LangFileString} TEXT_WELCOME "Aquest assistent us guiarà en la instal·lació del FuCadUp.$\r$\n\
+${LangFileString} TEXT_WELCOME "Aquest assistent us guiarà en la instal·lació del OtherCAD.$\r$\n\
 				$\r$\n\
 				$_CLICK"
 
 #${LangFileString} TEXT_CONFIGURE_PYTHON "Compiling Python scripts..."
 
 ${LangFileString} TEXT_FINISH_DESKTOP "Create desktop shortcut"
-${LangFileString} TEXT_FINISH_WEBSITE "Visit github.com/otherworld-dev/FuCadUp for the latest news, support and tips"
+${LangFileString} TEXT_FINISH_WEBSITE "Visit github.com/otherworld-dev/OtherCAD for the latest news, support and tips"
 
-#${LangFileString} FileTypeTitle "Document FuCadUp"
+#${LangFileString} FileTypeTitle "Document OtherCAD"
 
 #${LangFileString} SecAllUsersTitle "Voleu instal·lar-ho per a tots els usuaris?"
 ${LangFileString} SecFileAssocTitle "Associació de fitxers"
 ${LangFileString} SecDesktopTitle "Icona a l'escriptori"
 
-${LangFileString} SecCoreDescription "Els fitxers del FuCadUp."
-#${LangFileString} SecAllUsersDescription "Instal·la el FuCadUp per a tots els usuaris o només per a l'usuari actual."
-${LangFileString} SecFileAssocDescription "Els fitxers amb extensió .FCStd s'obriran automàticament amb el FuCadUp."
-${LangFileString} SecDesktopDescription "Una icona del FuCadUp a l'escriptori."
+${LangFileString} SecCoreDescription "Els fitxers del OtherCAD."
+#${LangFileString} SecAllUsersDescription "Instal·la el OtherCAD per a tots els usuaris o només per a l'usuari actual."
+${LangFileString} SecFileAssocDescription "Els fitxers amb extensió .FCStd s'obriran automàticament amb el OtherCAD."
+${LangFileString} SecDesktopDescription "Una icona del OtherCAD a l'escriptori."
 #${LangFileString} SecDictionaries "Diccionaris"
 #${LangFileString} SecDictionariesDescription "Spell-checker dictionaries that can be downloaded and installed."
 
@@ -34,37 +34,37 @@ ${LangFileString} SecDesktopDescription "Una icona del FuCadUp a l'escriptori."
 
 #${LangFileString} DictionariesFailed 'Download of dictionary for language $\"$R3$\" failed.'
 
-#${LangFileString} ConfigInfo "La configuració següent del FuCadUp pot trigar una mica."
+#${LangFileString} ConfigInfo "La configuració següent del OtherCAD pot trigar una mica."
 
 #${LangFileString} RunConfigureFailed "No es pot executar el programa de configuració"
 ${LangFileString} InstallRunning "L'instal·lador ja s'està executant!"
-${LangFileString} AlreadyInstalled "El FuCadUp ${APP_SERIES_KEY2} ja es troba instal·lat!$\r$\n\
-				Dou you nevertheles want to install FuCadUp over the existing version?"
-${LangFileString} NewerInstalled "You are trying to install an older version of FuCadUp than what you have installed.$\r$\n\
-				  If you really want this, you must uninstall the existing FuCadUp $OldVersionNumber before."
+${LangFileString} AlreadyInstalled "El OtherCAD ${APP_SERIES_KEY2} ja es troba instal·lat!$\r$\n\
+				Dou you nevertheles want to install OtherCAD over the existing version?"
+${LangFileString} NewerInstalled "You are trying to install an older version of OtherCAD than what you have installed.$\r$\n\
+				  If you really want this, you must uninstall the existing OtherCAD $OldVersionNumber before."
 
-#${LangFileString} FinishPageMessage "Felicitats! Heu instal·lat correctament el FuCadUp.$\r$\n\
+#${LangFileString} FinishPageMessage "Felicitats! Heu instal·lat correctament el OtherCAD.$\r$\n\
 #					$\r$\n\
-#					(La primera execució del FuCadUp pot trigar alguns segons.)"
-${LangFileString} FinishPageRun "Executa el FuCadUp"
+#					(La primera execució del OtherCAD pot trigar alguns segons.)"
+${LangFileString} FinishPageRun "Executa el OtherCAD"
 
-${LangFileString} UnNotInRegistryLabel "No es possible trobar el FuCadUp al registre.$\r$\n\
+${LangFileString} UnNotInRegistryLabel "No es possible trobar el OtherCAD al registre.$\r$\n\
 					No se suprimiran les dreceres de l'escriptori i del menú inici."
-${LangFileString} UnInstallRunning "Primer heu de tancar el FuCadUp!"
-${LangFileString} UnNotAdminLabel "Necessiteu drets d'administrador per desinstal·lar el FuCadUp!"
-${LangFileString} UnReallyRemoveLabel "Esteu segur de voler suprimir completament el FuCadUp i tots els seus components?"
-${LangFileString} UnFuCadUpPreferencesTitle 'Preferències d$\'usuari del FuCadUp'
+${LangFileString} UnInstallRunning "Primer heu de tancar el OtherCAD!"
+${LangFileString} UnNotAdminLabel "Necessiteu drets d'administrador per desinstal·lar el OtherCAD!"
+${LangFileString} UnReallyRemoveLabel "Esteu segur de voler suprimir completament el OtherCAD i tots els seus components?"
+${LangFileString} UnOtherCADPreferencesTitle 'Preferències d$\'usuari del OtherCAD'
 
 #${LangFileString} SecUnProgDescription "Desinstal·xxx."
-${LangFileString} SecUnPreferencesDescription 'Suprimeix les carptes de configuració del FuCadUp$\r$\n\
+${LangFileString} SecUnPreferencesDescription 'Suprimeix les carptes de configuració del OtherCAD$\r$\n\
 						$\"$AppPre\username\$\r$\n\
 						$AppSuff\$\r$\n\
 						${APP_DIR_USERDATA}$\")$\r$\n\
 						de tots els usuaris.'
-${LangFileString} DialogUnPreferences 'You chose to delete the FuCadUps user configuration.$\r$\n\
-						This will also delete all installed FuCadUp addons.$\r$\n\
+${LangFileString} DialogUnPreferences 'You chose to delete the OtherCADs user configuration.$\r$\n\
+						This will also delete all installed OtherCAD addons.$\r$\n\
 						Do you agree with this?'
-${LangFileString} SecUnProgramFilesDescription "Desinstal·la el FuCadUp i tots els seus components."
+${LangFileString} SecUnProgramFilesDescription "Desinstal·la el OtherCAD i tots els seus components."
 
 ${LangFileString} DirNotEmptyWarning "The selected folder '$INSTDIR' is not empty.$\r$\n\
                         The installer will remove all its content before installing. Continue?"

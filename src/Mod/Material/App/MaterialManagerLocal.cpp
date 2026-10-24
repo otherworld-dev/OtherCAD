@@ -532,7 +532,7 @@ MaterialManagerLocal::getConfiguredLibraries()
         auto libData =
             std::make_shared<MaterialLibraryLocal>(QStringLiteral("System"),
                                                    resourceDir,
-                                                   QStringLiteral(":/icons/fucad.svg"),
+                                                   QStringLiteral(":/icons/othercad.svg"),
                                                    true);
         libraryList->push_back(libData);
     }

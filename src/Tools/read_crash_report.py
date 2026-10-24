@@ -3,7 +3,7 @@
 
 The reporter drops a binary report next to its minidump, under
 
-    %APPDATA%/FuCadUp/<version>/CrashReports/
+    %APPDATA%/OtherCAD/<version>/CrashReports/
 
 and the exception code alone usually says what happened: a null dereference
 reads 0xc0000005 with a fault address of 0, whereas a failed assertion reads
@@ -69,9 +69,9 @@ def read_string_table(blob, offset):
 
 def find_latest():
     roots = [
-        os.path.join(os.environ.get("APPDATA", ""), "FuCadUp"),
+        os.path.join(os.environ.get("APPDATA", ""), "OtherCAD"),
         os.path.join(os.environ.get("APPDATA", ""), "FreeCAD"),
-        os.path.expanduser("~/.local/share/FuCadUp"),
+        os.path.expanduser("~/.local/share/OtherCAD"),
         os.path.expanduser("~/.local/share/FreeCAD"),
     ]
     found = []

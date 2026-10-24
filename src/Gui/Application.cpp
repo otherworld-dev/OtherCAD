@@ -592,7 +592,7 @@ Application::Application(bool GUIenabled)
             PyDict_SetItemString(modules, "FreeCADGui", module);
         }
         else if (Gui::FreeCADGuiModulePy::addModuleMethods(module) != 0) {
-            // FuCadUpCmd can import a bootstrap-only FreeCADGui module before the GUI app exists;
+            // OtherCADCmd can import a bootstrap-only FreeCADGui module before the GUI app exists;
             // upgrade it to the full GUI surface now.
             throw Py::Exception();
         }
@@ -3000,7 +3000,7 @@ QString Application::replaceVariablesInQss(const QString& qssText)
 void Application::setStyle(const QString& name)
 {
     const auto createStyleFromName = [](const QString& name) -> QStyle* {
-        if (name == QStringLiteral("FuCad") || name == QStringLiteral("FuCadUp")) {
+        if (name == QStringLiteral("OtherCAD")) {
             return new FreeCADStyle();
         }
 
@@ -3012,7 +3012,7 @@ void Application::setStyle(const QString& name)
     };
 
     const auto requiresEventFilter = [](QStyle* style) {
-        // for now only the FuCadUp style requires additional event processing
+        // for now only the OtherCAD style requires additional event processing
         return qobject_cast<FreeCADStyle*>(style) != nullptr;
     };
 

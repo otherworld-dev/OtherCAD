@@ -126,7 +126,7 @@ macro(InitializeFreeCADBuildOptions)
 
         if(FREECAD_CREATE_MAC_APP)
             install(
-                DIRECTORY ${CMAKE_SOURCE_DIR}/src/MacAppBundle/FuCadUp.app/
+                DIRECTORY ${CMAKE_SOURCE_DIR}/src/MacAppBundle/OtherCAD.app/
                 DESTINATION ${CMAKE_INSTALL_PREFIX}/${PROJECT_NAME}.app
             )
 

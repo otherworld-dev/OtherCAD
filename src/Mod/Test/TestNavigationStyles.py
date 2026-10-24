@@ -426,7 +426,7 @@ class TestViewerMethodDispatch(ViewerTestCase):
     C++ exceptions, and used to keep a single captured PyCXX trampoline for all of
     them. PyCXX calls a no-args method through a different trampoline from a varargs
     one, so every method went through whichever convention was looked up first in the
-    process: a varargs call made after isSpinning() crashed FuCadUp, and isSpinning()
+    process: a varargs call made after isSpinning() crashed OtherCAD, and isSpinning()
     called after a varargs method raised a TypeError about building a tuple from null.
     isSpinning() is the viewer's only no-args method; setUp has already made a
     varargs call by the time either test runs.
@@ -447,7 +447,7 @@ class TestZeroLengthCameraMove(ViewerTestCase):
     NavigationAnimator::startAndWait() started the animation and then entered an
     event loop until it finished. A zero-length animation finishes inside start(),
     so the loop's quit() had already come and gone and the loop waited for ever:
-    viewPosition(placement, 0, 0) hung FuCadUp whenever navigation animations were
+    viewPosition(placement, 0, 0) hung OtherCAD whenever navigation animations were
     on, which is the default. A failure here shows as a hang, which the per-module
     time limit in run_gui_tests.py reports by name.
     """

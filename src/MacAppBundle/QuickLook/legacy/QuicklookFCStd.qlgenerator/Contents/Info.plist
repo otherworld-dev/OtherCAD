@@ -13,14 +13,14 @@
 			<string>QLGenerator</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>org.fucadup.fcstd</string>
+				<string>dev.otherworld.othercad.fcstd</string>
 			</array>
 		</dict>
 	</array>
 	<key>CFBundleExecutable</key>
 	<string>QuicklookFCStd</string>
 	<key>CFBundleIdentifier</key>
-	<string>org.fucadup.qlgenerator.QuicklookFCStd</string>
+	<string>dev.otherworld.othercad.qlgenerator.QuicklookFCStd</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -90,7 +90,7 @@
 			<key>UTTypeDescription</key>
 			<string>FreeCAD document</string>
 			<key>UTTypeIdentifier</key>
-			<string>org.fucadup.fcstd</string>
+			<string>dev.otherworld.othercad.fcstd</string>
 			<key>UTTypeReferenceURL</key>
 			<string>https://wiki.freecad.org/File_Format_FCStd/id</string>
 			<key>UTTypeTagSpecification</key>

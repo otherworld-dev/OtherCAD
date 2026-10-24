@@ -1,14 +1,14 @@
 @echo off
-rem Run FuCadUp from the build tree on Windows.
+rem Run OtherCAD from the build tree on Windows.
 rem Puts the pixi conda environment on PATH and points Qt at its plugin
 rem directory, which the build output does not carry a qt.conf for.
-rem Usage: tools\run-win.bat [FuCadUp arguments ...]
+rem Usage: tools\run-win.bat [OtherCAD arguments ...]
 
 setlocal
 
 set "REPO=%~dp0.."
 set "ENVDIR=%REPO%\.pixi\envs\default"
-set "EXE=%REPO%\build\release\bin\FuCadUp.exe"
+set "EXE=%REPO%\build\release\bin\OtherCAD.exe"
 
 if not exist "%EXE%" (
     echo ERROR: "%EXE%" not found. Run tools\build-win.bat first.

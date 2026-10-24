@@ -3,15 +3,15 @@
 """
 run_gui_tests.py
 
-List registered tests via `FuCadUp -t` and run each registered module in its own process, using
-the specified FuCadUp executable.
+List registered tests via `OtherCAD -t` and run each registered module in its own process, using
+the specified OtherCAD executable.
 
 Modules are deliberately not filtered by name. The GUI binary is what registers the suites that
 need a display, and this fork's own suites are named TestRibbon, TestTimeline, TestPatternPanel
 and so on, so selecting for a 'Gui' substring silently skipped every one of them.
 
 Each module gets a process of its own and a time limit. Running them all through a single
-`FuCadUp -t 0` meant one module that hung held up every module after it, and because output
+`OtherCAD -t 0` meant one module that hung held up every module after it, and because output
 reached the log in batches there was no telling which module it had been. A module that runs past
 its limit is killed along with anything it started and reported as hung, and the rest carry on.
 
@@ -20,11 +20,11 @@ prints a traceback, runs nothing and still exits 0, so the exit code alone canno
 a module that verified nothing.
 
 Usage:
-  run_gui_tests.py [FUCAD_EXEC] [--timeout SECONDS] [--only MODULE ...]
+  run_gui_tests.py [OTHERCAD_EXEC] [--timeout SECONDS] [--only MODULE ...]
 
-If FUCAD_EXEC is omitted the script falls back to 'FuCadUp' on PATH.
-If FUCAD_EXEC is a directory containing bin/FuCadUp, that binary is used.
-If FUCAD_EXEC is an executable path, it is used directly.
+If OTHERCAD_EXEC is omitted the script falls back to 'OtherCAD' on PATH.
+If OTHERCAD_EXEC is a directory containing bin/OtherCAD, that binary is used.
+If OTHERCAD_EXEC is an executable path, it is used directly.
 --only runs just the named modules, which is handy when working on one by hand.
 
 This script returns 0 if every module passed, and 1 if any failed, hung or ran nothing.
@@ -54,19 +54,19 @@ OUTCOMES = ("passed", "failed", "hung", "ran nothing")
 
 
 def find_executable(arg: str | None) -> str:
-    """Return the FuCadUp executable path to use.
+    """Return the OtherCAD executable path to use.
 
-    If `arg` is None or empty, returns the plain name 'FuCadUp' which will be looked up on PATH. If
-    `arg` is a directory and contains `bin/FuCadUp` that binary will be returned. If `arg` is a file
+    If `arg` is None or empty, returns the plain name 'OtherCAD' which will be looked up on PATH. If
+    `arg` is a directory and contains `bin/OtherCAD` that binary will be returned. If `arg` is a file
     path it is returned as-is. Otherwise the original argument is returned.
 
-    Common use cases: use the FuCadUp binary from a build directory or an installed FuCadUp prefix.
+    Common use cases: use the OtherCAD binary from a build directory or an installed OtherCAD prefix.
     """
     if not arg:
-        return "FuCadUp"
+        return "OtherCAD"
     p = Path(arg)
     if p.is_dir():
-        candidate = p / "bin" / "FuCadUp"
+        candidate = p / "bin" / "OtherCAD"
         if candidate.exists():
             return str(candidate)
     if p.is_file():
@@ -78,30 +78,30 @@ def find_executable(arg: str | None) -> str:
 def validate_executable(path: str) -> tuple[bool, str]:
     """Return (ok, message). Checks if the executable exists or is likely on PATH.
 
-    This is best effort: if a bare name is given (e.g. 'FuCadUp') we can't stat it here, so we
+    This is best effort: if a bare name is given (e.g. 'OtherCAD') we can't stat it here, so we
     accept it but warn. If the path points to a file, we check executability. Also warn if the name
-    looks like the CLI-only 'FuCadUpCmd'.
+    looks like the CLI-only 'OtherCADCmd'.
     """
     p = Path(path)
     if p.is_file():
         if not os.access(str(p), os.X_OK):
             return False, f"File exists but is not executable: {path}"
-        if p.name.endswith("FuCadUpCmd"):
+        if p.name.endswith("OtherCADCmd"):
             return (
                 True,
                 (
-                    "Warning: executable looks like 'FuCadUpCmd' (CLI); GUI tests require the GUI "
-                    "binary 'FuCadUp'."
+                    "Warning: executable looks like 'OtherCADCmd' (CLI); GUI tests require the GUI "
+                    "binary 'OtherCAD'."
                 ),
             )
         return True, ""
     # Bare name or non-existent path: accept but warn
-    if p.name.endswith("FuCadUpCmd"):
+    if p.name.endswith("OtherCADCmd"):
         return (
             True,
             (
-                "Warning: executable name looks like 'FuCadUpCmd' (CLI); GUI tests require the GUI "
-                "binary 'FuCadUp'."
+                "Warning: executable name looks like 'OtherCADCmd' (CLI); GUI tests require the GUI "
+                "binary 'OtherCAD'."
             ),
         )
     return True, ""
@@ -123,7 +123,7 @@ def run_and_capture(cmd: list[str]) -> tuple[int, str]:
 
 
 def parse_registered_tests(output: str) -> list[str]:
-    """Parse output from `FuCadUp -t` and return a list of registered test unit names.
+    """Parse output from `OtherCAD -t` and return a list of registered test unit names.
 
     The function looks for the section starting with the literal 'Registered test units:' and
     then reads the block of unit names under it.
@@ -153,10 +153,10 @@ def parse_registered_tests(output: str) -> list[str]:
     return tests
 
 
-def console_sibling(fucad_exec: str) -> str | None:
-    """The console binary that sits beside `fucad_exec`, or None if there is not one."""
-    gui = Path(fucad_exec)
-    for name in (gui.stem + "Cmd" + gui.suffix, "FuCadUpCmd" + gui.suffix):
+def console_sibling(othercad_exec: str) -> str | None:
+    """The console binary that sits beside `othercad_exec`, or None if there is not one."""
+    gui = Path(othercad_exec)
+    for name in (gui.stem + "Cmd" + gui.suffix, "OtherCADCmd" + gui.suffix):
         candidate = gui.with_name(name)
         if candidate.is_file():
             return str(candidate)
@@ -185,13 +185,13 @@ def watchdog_delay(timeout: float) -> float:
     return max(timeout - 15.0, timeout * 0.9)
 
 
-def run_module(fucad_exec: str, module: str, timeout: float) -> tuple[int, str, bool]:
+def run_module(othercad_exec: str, module: str, timeout: float) -> tuple[int, str, bool]:
     """Run one test module in its own process and return (returncode, output, timed_out).
 
     A hung module's output ends with the Python stack of every thread shortly before it was
     killed (TestApp._armWatchdog), so the log says where it was stuck and not just that it was.
     """
-    fd, stacks_path = tempfile.mkstemp(prefix="fucad-test-stacks-", suffix=".txt")
+    fd, stacks_path = tempfile.mkstemp(prefix="othercad-test-stacks-", suffix=".txt")
     os.close(fd)
     env = dict(os.environ)
     env["FREECAD_TEST_WATCHDOG"] = f"{watchdog_delay(timeout):.0f}"
@@ -199,7 +199,7 @@ def run_module(fucad_exec: str, module: str, timeout: float) -> tuple[int, str, 
     try:
         try:
             proc = subprocess.Popen(
-                [fucad_exec, "-t", module],
+                [othercad_exec, "-t", module],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -208,7 +208,7 @@ def run_module(fucad_exec: str, module: str, timeout: float) -> tuple[int, str, 
                 env=env,
             )
         except FileNotFoundError:
-            return 127, f"Executable not found: {fucad_exec}\n", False
+            return 127, f"Executable not found: {othercad_exec}\n", False
 
         try:
             out, _ = proc.communicate(timeout=timeout)
@@ -242,8 +242,10 @@ def classify(returncode: int, output: str, timed_out: bool) -> str:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run each registered FuCadUp test module.")
-    parser.add_argument("fucad_exec", nargs="?", default=None, help="FuCadUp binary or build dir")
+    parser = argparse.ArgumentParser(description="Run each registered OtherCAD test module.")
+    parser.add_argument(
+        "othercad_exec", nargs="?", default=None, help="OtherCAD binary or build dir"
+    )
     parser.add_argument(
         "--timeout",
         type=float,
@@ -271,18 +273,18 @@ def main(argv: list[str]) -> int:
     Returns 0 if every module passed and 1 if any failed, hung or ran nothing.
     """
     args = parse_args(argv)
-    fucad_exec = find_executable(args.fucad_exec)
+    othercad_exec = find_executable(args.othercad_exec)
 
-    print(f"Using FuCadUp executable: {fucad_exec}")
+    print(f"Using OtherCAD executable: {othercad_exec}")
 
-    ok, msg = validate_executable(fucad_exec)
+    ok, msg = validate_executable(othercad_exec)
     if msg:
         print(msg, file=sys.stderr)
     if not ok:
-        print(f"Aborting: invalid FuCadUp executable: {fucad_exec}", file=sys.stderr)
+        print(f"Aborting: invalid OtherCAD executable: {othercad_exec}", file=sys.stderr)
         return 3
 
-    code, out = run_and_capture([fucad_exec, "-t"])
+    code, out = run_and_capture([othercad_exec, "-t"])
     if code != 0:
         print(
             f"Warning: listing tests returned exit code {code}; attempting to parse output anyway",
@@ -302,9 +304,9 @@ def main(argv: list[str]) -> int:
         # run by the CLI step already, and under the GUI binary every document they open gets
         # a 3D view drawn in software, which made TestSketcherApp and TestCAMApp run past five
         # minutes each where the console binary gets through every App suite in under three.
-        console = console_sibling(fucad_exec)
+        console = console_sibling(othercad_exec)
         if console is None:
-            print(f"::error::--gui-only needs the console binary beside {fucad_exec}")
+            print(f"::error::--gui-only needs the console binary beside {othercad_exec}")
             return 1
         _, console_out = run_and_capture([console, "-t"])
         console_units = set(parse_registered_tests(console_out))
@@ -332,7 +334,7 @@ def main(argv: list[str]) -> int:
         # Flushed as it goes: a log that arrives in batches cannot say where a run stopped.
         print(f"\nRunning tests for module: {mod}", flush=True)
         started = time.monotonic()
-        rc, out, timed_out = run_module(fucad_exec, mod, args.timeout)
+        rc, out, timed_out = run_module(othercad_exec, mod, args.timeout)
         elapsed = time.monotonic() - started
         print(out, flush=True)
 

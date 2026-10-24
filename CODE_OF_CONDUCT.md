@@ -1,8 +1,8 @@
-# FuCadUp Project Code of Conduct
+# OtherCAD Project Code of Conduct
 
 ## Statement
 
-The FuCadUp Project community covers people from a wide variety of countries,
+The OtherCAD Project community covers people from a wide variety of countries,
 backgrounds and positions. This global diversity is a great strength of the
 project, but can also lead to communication issues, which may in turn cause
 unhappiness. To maximise happiness of the project community taken as a whole,
@@ -56,7 +56,7 @@ further defined and clarified by project maintainers.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported by opening a confidential report at
-https://github.com/otherworld-dev/FuCadUp/security/advisories/new . All
+https://github.com/otherworld-dev/OtherCAD/security/advisories/new . All
 complaints will be reviewed and investigated and will result in a response that
 is deemed necessary and appropriate to the circumstances. The project team is
 obligated to maintain confidentiality with regard to the reporter of an incident.

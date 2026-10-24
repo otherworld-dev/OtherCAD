@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # Copyright (c) 2026 FuCad contributors
 
-"""Regenerate every FuCadUp brand asset from the definitions in ``brand.py``.
+"""Regenerate every OtherCAD brand asset from the definitions in ``brand.py``.
 
 Run it from anywhere after changing the palette or the mark geometry::
 
@@ -48,8 +48,8 @@ from brand import (
     write_ico,
 )
 
-WORDMARK = "FuCadUp"
-ATTRIBUTION = "Fork of FuCad  \u00b7  LGPL-2.1-or-later"
+WORDMARK = "OtherCAD"
+ATTRIBUTION = "Fork of FreeCAD  \u00b7  With thanks to FuCad  \u00b7  LGPL-2.1-or-later"
 
 ICON_SIZES = (16, 24, 32, 48, 64, 128, 256)
 
@@ -63,7 +63,7 @@ WATERMARK_SIZE = (104.0, float(round(104.0 / MARK_ASPECT)))
 
 
 def app_icon(size):
-    """The FuCadUp application icon: the padded mark on a steel plate."""
+    """The OtherCAD application icon: the padded mark on a steel plate."""
     canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     plate_mask = rounded_rect_mask((size, size), size * 0.215)
     canvas.paste(linear_gradient((size, size), STEEL_LIT, STEEL_DEEP, 55.0), (0, 0), plate_mask)
@@ -347,7 +347,7 @@ def dmg_background():
     )
 
     hint_font = load_font(13, "Regular")
-    hint = "DRAG FUCADUP INTO YOUR APPLICATIONS FOLDER"
+    hint = "DRAG OTHERCAD INTO YOUR APPLICATIONS FOLDER"
     hint_width = tracked_width(hint_font, hint, 2.2)
     draw_tracked(draw, ((size[0] - hint_width) / 2, 296), hint, hint_font, rgba(STEEL), 2.2)
     return canvas.convert("RGB")
@@ -384,7 +384,7 @@ def app_icon_svg():
         f' stroke="{hex_of(PAPER)}" stroke-opacity="0.15" stroke-width="1"/>\n'
         f"{faces}"
     )
-    return svg_document(48, 48, body, "FuCadUp")
+    return svg_document(48, 48, body, "OtherCAD")
 
 
 def document_icon_svg():
@@ -396,7 +396,7 @@ def document_icon_svg():
     body = "\n".join(
         f'  <path d="{svg_path(points)}" {svg_fill(colour)}/>' for points, colour in shapes
     )
-    return svg_document(64, 64, body, "FuCadUp document")
+    return svg_document(64, 64, body, "OtherCAD document")
 
 
 def background_svg(colour, opacity):
@@ -405,7 +405,7 @@ def background_svg(colour, opacity):
     shapes = mark_polygons((0.0, 0.0, width, height), colour, colour, colour, plane_line=colour)
     faces = "\n".join(f'    <path d="{svg_path(points)}"/>' for points, _ in shapes)
     body = f'  <g fill="{hex_of(colour)}" opacity="{opacity}">\n{faces}\n  </g>'
-    return svg_document(round(width), round(height), body, "FuCadUp")
+    return svg_document(round(width), round(height), body, "OtherCAD")
 
 
 # --------------------------------------------------------------------------
@@ -459,23 +459,23 @@ def generate(repo):
     stylesheets = "src/Gui/Stylesheets"
 
     print("application icons")
-    out.text(f"{icons}/fucad.svg", app_icon_svg())
-    out.text(f"{icons}/fucad-doc.svg", document_icon_svg())
+    out.text(f"{icons}/othercad.svg", app_icon_svg())
+    out.text(f"{icons}/othercad-doc.svg", document_icon_svg())
     for size in (16, 32, 48, 64):
-        out.image(f"{icons}/fucad-icon-{size}.png", app_icon(size))
-    out.image(f"{icons}/fucad-doc.png", document_icon(64))
+        out.image(f"{icons}/othercad-icon-{size}.png", app_icon(size))
+    out.image(f"{icons}/othercad-doc.png", document_icon(64))
 
     print("splash and about")
-    out.image(f"{icons}/fucadsplash.png", splash(1))
-    out.image(f"{icons}/fucadsplash_2x.png", splash(2))
-    out.image(f"{icons}/fucadabout.png", about_image(False))
-    out.image(f"{icons}/fucadaboutdev.png", about_image(True))
+    out.image(f"{icons}/othercadsplash.png", splash(1))
+    out.image(f"{icons}/othercadsplash_2x.png", splash(2))
+    out.image(f"{icons}/othercadabout.png", about_image(False))
+    out.image(f"{icons}/othercadaboutdev.png", about_image(True))
 
     print("workspace watermarks")
     watermarks = (
-        ("background_fucad", STEEL, 0.20),
-        ("background_fucad_dark", PAPER, 0.14),
-        ("background_fucad_light", INK, 0.16),
+        ("background_othercad", STEEL, 0.20),
+        ("background_othercad_dark", PAPER, 0.14),
+        ("background_othercad_light", INK, 0.16),
     )
     for name, colour, opacity in watermarks:
         for folder in ("images_classic", "images_dark-light"):
@@ -488,23 +488,20 @@ def generate(repo):
     print("windows")
     windows_icons = [app_icon(size) for size in ICON_SIZES]
     out.ico("src/Main/icon.ico", windows_icons)
-    out.ico("package/WindowsInstaller/icons/FuCadUp.ico", windows_icons)
+    out.ico("package/WindowsInstaller/icons/OtherCAD.ico", windows_icons)
     out.image("package/WindowsInstaller/graphics/banner.bmp", installer_banner())
     out.image("package/WindowsInstaller/graphics/header.bmp", installer_header())
     out.ico("src/Doc/sphinx/_static/favicon.ico", [app_icon(size) for size in (16, 32, 48)])
 
     print("macos")
-    for resources in (
-        "src/MacAppBundle/FuCadUp.app/Contents/Resources",
-        "package/rattler-build/osx/resources",
-    ):
-        out.icns(f"{resources}/fucad.icns", app_icon)
-        out.icns(f"{resources}/fucad-doc.icns", document_icon)
-        out.icns(f"{resources}/fucad-script.icns", script_icon)
+    resources = "src/MacAppBundle/OtherCAD.app/Contents/Resources"
+    out.icns(f"{resources}/othercad.icns", app_icon)
+    out.icns(f"{resources}/othercad-doc.icns", document_icon)
+    out.icns(f"{resources}/othercad-script.icns", script_icon)
     out.image("src/MacAppBundle/DiskImage/background.png", dmg_background())
 
     print("project")
-    out.image(".github/images/fucad-banner.png", readme_banner())
+    out.image(".github/images/othercad-banner.png", readme_banner())
 
     print(f"\n{out.count} files written")
 

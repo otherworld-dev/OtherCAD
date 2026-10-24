@@ -3,7 +3,7 @@
 set -e
 set -x
 
-conda_env="FuCadUp.app/Contents/Resources"
+conda_env="OtherCAD.app/Contents/Resources"
 
 mkdir -p ${conda_env}
 
@@ -47,8 +47,8 @@ rm -rf ${conda_env}/share/vim
 
 mv ${conda_env}/bin ${conda_env}/bin_tmp
 mkdir ${conda_env}/bin
-cp ${conda_env}/bin_tmp/fucadup ${conda_env}/bin/
-cp ${conda_env}/bin_tmp/fucadupcmd ${conda_env}/bin
+cp ${conda_env}/bin_tmp/othercad ${conda_env}/bin/
+cp ${conda_env}/bin_tmp/othercadcmd ${conda_env}/bin
 cp ${conda_env}/bin_tmp/ccx ${conda_env}/bin/
 cp ${conda_env}/bin_tmp/python ${conda_env}/bin/
 cp ${conda_env}/bin_tmp/pip ${conda_env}/bin/
@@ -76,13 +76,13 @@ python fix_macos_lib_paths.py ${conda_env}/lib -r
 # build and install the launcher
 cmake -B build launcher
 cmake --build build
-mkdir -p FuCadUp.app/Contents/MacOS
-cp build/FuCadUp FuCadUp.app/Contents/MacOS/FuCadUp
+mkdir -p OtherCAD.app/Contents/MacOS
+cp build/OtherCAD OtherCAD.app/Contents/MacOS/OtherCAD
 
 # Add deployment target suffix to artifact name (e.g., "-macOS11" or "-macOS15")
 deploy_target="${MACOS_DEPLOYMENT_TARGET:-11.0}"
-version_name="FuCadUp_${BUILD_TAG}-macOS${deploy_target%%.*}-$(uname -m)"
-application_menu_name="FuCadUp_${BUILD_TAG}"
+version_name="OtherCAD_${BUILD_TAG}-macOS${deploy_target%%.*}-$(uname -m)"
+application_menu_name="OtherCAD_${BUILD_TAG}"
 
 echo -e "\################"
 echo -e "version_name:  ${version_name}"
@@ -106,18 +106,18 @@ cp Info.plist.template ${conda_env}/../Info.plist
 sed -i "s/FREECAD_BUNDLE_VERSION/${bundle_version}/" ${conda_env}/../Info.plist
 sed -i "s/APPLICATION_MENU_NAME/${application_menu_name}/" ${conda_env}/../Info.plist
 
-pixi list -e default > FuCadUp.app/Contents/packages.txt
-sed -i '1s/.*/\nLIST OF PACKAGES:/' FuCadUp.app/Contents/packages.txt
+pixi list -e default > OtherCAD.app/Contents/packages.txt
+sed -i '1s/.*/\nLIST OF PACKAGES:/' OtherCAD.app/Contents/packages.txt
 
-echo "Running FuCadUp command-line smoke test..."
-if ! "${conda_env}/bin/fucadupcmd" --safe-mode --version; then
-    echo "FuCadUp command-line smoke test failed; the macOS bundle cannot start."
+echo "Running OtherCAD command-line smoke test..."
+if ! "${conda_env}/bin/othercadcmd" --safe-mode --version; then
+    echo "OtherCAD command-line smoke test failed; the macOS bundle cannot start."
     exit 1
 fi
 
-echo "Running FuCadUp bundled Pivy smoke test..."
-if ! "${conda_env}/bin/fucadupcmd" --safe-mode --console "import pivy; from pivy import coin; print(pivy.__file__); print(coin.SoDB.getVersion())"; then
-    echo "FuCadUp bundled Pivy smoke test failed; the macOS bundle cannot import the bundled Coin/Pivy runtime."
+echo "Running OtherCAD bundled Pivy smoke test..."
+if ! "${conda_env}/bin/othercadcmd" --safe-mode --console "import pivy; from pivy import coin; print(pivy.__file__); print(coin.SoDB.getVersion())"; then
+    echo "OtherCAD bundled Pivy smoke test failed; the macOS bundle cannot import the bundled Coin/Pivy runtime."
     exit 1
 fi
 
@@ -133,27 +133,27 @@ fi
 
 if [[ "${MACOS_SIGN_RELEASE}" == "true" ]]; then
     # create the signed dmg
-    ../../scripts/macos_sign_and_notarize.zsh -p "FuCadUp" -k ${MACOS_SIGNING_KEY_ID} -o "${version_name}.dmg"
+    ../../scripts/macos_sign_and_notarize.zsh -p "OtherCAD" -k ${MACOS_SIGNING_KEY_ID} -o "${version_name}.dmg"
 else
     # Ad-hoc sign for local builds (required for QuickLook extensions to register)
-    if [ -d "FuCadUp.app/Contents/PlugIns" ]; then
+    if [ -d "OtherCAD.app/Contents/PlugIns" ]; then
         echo "Ad-hoc signing App Extensions with entitlements..."
         codesign --force --sign - \
             --entitlements ../../../src/MacAppBundle/QuickLook/modern/ThumbnailExtension.entitlements \
-            FuCadUp.app/Contents/PlugIns/FuCadUpThumbnailExtension.appex
+            OtherCAD.app/Contents/PlugIns/OtherCADThumbnailExtension.appex
         codesign --force --sign - \
             --entitlements ../../../src/MacAppBundle/QuickLook/modern/PreviewExtension.entitlements \
-            FuCadUp.app/Contents/PlugIns/FuCadUpPreviewExtension.appex
+            OtherCAD.app/Contents/PlugIns/OtherCADPreviewExtension.appex
     fi
     echo "Ad-hoc signing app bundle..."
-    codesign --force --sign - FuCadUp.app/Contents/packages.txt
-    if [ -f "FuCadUp.app/Contents/Library/QuickLook/QuicklookFCStd.qlgenerator/Contents/MacOS/QuicklookFCStd" ]; then
-        codesign --force --sign - FuCadUp.app/Contents/Library/QuickLook/QuicklookFCStd.qlgenerator/Contents/MacOS/QuicklookFCStd
+    codesign --force --sign - OtherCAD.app/Contents/packages.txt
+    if [ -f "OtherCAD.app/Contents/Library/QuickLook/QuicklookFCStd.qlgenerator/Contents/MacOS/QuicklookFCStd" ]; then
+        codesign --force --sign - OtherCAD.app/Contents/Library/QuickLook/QuicklookFCStd.qlgenerator/Contents/MacOS/QuicklookFCStd
     fi
-    codesign --force --sign - FuCadUp.app
+    codesign --force --sign - OtherCAD.app
 
     # create the dmg
-    dmgbuild -s dmg_settings.py "FuCadUp" "${version_name}.dmg"
+    dmgbuild -s dmg_settings.py "OtherCAD" "${version_name}.dmg"
 fi
 
 # create hash

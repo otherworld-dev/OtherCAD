@@ -47,10 +47,10 @@ public:
         BottomLeftCorner,
         BottomRightCorner
     };
-    //! Which cube is drawn: FuCadUp's flat tiled one, or FreeCAD's chamfered one.
+    //! Which cube is drawn: OtherCAD's flat tiled one, or FreeCAD's chamfered one.
     enum class Style
     {
-        FuCadUp = 0,
+        OtherCAD = 0,
         Classic = 1
     };
     NaviCube(Gui::View3DInventorViewer* viewer);

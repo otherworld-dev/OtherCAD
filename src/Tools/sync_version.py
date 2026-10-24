@@ -4,7 +4,7 @@
 #
 # Files updated by this script:
 #   - pixi.toml (workspace version)
-#   - package/fedora/fucadup.spec (Version, Name)
+#   - package/fedora/othercad.spec (Version, Name)
 #
 # Usage:
 #   python src/Tools/sync_version.py --check    # verify consistency (no changes)
@@ -137,7 +137,7 @@ def sync_fedora_spec(filepath: Path, version: VersionInfo) -> tuple[str, bool]:
 # Each entry is (relative_path, sync_function).
 SYNC_TARGETS = [
     ("pixi.toml", sync_workspace_pixi_toml),
-    ("package/fedora/fucadup.spec", sync_fedora_spec),
+    ("package/fedora/othercad.spec", sync_fedora_spec),
 ]
 
 

@@ -11,7 +11,7 @@
 // remains consistent on all systems.
 IDI_ICON1               ICON    DISCARDABLE     "icon.ico"
 
-// File info for the FuCadUp.exe
+// File info for the OtherCAD.exe
 //
 1 VERSIONINFO
 FILEVERSION ${PACKAGE_VERSION_MAJOR},${PACKAGE_VERSION_MINOR},${PACKAGE_VERSION_PATCH},${PACKAGE_BUILD_VERSION}
@@ -22,9 +22,9 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "${PROJECT_NAME} contributors"
             VALUE "FileDescription", "${PROJECT_NAME} main executable"
-            VALUE "InternalName", "FuCadUp.exe"
+            VALUE "InternalName", "OtherCAD.exe"
             VALUE "LegalCopyright", "LGPL-2.1-or-later; derived from FreeCAD, (C) FreeCAD contributors"
-            VALUE "OriginalFilename", "FuCadUp.exe"
+            VALUE "OriginalFilename", "OtherCAD.exe"
             VALUE "ProductName", "${PROJECT_NAME}"
             VALUE "ProductVersion", "${PACKAGE_VERSION}${PACKAGE_VERSION_SUFFIX}"
         END

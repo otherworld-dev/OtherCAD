@@ -39,7 +39,8 @@ SET(Test_SRCS
     TestViewProviderLink.py
     TestOriginPlaneHover.py
     TestNavigationBarIcons.py
-    TestFuCadIcons.py
+    TestOtherCADIcons.py
+    TestOtherCADIdentity.py
     TestWorkbenchSwitcher.py
     TestFusionShortcuts.py
     TestExtrudeFlip.py
@@ -61,7 +62,7 @@ SET(Test_SRCS
     TestRibbonSketchSolid.py
     TestShellVocabulary.py
     TestFeatureDialogs.py
-    TestFuCadDefaults.py
+    TestOtherCADDefaults.py
     TestViewCube.py
     TestSketcherSnapFeedback.py
     TestSketchPlanePick.py

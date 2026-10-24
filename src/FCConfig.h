@@ -80,7 +80,7 @@
 #endif
 
 #else
-#   error "FuCadUp is not ported to this OS yet. For help see https://github.com/otherworld-dev/FuCadUp"
+#   error "OtherCAD is not ported to this OS yet. For help see https://github.com/otherworld-dev/OtherCAD"
 #endif
 
 #ifdef FC_OS_WIN32

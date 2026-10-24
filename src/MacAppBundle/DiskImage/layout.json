@@ -1,8 +1,8 @@
 {
 
-  "title": "FuCadUp",
+  "title": "OtherCAD",
 
-  "icon": "../FuCadUp.app/Contents/Resources/fucad.icns",
+  "icon": "../OtherCAD.app/Contents/Resources/othercad.icns",
 
   "icon-size": 80,
 
@@ -10,7 +10,7 @@
 
   "contents": [
 
-    { "x": 250, "y": 150, "type": "file", "path": "/usr/local/FuCadUp.app" },
+    { "x": 250, "y": 150, "type": "file", "path": "/usr/local/OtherCAD.app" },
     { "x": 475, "y": 150, "type": "link", "path": "/Applications" }
 
   ],

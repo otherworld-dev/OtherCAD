@@ -1,5 +1,5 @@
 /***************************************************************************
- *   Copyright (c) 2026 FuCadUp contributors                               *
+ *   Copyright (c) 2026 OtherCAD contributors                               *
  *                                                                         *
  *   This file is part of FreeCAD.                                         *
  *                                                                         *
@@ -33,7 +33,7 @@
 #include "Inventor/SoNaviCube.h"
 
 /**
- * The geometry of FuCadUp's view cube (SoViewCube), worked out without a scene
+ * The geometry of OtherCAD's view cube (SoViewCube), worked out without a scene
  * graph or GL so that it can be checked on its own.
  *
  * The cube spans -1..1 on each axis, with the faces as SoNaviCube has them: Top

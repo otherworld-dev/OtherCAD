@@ -1,6 +1,6 @@
 # Merging FreeCAD upstream
 
-FuCadUp tracks FreeCAD's `main`. Upstream lands roughly 85 commits a week, so
+OtherCAD tracks FreeCAD's `main`. Upstream lands roughly 85 commits a week, so
 the gap grows quickly and the cost of closing it grows faster than the gap does.
 
 ## Cadence
@@ -93,8 +93,8 @@ way that looks like a real breakage:
 export QT_PLUGIN_PATH=$PWD/.pixi/envs/default/Library/lib/qt6/plugins
 export QT_QPA_PLATFORM_PLUGIN_PATH=$QT_PLUGIN_PATH/platforms
 pixi run -- ctest --test-dir build/release --output-on-failure
-pixi run -- build/release/bin/FuCadUpCmd.exe -t TestPartDesignApp
-pixi run -- build/release/bin/FuCadUp.exe -t TestTimeline
+pixi run -- build/release/bin/OtherCADCmd.exe -t TestPartDesignApp
+pixi run -- build/release/bin/OtherCAD.exe -t TestTimeline
 ```
 
 Judge a GUI suite by its `Ran N tests` line rather than by the exit code alone.

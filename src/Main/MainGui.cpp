@@ -59,10 +59,10 @@
 void PrintInitHelp();
 
 const auto sBanner = fmt::format(
-    "FuCadUp is a fork of FuCad (https://github.com/FadyFaheem/FuCad), "
-    "itself a fork of FreeCAD (https://www.freecad.org), "
+    "OtherCAD is a fork of FreeCAD (https://www.freecad.org) that began as a fork of "
+    "FuCad (https://github.com/FadyFaheem/FuCad), "
     "(C) 2001-{} FreeCAD and FuCad contributors.\n"
-    "FuCadUp is free and open-source software licensed under the terms of the "
+    "OtherCAD is free and open-source software licensed under the terms of the "
     "LGPL-2.1-or-later license.\n\n",
     FCCopyrightYear
 );
@@ -210,18 +210,18 @@ int main(int argc, char** argv)
 #endif
 
     // Name and Version of the Application
-    App::Application::Config()["ExeName"] = "FuCadUp";
-    App::Application::Config()["ExeVendor"] = "FuCadUp";
+    App::Application::Config()["ExeName"] = "OtherCAD";
+    App::Application::Config()["ExeVendor"] = "OtherCAD";
     App::Application::Config()["AppDataSkipVendor"] = "true";
-    App::Application::Config()["MaintainerUrl"] = "https://github.com/otherworld-dev/FuCadUp";
+    App::Application::Config()["MaintainerUrl"] = "https://github.com/otherworld-dev/OtherCAD";
 
     // set the banner (for logging and console)
     App::Application::Config()["CopyrightInfo"] = sBanner;
-    App::Application::Config()["AppIcon"] = "fucad";
-    App::Application::Config()["SplashScreen"] = "fucadsplash";
+    App::Application::Config()["AppIcon"] = "othercad";
+    App::Application::Config()["SplashScreen"] = "othercadsplash";
     App::Application::Config()["AboutImage"] = App::Application::isDevelopmentVersion()
-        ? "fucadaboutdev"
-        : "fucadabout";
+        ? "othercadaboutdev"
+        : "othercadabout";
     App::Application::Config()["StartWorkbench"] = "PartDesignWorkbench";
     // App::Application::Config()["HiddenDockWindow"] = "Property editor";
     App::Application::Config()["SplashAlignment"] = "Bottom|Left";
@@ -231,7 +231,7 @@ int main(int argc, char** argv)
     App::Application::Config()["SplashTitleInImage"] = "true";
     App::Application::Config()["SplashInfoColor"] = "#7C98A1";
     App::Application::Config()["SplashInfoPosition"] = "52,258";
-    App::Application::Config()["DesktopFileName"] = "org.fucadup.FuCadUp";
+    App::Application::Config()["DesktopFileName"] = "dev.otherworld.OtherCAD";
 
     try {
         // Init phase ===========================================================

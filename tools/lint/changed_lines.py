@@ -137,7 +137,7 @@ def main():
     )
     parser.add_argument("--token")
     parser.add_argument("--api-url", default="https://api.github.com")
-    parser.add_argument("--repo", default="otherworld-dev/FuCadUp")
+    parser.add_argument("--repo", default="otherworld-dev/OtherCAD")
     parser.add_argument("--ref", required=True)
     parser.add_argument("--pr", required=True)
     parser.add_argument("--file-filter", default="")

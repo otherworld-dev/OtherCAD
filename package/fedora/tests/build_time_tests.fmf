@@ -1,7 +1,7 @@
 /ctest :
     test: |
-        cat /usr/share/fucadup/tests_result/`uname -m`/ctest.result
-        if [ -f /usr/share/fucadup/tests_result/`uname -m`/ctest.failed ]; then
+        cat /usr/share/othercad/tests_result/`uname -m`/ctest.result
+        if [ -f /usr/share/othercad/tests_result/`uname -m`/ctest.failed ]; then
             exit 1
         fi
 

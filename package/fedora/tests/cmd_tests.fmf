@@ -1,42 +1,42 @@
 /tests:
   /TestAssemblyWorkbench :
-    test: /usr/bin/FuCadUpCmd -t  TestAssemblyWorkbench
+    test: /usr/bin/OtherCADCmd -t  TestAssemblyWorkbench
   /TestArch              :
-    test: /usr/bin/FuCadUpCmd -t  TestArch
+    test: /usr/bin/OtherCADCmd -t  TestArch
   /TestCAMApp            :
-    test: /usr/bin/FuCadUpCmd -t  TestCAMApp
+    test: /usr/bin/OtherCADCmd -t  TestCAMApp
   /TestDraft             :
-    test: /usr/bin/FuCadUpCmd -t  TestDraft
+    test: /usr/bin/OtherCADCmd -t  TestDraft
   /TestFemApp            :
-    test: /usr/bin/FuCadUpCmd -t  TestFemApp
+    test: /usr/bin/OtherCADCmd -t  TestFemApp
   /TestMaterialsApp      :
-    test: /usr/bin/FuCadUpCmd -t  TestMaterialsApp
+    test: /usr/bin/OtherCADCmd -t  TestMaterialsApp
   /MeshTestsApp          :
-    test: /usr/bin/FuCadUpCmd -t  MeshTestsApp
+    test: /usr/bin/OtherCADCmd -t  MeshTestsApp
   /TestPartApp           :
-    test: /usr/bin/FuCadUpCmd -t  TestPartApp
+    test: /usr/bin/OtherCADCmd -t  TestPartApp
   /TestPartDesignApp     :
-    test: /usr/bin/FuCadUpCmd -t  TestPartDesignApp
+    test: /usr/bin/OtherCADCmd -t  TestPartDesignApp
   /TestSketcherApp       :
-    test: /usr/bin/FuCadUpCmd -t  TestSketcherApp
+    test: /usr/bin/OtherCADCmd -t  TestSketcherApp
   /TestSpreadsheet       :
-    test: /usr/bin/FuCadUpCmd -t  TestSpreadsheet
+    test: /usr/bin/OtherCADCmd -t  TestSpreadsheet
   /TestSurfaceApp        :
-    test: /usr/bin/FuCadUpCmd -t  TestSurfaceApp
+    test: /usr/bin/OtherCADCmd -t  TestSurfaceApp
   /TestTechDrawApp       :
-    test: /usr/bin/FuCadUpCmd -t  TestTechDrawApp
+    test: /usr/bin/OtherCADCmd -t  TestTechDrawApp
   /BaseTests             :
-    test: /usr/bin/FuCadUpCmd -t  BaseTests
+    test: /usr/bin/OtherCADCmd -t  BaseTests
   /UnitTests             :
-    test: /usr/bin/FuCadUpCmd -t  UnitTests
+    test: /usr/bin/OtherCADCmd -t  UnitTests
   /Document              :
-    test: /usr/bin/FuCadUpCmd -t  Document
+    test: /usr/bin/OtherCADCmd -t  Document
   /Metadata              :
-    test: /usr/bin/FuCadUpCmd -t  Metadata
+    test: /usr/bin/OtherCADCmd -t  Metadata
   /StringHasher          :
-    test: /usr/bin/FuCadUpCmd -t  StringHasher
+    test: /usr/bin/OtherCADCmd -t  StringHasher
   /UnicodeTests          :
-    test: /usr/bin/FuCadUpCmd -t  UnicodeTests
+    test: /usr/bin/OtherCADCmd -t  UnicodeTests
   /TestPythonSyntax      :
-    test: /usr/bin/FuCadUpCmd -t  TestPythonSyntax
+    test: /usr/bin/OtherCADCmd -t  TestPythonSyntax
 

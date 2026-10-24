@@ -12,38 +12,38 @@ if(NOT DEFINED APPDATA_RELEASE_DATE)
 endif()
 
 configure_file(
-    org.fucadup.FuCadUp.metainfo.xml.in
-    ${CMAKE_BINARY_DIR}/org.fucadup.FuCadUp.metainfo.xml
+    dev.otherworld.OtherCAD.metainfo.xml.in
+    ${CMAKE_BINARY_DIR}/dev.otherworld.OtherCAD.metainfo.xml
 )
 install(
-    FILES ${CMAKE_BINARY_DIR}/org.fucadup.FuCadUp.metainfo.xml
+    FILES ${CMAKE_BINARY_DIR}/dev.otherworld.OtherCAD.metainfo.xml
     DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/metainfo
 )
 
 install(
-    FILES org.fucadup.FuCadUp.desktop
+    FILES dev.otherworld.OtherCAD.desktop
     DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
 )
 
 install(
-    FILES org.fucadup.FuCadUp.xml
+    FILES dev.otherworld.OtherCAD.xml
     DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/mime/packages
 )
 
 configure_file(
-    FuCadUp.thumbnailer.in
-    ${CMAKE_BINARY_DIR}/FuCadUp.thumbnailer
+    OtherCAD.thumbnailer.in
+    ${CMAKE_BINARY_DIR}/OtherCAD.thumbnailer
 )
 install(
-    FILES ${CMAKE_BINARY_DIR}/FuCadUp.thumbnailer
+    FILES ${CMAKE_BINARY_DIR}/OtherCAD.thumbnailer
     DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/thumbnailers
 )
 
 configure_file(
-    ${CMAKE_SOURCE_DIR}/src/Tools/fucadup-thumbnailer.in
-    ${CMAKE_BINARY_DIR}/fucadup-thumbnailer
+    ${CMAKE_SOURCE_DIR}/src/Tools/othercad-thumbnailer.in
+    ${CMAKE_BINARY_DIR}/othercad-thumbnailer
 )
 install(
-    PROGRAMS ${CMAKE_BINARY_DIR}/fucadup-thumbnailer
+    PROGRAMS ${CMAKE_BINARY_DIR}/othercad-thumbnailer
     TYPE BIN
 )

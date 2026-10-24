@@ -42,13 +42,13 @@ import FreeCAD
 import FreeCADGui
 from PySide import QtCore, QtGui, QtWidgets
 
-from PinnedPreferences import PinnedPreferences, fucad_dark
+from PinnedPreferences import PinnedPreferences, othercad_dark
 
 MAIN_WINDOW_PARAMS = "User parameter:BaseApp/Preferences/MainWindow"
 THEMES_PARAMS = "User parameter:BaseApp/Preferences/Themes"
 
-# The bar is styled by FuCad.qss and coloured from the pack's accents. A test run
-# never applies the FuCad Dark pack, so on any profile that had not saved it these
+# The bar is styled by OtherCAD.qss and coloured from the pack's accents. A test run
+# never applies the OtherCAD Dark pack, so on any profile that had not saved it these
 # tests read a bare stylesheet with no NavigationBar rules at all.
 THEME_SETTINGS = ("StyleSheet", "Theme")
 NAVIGATION_BAR_RULE = "QToolBar#NavigationBar QToolButton:hover"
@@ -74,7 +74,7 @@ ICON_EXTENT = 18
 # this much of a graphic that carries meaning, which is what these icons are.
 MIN_CONTRAST = 3.0
 
-# The plate the buttons sit on, darken(@PrimaryColor, 20) in FuCad.qss.
+# The plate the buttons sit on, darken(@PrimaryColor, 20) in OtherCAD.qss.
 PLATE_RED = 0x26
 PLATE_GREEN = 0x26
 PLATE_BLUE = 0x26
@@ -160,8 +160,10 @@ class TestNavigationBarIcons(unittest.TestCase):
 
     def setUp(self):
         for pins in (
-            PinnedPreferences(THEMES_PARAMS, fucad_dark(THEMES_PARAMS)),
-            PinnedPreferences(MAIN_WINDOW_PARAMS, fucad_dark(MAIN_WINDOW_PARAMS, THEME_SETTINGS)),
+            PinnedPreferences(THEMES_PARAMS, othercad_dark(THEMES_PARAMS)),
+            PinnedPreferences(
+                MAIN_WINDOW_PARAMS, othercad_dark(MAIN_WINDOW_PARAMS, THEME_SETTINGS)
+            ),
         ):
             pins.pin()
             self.addCleanup(pins.restore)
@@ -181,7 +183,7 @@ class TestNavigationBarIcons(unittest.TestCase):
         deadline = time.monotonic() + timeout
         while NAVIGATION_BAR_RULE not in app.styleSheet():
             if time.monotonic() >= deadline:
-                self.fail("FuCad.qss was not applied within %.0fs of being set" % timeout)
+                self.fail("OtherCAD.qss was not applied within %.0fs of being set" % timeout)
             FreeCADGui.updateGui()
             app.processEvents()
             time.sleep(0.02)

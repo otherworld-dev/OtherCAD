@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="64px"
+   height="64px"
+   viewBox="0 0 64 64"
+   version="1.1"
+   id="PartDesign_CoordinateSystem"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <metadata id="metadata1">
+    <rdf:RDF>
+      <cc:Work rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title>PartDesign_CoordinateSystem</dc:title>
+        <dc:description>A coordinate system</dc:description>
+        <dc:publisher>
+          <cc:Agent>
+            <dc:title>OtherCAD</dc:title>
+          </cc:Agent>
+        </dc:publisher>
+        <dc:rights>
+          <cc:Agent>
+            <dc:title>FreeCAD LGPL2+</dc:title>
+          </cc:Agent>
+        </dc:rights>
+        <cc:license>https://www.gnu.org/copyleft/lesser.html</cc:license>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g id="layer1">
+    <path d="M 30.47,43.68 L 47.40,53.45 L 45.26,57.16 L 59.50,56.92 L 52.59,44.46 L 50.45,48.17 L 33.53,38.40 Z" style="fill:#e54848;stroke:#0b1521;stroke-width:2.50;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 30.47,38.40 L 13.55,48.17 L 11.41,44.46 L 4.50,56.92 L 18.74,57.16 L 16.60,53.45 L 33.53,43.68 Z" style="fill:#4fb35a;stroke:#0b1521;stroke-width:2.50;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 35.05,41.04 L 35.05,19.06 L 39.33,19.06 L 32.00,6.84 L 24.67,19.06 L 28.95,19.06 L 28.95,41.04 Z" style="fill:#3d8fe0;stroke:#0b1521;stroke-width:2.50;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 37.50,41.04 L 37.39,42.11 L 37.08,43.14 L 36.57,44.09 L 35.89,44.93 L 35.05,45.61 L 34.10,46.12 L 33.07,46.43 L 32.00,46.54 L 30.93,46.43 L 29.90,46.12 L 28.95,45.61 L 28.11,44.93 L 27.43,44.09 L 26.92,43.14 L 26.61,42.11 L 26.50,41.04 L 26.61,39.97 L 26.92,38.94 L 27.43,37.99 L 28.11,37.15 L 28.95,36.47 L 29.90,35.96 L 30.93,35.65 L 32.00,35.54 L 33.07,35.65 L 34.10,35.96 L 35.05,36.47 L 35.89,37.15 L 36.57,37.99 L 37.08,38.94 L 37.39,39.97 Z" style="fill:#f4f6f8;stroke:#0b1521;stroke-width:2.50;stroke-linejoin:round;stroke-linecap:round" />
+  </g>
+</svg>

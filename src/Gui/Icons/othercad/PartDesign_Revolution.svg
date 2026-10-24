@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="64px"
+   height="64px"
+   viewBox="0 0 64 64"
+   version="1.1"
+   id="PartDesign_Revolution"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <metadata id="metadata1">
+    <rdf:RDF>
+      <cc:Work rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title>PartDesign_Revolution</dc:title>
+        <dc:description>New material revolved about an axis</dc:description>
+        <dc:publisher>
+          <cc:Agent>
+            <dc:title>OtherCAD</dc:title>
+          </cc:Agent>
+        </dc:publisher>
+        <dc:rights>
+          <cc:Agent>
+            <dc:title>FreeCAD LGPL2+</dc:title>
+          </cc:Agent>
+        </dc:rights>
+        <cc:license>https://www.gnu.org/copyleft/lesser.html</cc:license>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g id="layer1">
+    <path d="M 10.40,49.29 L 10.40,9.31" style="fill:none;stroke:#0b1521;stroke-width:6.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 10.40,49.29 L 10.40,9.31" style="fill:none;stroke:#f4f6f8;stroke-width:2.50;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 19.64,27.08 L 19.64,49.29 L 19.68,49.96 L 19.80,50.62 L 19.98,51.28 L 20.25,51.93 L 20.58,52.57 L 20.99,53.20 L 21.47,53.81 L 22.01,54.40 L 22.62,54.96 L 23.30,55.51 L 24.03,56.02 L 24.82,56.51 L 25.67,56.97 L 26.56,57.39 L 27.50,57.78 L 28.49,58.13 L 29.51,58.45 L 30.56,58.72 L 31.64,58.96 L 32.75,59.15 L 33.88,59.30 L 35.02,59.41 L 36.17,59.48 L 37.33,59.50 L 37.33,27.08 Z" style="fill:#f0a202;stroke:none" />
+    <path d="M 37.33,27.08 L 37.33,59.50 L 38.48,59.48 L 39.64,59.41 L 40.78,59.30 L 41.90,59.15 L 43.01,58.96 L 44.09,58.72 L 45.15,58.45 L 46.17,58.13 L 47.15,57.78 L 48.09,57.39 L 48.99,56.97 L 49.83,56.51 L 50.62,56.02 L 51.36,55.51 L 52.03,54.96 L 52.64,54.40 L 53.19,53.81 L 53.66,53.20 L 54.07,52.57 L 54.41,51.93 L 54.67,51.28 L 54.86,50.62 L 54.97,49.96 L 55.01,49.29 L 55.01,27.08 Z" style="fill:#c47f00;stroke:none" />
+    <path d="M 19.64,27.08 L 19.64,49.29 L 19.68,49.96 L 19.80,50.62 L 19.98,51.28 L 20.25,51.93 L 20.58,52.57 L 20.99,53.20 L 21.47,53.81 L 22.01,54.40 L 22.62,54.96 L 23.30,55.51 L 24.03,56.02 L 24.82,56.51 L 25.67,56.97 L 26.56,57.39 L 27.50,57.78 L 28.49,58.13 L 29.51,58.45 L 30.56,58.72 L 31.64,58.96 L 32.75,59.15 L 33.88,59.30 L 35.02,59.41 L 36.17,59.48 L 37.33,59.50 L 38.48,59.48 L 39.64,59.41 L 40.78,59.30 L 41.90,59.15 L 43.01,58.96 L 44.09,58.72 L 45.15,58.45 L 46.17,58.13 L 47.15,57.78 L 48.09,57.39 L 48.99,56.97 L 49.83,56.51 L 50.62,56.02 L 51.36,55.51 L 52.03,54.96 L 52.64,54.40 L 53.19,53.81 L 53.66,53.20 L 54.07,52.57 L 54.41,51.93 L 54.67,51.28 L 54.86,50.62 L 54.97,49.96 L 55.01,49.29 L 55.01,27.08" style="fill:none;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 49.83,34.30 L 48.09,35.18 L 46.17,35.92 L 44.09,36.51 L 41.90,36.94 L 39.64,37.20 L 37.33,37.29 L 35.02,37.20 L 32.75,36.94 L 30.56,36.51 L 28.49,35.92 L 26.56,35.18 L 24.82,34.30 L 23.30,33.29 L 22.01,32.18 L 20.99,30.99 L 20.25,29.72 L 19.80,28.41 L 19.64,27.08 L 19.80,25.75 L 20.25,24.44 L 20.99,23.17 L 22.01,21.97 L 23.30,20.86 L 24.82,19.86 L 26.56,18.98 L 28.49,18.24 L 30.56,17.65 L 32.75,17.22 L 35.02,16.96 L 37.33,16.87 L 39.64,16.96 L 41.90,17.22 L 44.09,17.65 L 46.17,18.24 L 48.09,18.98 L 49.83,19.86 L 51.36,20.86 L 52.64,21.97 L 53.66,23.17 L 54.41,24.44 L 54.86,25.75 L 55.01,27.08 L 54.86,28.41 L 54.41,29.72 L 53.66,30.99 L 52.64,32.18 L 51.36,33.29 L 49.83,34.30 Z" style="fill:#ffc94d;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 25.68,4.50 L 23.48,5.17 L 21.30,5.98 L 19.25,6.92 L 17.34,7.97 L 15.58,9.14 L 13.99,10.42 L 12.59,11.81 L 11.39,13.30 L 10.40,14.88 L 9.66,16.56 L 9.19,18.30 L 8.99,20.08 L 9.08,21.87 L 9.45,23.63 L 10.10,25.33 L 10.99,26.95 L 12.11,28.48 L 13.44,29.90 L 14.96,31.22 L 16.66,32.43 L 18.52,33.53 L 20.52,34.51 L 22.65,35.37 L 24.89,36.11 L 27.23,36.72 L 29.60,37.19 L 30.37,37.30 L 30.41,40.92 L 39.58,35.28 L 31.03,28.74 L 31.07,32.35 L 30.52,32.28 L 28.34,31.85 L 26.30,31.31 L 24.36,30.68 L 22.55,29.94 L 20.89,29.13 L 19.38,28.24 L 18.05,27.29 L 16.91,26.30 L 15.95,25.28 L 15.20,24.25 L 14.63,23.22 L 14.25,22.21 L 14.03,21.22 L 13.99,20.23 L 14.10,19.24 L 14.37,18.24 L 14.82,17.22 L 15.46,16.19 L 16.29,15.17 L 17.31,14.16 L 18.53,13.18 L 19.93,12.25 L 21.49,11.39 L 23.22,10.60 L 25.08,9.90 L 27.13,9.28 Z" style="fill:#f4f6f8;stroke:#0b1521;stroke-width:2.50;stroke-linejoin:round;stroke-linecap:round" />
+  </g>
+</svg>

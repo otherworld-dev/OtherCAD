@@ -344,7 +344,7 @@ App::DocumentObjectExecReturn* Revolved::tryExecuteRevolved()
     const OperationType operation = getOperationType();
     const bool joining = operation == OperationType::Join;
 
-    // Upstream passes the mode down from the concrete class. One FuCadUp tool does both,
+    // Upstream passes the mode down from the concrete class. One OtherCAD tool does both,
     // so the Operation property picks it instead.
     const Part::RevolMode revolMode = operation == OperationType::Cut
         ? Part::RevolMode::CutFromBase

@@ -89,11 +89,11 @@ public:
 protected:
     void onDocumentRestored() override;
 
-    /// Re-read Operation from a document whose enumeration is not FuCadUp's
+    /// Re-read Operation from a document whose enumeration is not OtherCAD's
     void migrateForeignOperation();
 
     /// Seed Operation with Join and Cut respectively. Unlike upstream these leave
-    /// every operation on offer, because one FuCadUp tool does both.
+    /// every operation on offer, because one OtherCAD tool does both.
     void defineAdditive();
     void defineSubtractive();
 

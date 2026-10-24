@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="64px"
+   height="64px"
+   viewBox="0 0 64 64"
+   version="1.1"
+   id="PartDesign_MultiTransform"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <metadata id="metadata1">
+    <rdf:RDF>
+      <cc:Work rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title>PartDesign_MultiTransform</dc:title>
+        <dc:description>A feature repeated by several transforms</dc:description>
+        <dc:publisher>
+          <cc:Agent>
+            <dc:title>OtherCAD</dc:title>
+          </cc:Agent>
+        </dc:publisher>
+        <dc:rights>
+          <cc:Agent>
+            <dc:title>FreeCAD LGPL2+</dc:title>
+          </cc:Agent>
+        </dc:rights>
+        <cc:license>https://www.gnu.org/copyleft/lesser.html</cc:license>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g id="layer1">
+    <path d="M 32.00,9.59 L 20.68,16.12 L 32.00,22.66 L 43.32,16.12 Z" style="fill:#ffc94d;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 20.68,29.20 L 32.00,35.74 L 32.00,22.66 L 20.68,16.12 Z" style="fill:#f0a202;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 43.32,29.20 L 43.32,16.12 L 32.00,22.66 L 32.00,35.74 Z" style="fill:#c47f00;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 48.18,18.92 L 36.85,25.46 L 48.18,32.00 L 59.50,25.46 Z" style="fill:#d3e5f6;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 36.85,38.54 L 48.18,45.08 L 48.18,32.00 L 36.85,25.46 Z" style="fill:#a9c9e8;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 59.50,38.54 L 59.50,25.46 L 48.18,32.00 L 48.18,45.08 Z" style="fill:#7ea8d1;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 15.82,18.92 L 4.50,25.46 L 15.82,32.00 L 27.15,25.46 Z" style="fill:#d3e5f6;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 4.50,38.54 L 15.82,45.08 L 15.82,32.00 L 4.50,25.46 Z" style="fill:#a9c9e8;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 27.15,38.54 L 27.15,25.46 L 15.82,32.00 L 15.82,45.08 Z" style="fill:#7ea8d1;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 32.00,28.26 L 20.68,34.80 L 32.00,41.34 L 43.32,34.80 Z" style="fill:#d3e5f6;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 20.68,47.88 L 32.00,54.41 L 32.00,41.34 L 20.68,34.80 Z" style="fill:#a9c9e8;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+    <path d="M 43.32,47.88 L 43.32,34.80 L 32.00,41.34 L 32.00,54.41 Z" style="fill:#7ea8d1;stroke:#0b1521;stroke-width:3.00;stroke-linejoin:round;stroke-linecap:round" />
+  </g>
+</svg>

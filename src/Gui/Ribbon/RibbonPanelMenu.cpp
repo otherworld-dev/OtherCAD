@@ -38,7 +38,7 @@ using namespace Gui::Ribbon;
 
 namespace
 {
-const char* const ribbonMimeType = "application/x-fucadup-ribbon-command";
+const char* const ribbonMimeType = "application/x-othercad-ribbon-command";
 // Set on any QAction that a drag may pick up; see RibbonPanelMenu::tagCommand.
 const char* const commandProperty = "ribbonCommand";
 constexpr int dragPixmapExtent = 24;

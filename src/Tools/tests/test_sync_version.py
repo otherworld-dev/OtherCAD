@@ -186,7 +186,7 @@ class TestSyncWorkspacePixiToml(unittest.TestCase):
 class TestSyncFedoraSpec(unittest.TestCase):
     def test_updates_name_and_version(self):
         with tempfile.TemporaryDirectory() as tmp:
-            filepath = write_temp_file(Path(tmp), "fucadup.spec", FEDORA_SPEC)
+            filepath = write_temp_file(Path(tmp), "othercad.spec", FEDORA_SPEC)
             version = make_version()
             result, changed = sync_fedora_spec(filepath, version)
             self.assertTrue(changed)
@@ -195,7 +195,7 @@ class TestSyncFedoraSpec(unittest.TestCase):
 
     def test_release_version_no_tilde(self):
         with tempfile.TemporaryDirectory() as tmp:
-            filepath = write_temp_file(Path(tmp), "fucadup.spec", FEDORA_SPEC)
+            filepath = write_temp_file(Path(tmp), "othercad.spec", FEDORA_SPEC)
             version = make_version(suffix="")
             result, changed = sync_fedora_spec(filepath, version)
             self.assertIn("Version:        1.2.0", result)
@@ -203,21 +203,21 @@ class TestSyncFedoraSpec(unittest.TestCase):
 
     def test_rc_version(self):
         with tempfile.TemporaryDirectory() as tmp:
-            filepath = write_temp_file(Path(tmp), "fucadup.spec", FEDORA_SPEC)
+            filepath = write_temp_file(Path(tmp), "othercad.spec", FEDORA_SPEC)
             version = make_version(suffix="RC1")
             result, changed = sync_fedora_spec(filepath, version)
             self.assertIn("Version:        1.2.0~RC1", result)
 
     def test_updates_name_for_fork(self):
         with tempfile.TemporaryDirectory() as tmp:
-            filepath = write_temp_file(Path(tmp), "fucadup.spec", FEDORA_SPEC)
+            filepath = write_temp_file(Path(tmp), "othercad.spec", FEDORA_SPEC)
             version = make_version(name="MyCAD")
             result, changed = sync_fedora_spec(filepath, version)
             self.assertIn("Name:           mycad", result)
 
     def test_preserves_other_fields(self):
         with tempfile.TemporaryDirectory() as tmp:
-            filepath = write_temp_file(Path(tmp), "fucadup.spec", FEDORA_SPEC)
+            filepath = write_temp_file(Path(tmp), "othercad.spec", FEDORA_SPEC)
             version = make_version()
             result, changed = sync_fedora_spec(filepath, version)
             self.assertIn("Epoch:          1", result)
@@ -242,7 +242,7 @@ class TestRun(unittest.TestCase):
             encoding="utf-8",
         )
         write_temp_file(root, "pixi.toml", WORKSPACE_PIXI_TOML)
-        write_temp_file(root, "package/fedora/fucadup.spec", FEDORA_SPEC)
+        write_temp_file(root, "package/fedora/othercad.spec", FEDORA_SPEC)
         return root
 
     def test_check_detects_out_of_sync(self, _stdout):

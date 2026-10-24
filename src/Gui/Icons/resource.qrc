@@ -89,13 +89,13 @@
         <file>Feature.svg</file>
         <file>folder.svg</file>
         <file>forbidden.svg</file>
-        <file>fucad-doc.png</file>
-        <file>fucad-doc.svg</file>
-        <file>fucad.svg</file>
-        <file>fucadabout.png</file>
-        <file>fucadaboutdev.png</file>
-        <file>fucadsplash_2x.png</file>
-        <file>fucadsplash.png</file>
+        <file>othercad-doc.png</file>
+        <file>othercad-doc.svg</file>
+        <file>othercad.svg</file>
+        <file>othercadabout.png</file>
+        <file>othercadaboutdev.png</file>
+        <file>othercadsplash_2x.png</file>
+        <file>othercadsplash.png</file>
         <file>Geoassembly.svg</file>
         <file>Geofeaturegroup.svg</file>
         <file>Group.svg</file>
@@ -306,68 +306,68 @@
         <file>zoom-selection.svg</file>
     </qresource>
     <qresource prefix="/icons">
-        <!-- FuCad's flat solid modelling icons, found ahead of the stock ones; see
-             BitmapFactoryInst::instance() and fucad/fucad_icons.py. -->
-        <file>fucad/Assembly_CreateJointFixed.svg</file>
-        <file>fucad/Assembly_InsertLink.svg</file>
-        <file>fucad/Assembly_ToggleGrounded.svg</file>
-        <file>fucad/Geoassembly.svg</file>
-        <file>fucad/PartDesign_AdditiveBox.svg</file>
-        <file>fucad/PartDesign_AdditiveCone.svg</file>
-        <file>fucad/PartDesign_AdditiveCylinder.svg</file>
-        <file>fucad/PartDesign_AdditiveEllipsoid.svg</file>
-        <file>fucad/PartDesign_AdditiveHelix.svg</file>
-        <file>fucad/PartDesign_AdditiveLoft.svg</file>
-        <file>fucad/PartDesign_AdditivePipe.svg</file>
-        <file>fucad/PartDesign_AdditivePrism.svg</file>
-        <file>fucad/PartDesign_AdditiveSphere.svg</file>
-        <file>fucad/PartDesign_AdditiveTorus.svg</file>
-        <file>fucad/PartDesign_AdditiveWedge.svg</file>
-        <file>fucad/PartDesign_Body.svg</file>
-        <file>fucad/PartDesign_Boolean.svg</file>
-        <file>fucad/PartDesign_Chamfer.svg</file>
-        <file>fucad/PartDesign_CoordinateSystem.svg</file>
-        <file>fucad/PartDesign_Draft.svg</file>
-        <file>fucad/PartDesign_Fillet.svg</file>
-        <file>fucad/PartDesign_Groove.svg</file>
-        <file>fucad/PartDesign_Hole.svg</file>
-        <file>fucad/PartDesign_Line.svg</file>
-        <file>fucad/PartDesign_LinearPattern.svg</file>
-        <file>fucad/PartDesign_Mirrored.svg</file>
-        <file>fucad/PartDesign_MultiTransform.svg</file>
-        <file>fucad/PartDesign_Pad.svg</file>
-        <file>fucad/PartDesign_Plane.svg</file>
-        <file>fucad/PartDesign_Pocket.svg</file>
-        <file>fucad/PartDesign_Point.svg</file>
-        <file>fucad/PartDesign_PolarPattern.svg</file>
-        <file>fucad/PartDesign_Revolution.svg</file>
-        <file>fucad/PartDesign_SubtractiveBox.svg</file>
-        <file>fucad/PartDesign_SubtractiveCone.svg</file>
-        <file>fucad/PartDesign_SubtractiveCylinder.svg</file>
-        <file>fucad/PartDesign_SubtractiveEllipsoid.svg</file>
-        <file>fucad/PartDesign_SubtractivePrism.svg</file>
-        <file>fucad/PartDesign_SubtractiveSphere.svg</file>
-        <file>fucad/PartDesign_SubtractiveTorus.svg</file>
-        <file>fucad/PartDesign_SubtractiveWedge.svg</file>
-        <file>fucad/PartDesign_Thickness.svg</file>
-        <file>fucad/Part_SectionCut.svg</file>
-        <file>fucad/Sketcher_NewSketch.svg</file>
-        <file>fucad/Sketcher_Sketch.svg</file>
-        <file>fucad/Std_Import.svg</file>
-        <file>fucad/image-plane.svg</file>
-        <file>fucad/umf-measurement.svg</file>
+        <!-- OtherCAD's flat solid modelling icons, found ahead of the stock ones; see
+             BitmapFactoryInst::instance() and othercad/othercad_icons.py. -->
+        <file>othercad/Assembly_CreateJointFixed.svg</file>
+        <file>othercad/Assembly_InsertLink.svg</file>
+        <file>othercad/Assembly_ToggleGrounded.svg</file>
+        <file>othercad/Geoassembly.svg</file>
+        <file>othercad/PartDesign_AdditiveBox.svg</file>
+        <file>othercad/PartDesign_AdditiveCone.svg</file>
+        <file>othercad/PartDesign_AdditiveCylinder.svg</file>
+        <file>othercad/PartDesign_AdditiveEllipsoid.svg</file>
+        <file>othercad/PartDesign_AdditiveHelix.svg</file>
+        <file>othercad/PartDesign_AdditiveLoft.svg</file>
+        <file>othercad/PartDesign_AdditivePipe.svg</file>
+        <file>othercad/PartDesign_AdditivePrism.svg</file>
+        <file>othercad/PartDesign_AdditiveSphere.svg</file>
+        <file>othercad/PartDesign_AdditiveTorus.svg</file>
+        <file>othercad/PartDesign_AdditiveWedge.svg</file>
+        <file>othercad/PartDesign_Body.svg</file>
+        <file>othercad/PartDesign_Boolean.svg</file>
+        <file>othercad/PartDesign_Chamfer.svg</file>
+        <file>othercad/PartDesign_CoordinateSystem.svg</file>
+        <file>othercad/PartDesign_Draft.svg</file>
+        <file>othercad/PartDesign_Fillet.svg</file>
+        <file>othercad/PartDesign_Groove.svg</file>
+        <file>othercad/PartDesign_Hole.svg</file>
+        <file>othercad/PartDesign_Line.svg</file>
+        <file>othercad/PartDesign_LinearPattern.svg</file>
+        <file>othercad/PartDesign_Mirrored.svg</file>
+        <file>othercad/PartDesign_MultiTransform.svg</file>
+        <file>othercad/PartDesign_Pad.svg</file>
+        <file>othercad/PartDesign_Plane.svg</file>
+        <file>othercad/PartDesign_Pocket.svg</file>
+        <file>othercad/PartDesign_Point.svg</file>
+        <file>othercad/PartDesign_PolarPattern.svg</file>
+        <file>othercad/PartDesign_Revolution.svg</file>
+        <file>othercad/PartDesign_SubtractiveBox.svg</file>
+        <file>othercad/PartDesign_SubtractiveCone.svg</file>
+        <file>othercad/PartDesign_SubtractiveCylinder.svg</file>
+        <file>othercad/PartDesign_SubtractiveEllipsoid.svg</file>
+        <file>othercad/PartDesign_SubtractivePrism.svg</file>
+        <file>othercad/PartDesign_SubtractiveSphere.svg</file>
+        <file>othercad/PartDesign_SubtractiveTorus.svg</file>
+        <file>othercad/PartDesign_SubtractiveWedge.svg</file>
+        <file>othercad/PartDesign_Thickness.svg</file>
+        <file>othercad/Part_SectionCut.svg</file>
+        <file>othercad/Sketcher_NewSketch.svg</file>
+        <file>othercad/Sketcher_Sketch.svg</file>
+        <file>othercad/Std_Import.svg</file>
+        <file>othercad/image-plane.svg</file>
+        <file>othercad/umf-measurement.svg</file>
     </qresource>
-    <qresource prefix="/icons/FuCadUp-default">
+    <qresource prefix="/icons/OtherCAD-default">
         <file>index.theme</file>
     </qresource>
-    <qresource prefix="/icons/FuCadUp-default/scalable">
+    <qresource prefix="/icons/OtherCAD-default/scalable">
         <!-- provide overrides for all system icons -->
         <file>delete.svg</file>
         <file>list-remove.svg</file>
         <file>list-add.svg</file>
-        <file>fucad.svg</file>
-        <file>fucad-doc.png</file>
-        <file>fucad-doc.svg</file>
+        <file>othercad.svg</file>
+        <file>othercad-doc.png</file>
+        <file>othercad-doc.svg</file>
         <file>bulb.svg</file>
         <file>button_down.svg</file>
         <file>button_left.svg</file>

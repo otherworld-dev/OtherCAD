@@ -286,7 +286,7 @@
       <item row="3" column="4">
        <widget class="Gui::PrefComboBox" name="naviCubeStyle">
         <property name="toolTip">
-         <string>FuCadUp: a flat cube with edge and corner bands and controls on hover. Classic: FreeCAD's chamfered cube with arrows round it.</string>
+         <string>OtherCAD: a flat cube with edge and corner bands and controls on hover. Classic: FreeCAD's chamfered cube with arrows round it.</string>
         </property>
         <property name="prefEntry" stdset="0">
          <cstring>CubeStyle</cstring>
@@ -296,7 +296,7 @@
         </property>
         <item>
          <property name="text">
-          <string notr="true">FuCadUp</string>
+          <string notr="true">OtherCAD</string>
          </property>
         </item>
         <item>

@@ -1,5 +1,5 @@
 summary:
-    Run All FuCadUp python tests
+    Run All OtherCAD python tests
 prepare:
     how: install
     package: 

@@ -1,17 +1,17 @@
-specfile_path: package/fedora/fucadup.spec
+specfile_path: package/fedora/othercad.spec
 files_to_sync:
     - .packit.yaml
 actions:
   post-upstream-clone:
-    - bash -c '/usr/bin/python3 package/scripts/write_version_info.py fucad_version.txt'
-    - rm -f fucad-sources.tar.gz
+    - bash -c '/usr/bin/python3 package/scripts/write_version_info.py othercad_version.txt'
+    - rm -f othercad-sources.tar.gz
   changelog-entry:
     - bash -c 'git log --no-merges --pretty="format:- %s (%an)" $(git describe --tags --abbrev=0 )..HEAD -- |sed 's/%/%%/g''
   create-archive:
     - git submodule update --init
-    - bash -c 'git ls-files --recurse-submodules | tar  -caf fucad-sources.tar.gz -T-'
-    - echo -n 'fucad-sources.tar.gz'
-downstream_package_name: fucadup
+    - bash -c 'git ls-files --recurse-submodules | tar  -caf othercad-sources.tar.gz -T-'
+    - echo -n 'othercad-sources.tar.gz'
+downstream_package_name: othercad
 upstream_tag_exclude: '.*'
 notifications:
   pull_request:
@@ -65,7 +65,7 @@ jobs:
   identifier: release
   trigger: release
   owner: 'otherworld-dev'
-  project: fucadup
+  project: othercad
   targets:
     fedora-all:
       without_opts:

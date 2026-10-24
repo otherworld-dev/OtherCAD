@@ -971,7 +971,7 @@ void DlgPreferencesImp::restartIfRequired()
 
         restartBox.setIcon(QMessageBox::Warning);
         restartBox.setWindowTitle(tr("Restart Required"));
-        restartBox.setText(tr("Restart FuCadUp for changes to take effect."));
+        restartBox.setText(tr("Restart OtherCAD for changes to take effect."));
         restartBox.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
         restartBox.setDefaultButton(QMessageBox::Cancel);
         auto okBtn = restartBox.button(QMessageBox::Ok);

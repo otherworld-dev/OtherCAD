@@ -1869,7 +1869,7 @@ void CmdTechDrawExportPageSVG::activated(int iMsg)
     else {
         QMessageBox::warning(Gui::getMainWindow(),
                              QObject::tr("No drawing page"),
-                             QObject::tr("FuCadUp could not find a page to export"));
+                             QObject::tr("OtherCAD could not find a page to export"));
         return;
     }
 }

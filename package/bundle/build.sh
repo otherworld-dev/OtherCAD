@@ -92,5 +92,5 @@ cmake \
 cmake --build build/bundle-release
 cmake --install build/bundle-release
 
-mv ${PREFIX}/bin/FuCadUp${EXT} ${PREFIX}/bin/fucadup${EXT} || true
-mv ${PREFIX}/bin/FuCadUpCmd${EXT} ${PREFIX}/bin/fucadupcmd${EXT} || true
+mv ${PREFIX}/bin/OtherCAD${EXT} ${PREFIX}/bin/othercad${EXT} || true
+mv ${PREFIX}/bin/OtherCADCmd${EXT} ${PREFIX}/bin/othercadcmd${EXT} || true

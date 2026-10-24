@@ -4,20 +4,20 @@
 """
 Manage baselines for the Coin node visual snapshot test.
 
-This script runs the existing unittest `TestCoinNodeSnapshots` via FuCadUpCmd,
-configuring it through environment variables (so we don't depend on FuCadUp forwarding
+This script runs the existing unittest `TestCoinNodeSnapshots` via OtherCADCmd,
+configuring it through environment variables (so we don't depend on OtherCAD forwarding
 CLI args to Python).
 
 Examples:
 
   # Update baselines in-tree (recommended: do this on a controlled setup)
   tools/rendering/manage_coin_node_baselines.py update \
-    --fucadupcmd build/<preset>/bin/FuCadUpCmd
+    --othercadcmd build/<preset>/bin/OtherCADCmd
 
   # Compare current renders against baselines (writes actual/expected/diff under --out-dir)
   tools/rendering/manage_coin_node_baselines.py compare \
-    --out-dir /tmp/FuCadUpTesting/CoinNodeSnapshots \
-    --fucadupcmd build/<preset>/bin/FuCadUpCmd
+    --out-dir /tmp/OtherCADTesting/CoinNodeSnapshots \
+    --othercadcmd build/<preset>/bin/OtherCADCmd
 """
 
 from __future__ import annotations
@@ -32,24 +32,24 @@ from pathlib import Path
 # pylint: disable=broad-exception-caught,duplicate-code
 
 
-def _default_fucadupcmd() -> str | None:
+def _default_othercadcmd() -> str | None:
     # Allow explicit override from the environment.
-    for env_var in ("FUCADCMD", "FC_FUCADCMD", "FREECAD_CMD"):
+    for env_var in ("OTHERCADCMD", "FC_OTHERCADCMD", "FREECAD_CMD"):
         val = os.environ.get(env_var, "").strip()
         if val:
             return val
 
     # Common local build layouts.
     candidates: list[Path] = [
-        Path("build/bin/FuCadUpCmd"),
-        *sorted(Path("build").glob("*/bin/FuCadUpCmd")),
-        *sorted(Path("build").glob("*/bin/FuCadUpCmd.exe")),
+        Path("build/bin/OtherCADCmd"),
+        *sorted(Path("build").glob("*/bin/OtherCADCmd")),
+        *sorted(Path("build").glob("*/bin/OtherCADCmd.exe")),
     ]
     for candidate in candidates:
         if candidate.is_file():
             return str(candidate)
 
-    return shutil.which("FuCadUpCmd")
+    return shutil.which("OtherCADCmd")
 
 
 def _default_baseline_dir() -> str:
@@ -64,10 +64,10 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument(
-        "--fucadupcmd",
-        default=_default_fucadupcmd(),
+        "--othercadcmd",
+        default=_default_othercadcmd(),
         help=(
-            "Path to FuCadUpCmd (default: $FUCADCMD or auto-detect under build/*/bin/FuCadUpCmd or PATH)"
+            "Path to OtherCADCmd (default: $OTHERCADCMD or auto-detect under build/*/bin/OtherCADCmd or PATH)"
         ),
     )
     common.add_argument(
@@ -85,7 +85,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     common.add_argument(
         "--out-dir",
-        default=os.path.join("/tmp", "FuCadUpTesting", "CoinNodeSnapshots"),
+        default=os.path.join("/tmp", "OtherCADTesting", "CoinNodeSnapshots"),
         help="Artifact output directory (default: %(default)s)",
     )
     common.add_argument("--nodes", default="", help="Comma-separated node type list (optional)")
@@ -99,17 +99,17 @@ def main(argv: list[str]) -> int:
     """Entry point."""
     args = _parse_args(argv)
 
-    if not args.fucadupcmd:
+    if not args.othercadcmd:
         print(
-            "ERROR: could not auto-detect FuCadUpCmd; pass --fucadupcmd "
-            "build/<preset>/bin/FuCadUpCmd (or set $FUCADCMD)",
+            "ERROR: could not auto-detect OtherCADCmd; pass --othercadcmd "
+            "build/<preset>/bin/OtherCADCmd (or set $OTHERCADCMD)",
             file=sys.stderr,
         )
         return 2
 
-    fucadupcmd = Path(args.fucadupcmd)
-    if not fucadupcmd.is_file():
-        print(f"ERROR: FuCadUpCmd not found: {fucadupcmd}", file=sys.stderr)
+    othercadcmd = Path(args.othercadcmd)
+    if not othercadcmd.is_file():
+        print(f"ERROR: OtherCADCmd not found: {othercadcmd}", file=sys.stderr)
         return 2
 
     baseline_dir = Path(args.baseline_dir)
@@ -137,10 +137,10 @@ def main(argv: list[str]) -> int:
 
     if args.mode == "update":
         env["FC_VISUAL_UPDATE_BASELINE"] = "1"
-        cmd = [str(fucadupcmd), "-t", "TestCoinNodeSnapshots"]
+        cmd = [str(othercadcmd), "-t", "TestCoinNodeSnapshots"]
     else:
         env.pop("FC_VISUAL_UPDATE_BASELINE", None)
-        cmd = [str(fucadupcmd), "-t", "TestCoinNodeSnapshots"]
+        cmd = [str(othercadcmd), "-t", "TestCoinNodeSnapshots"]
 
     print(f"Running: {' '.join(cmd)}")
     if "QT_QPA_PLATFORM" in env:

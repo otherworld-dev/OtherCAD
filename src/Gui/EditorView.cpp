@@ -392,7 +392,7 @@ bool EditorView::saveAs()
         this,
         QObject::tr("Save Macro"),
         QString(),
-        FileDialog::FilterList {{tr("FuCadUp macro"), {"*.FCMacro"}}, {"Python", {"*.py"}}}
+        FileDialog::FilterList {{tr("OtherCAD macro"), {"*.FCMacro"}}, {"Python", {"*.py"}}}
     );
     if (fn.isEmpty()) {
         return false;
