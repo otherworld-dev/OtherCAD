@@ -142,4 +142,5 @@ FreeCAD.__unit_test__ += [
     "TestRibbonStrings",
     "TestSketchStatusChip",
     "TestGridUnits",
+    "TestBridge",
 ]
