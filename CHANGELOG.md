@@ -11,7 +11,7 @@ done in this fork.
 
 ### Added
 
-- LLM Bridge, in the Tools menu, lets an LLM client such as Claude Code read and look
+- LLM Bridge, in the Tools menu, lets an LLM client read and look
   at the open model over MCP, on this computer only, at `http://127.0.0.1:7720/mcp`.
   It can list documents, the timeline and an object's properties, measure shapes,
   find faces by what they are (the top face, the largest cylinder), read a sketch's
