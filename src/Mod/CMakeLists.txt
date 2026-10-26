@@ -14,6 +14,10 @@ if(BUILD_ASSEMBLY)
   add_subdirectory(Assembly)
 endif(BUILD_ASSEMBLY)
 
+if(BUILD_BRIDGE AND BUILD_GUI)
+  add_subdirectory(Bridge)
+endif(BUILD_BRIDGE AND BUILD_GUI)
+
 if(BUILD_DRAFT)
   add_subdirectory(Draft)
 endif(BUILD_DRAFT)

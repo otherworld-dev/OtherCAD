@@ -11,6 +11,12 @@ done in this fork.
 
 ### Added
 
+- LLM Bridge, in the Tools menu, lets an LLM client such as Claude Code read and look
+  at the open model over MCP, on this computer only, at `http://127.0.0.1:7720/mcp`.
+  It can list documents, the timeline and an object's properties, measure shapes,
+  find faces by what they are (the top face, the largest cylinder), read a sketch's
+  constraints and degrees of freedom, see the selection and take screenshots. It is
+  read-only for now and off until switched on.
 - Features can be suppressed from the timeline's right-click menu. A suppressed feature
   is drawn greyed out and struck through, and its tooltip says so.
 - Repeat Last Command, at the top of the right-click menu in the 3D view and in the
