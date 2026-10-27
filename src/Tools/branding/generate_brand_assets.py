@@ -3,7 +3,7 @@
 
 """Regenerate every OtherCAD brand asset from the definitions in ``brand.py``.
 
-Run it from anywhere after changing the palette or the mark geometry::
+Run it from anywhere after changing the palette or the icon geometry::
 
     python src/Tools/branding/generate_brand_assets.py
 
@@ -17,73 +17,59 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 from brand import (
-    AMBER,
-    AMBER_LIT,
-    BENCH_DEEP,
-    BENCH_LIT,
+    DEEP_TEAL,
+    GLOW,
     INK,
-    MARK_ASPECT,
-    MIST,
+    MUTED,
+    NIGHT,
+    NIGHT_LIT,
     PAPER,
-    STEEL,
-    STEEL_DEEP,
-    STEEL_LIT,
+    RING_GLOW_WIDTH,
+    RING_RADIUS,
+    RING_WIDTH,
     TAGLINE,
+    TEAL,
+    TILE,
+    TILE_GLOW_CENTRE,
+    TILE_GLOW_RADIUS,
+    TILE_RADIUS,
+    app_icon,
     draw_tracked,
+    draw_wordmark,
+    glyph_primitives,
     hex_of,
+    icon_primitives,
     isometric_grid,
     linear_gradient,
     load_font,
-    mark_polygons,
     radial_glow,
     render_polygons,
+    render_primitives,
     rgba,
-    rounded_rect_mask,
-    rounded_rect_ring,
     svg_document,
     svg_fill,
     svg_path,
+    svg_primitives,
     tracked_width,
+    wordmark_width,
     write_icns,
     write_ico,
 )
 
-WORDMARK = "OtherCAD"
-ATTRIBUTION = "Fork of FreeCAD  \u00b7  With thanks to FuCad  \u00b7  LGPL-2.1-or-later"
+ATTRIBUTION = "Fork of FreeCAD  ·  With thanks to FuCad  ·  LGPL-2.1-or-later"
 
 ICON_SIZES = (16, 24, 32, 48, 64, 128, 256)
 
-# The watermark behind an empty workspace is sized to the mark's own proportions.
-WATERMARK_SIZE = (104.0, float(round(104.0 / MARK_ASPECT)))
+# The watermark behind an empty workspace: the portal ring and glyph, no tile.
+WATERMARK_SIZE = 104
+
+# The part of the tile the ring and its glow cover, as a fraction of the tile.
+RING_SPAN = (2.0 * RING_RADIUS + RING_GLOW_WIDTH) / TILE
 
 
 # --------------------------------------------------------------------------
 # Icons
 # --------------------------------------------------------------------------
-
-
-def app_icon(size):
-    """The OtherCAD application icon: the padded mark on a steel plate."""
-    canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    plate_mask = rounded_rect_mask((size, size), size * 0.215)
-    canvas.paste(linear_gradient((size, size), STEEL_LIT, STEEL_DEEP, 55.0), (0, 0), plate_mask)
-
-    if size >= 48:
-        ring = rounded_rect_ring((size, size), size * 0.215, max(1.0, size / 64.0))
-        highlight = Image.new("RGBA", (size, size), rgba(PAPER, 38))
-        canvas.paste(highlight, (0, 0), ring)
-
-    inset = size * 0.13
-    shapes = mark_polygons(
-        (inset, inset, size - 2 * inset, size - 2 * inset),
-        rgba(PAPER),
-        rgba(AMBER_LIT),
-        rgba(AMBER),
-        plane_line=rgba(PAPER, 90),
-        plane_fill=rgba(PAPER, 14),
-    )
-    canvas.alpha_composite(render_polygons((size, size), shapes))
-    return canvas
 
 
 # A sheet of paper with a folded corner, drawn in a 64 unit box. The border is
@@ -102,30 +88,35 @@ PROMPT_CHEVRON = (
 )
 PROMPT_RULE = ((34.0, 43.0), (48.0, 43.0), (48.0, 48.0), (34.0, 48.0))
 
+# Where the glyph sits on the page: the 512 unit tile mapped to this square of
+# the 64 unit box, so the cube lands in the open area below the fold.
+PAGE_GLYPH_BOX = (6.5, 13.0, 52.0)
+
 
 def _page_shapes(scale):
     def place(polygon):
         return [(x * scale, y * scale) for x, y in polygon]
 
     return [
-        (place(PAGE_BORDER), rgba(STEEL)),
+        (place(PAGE_BORDER), rgba(INK)),
         (place(PAGE), rgba(PAPER)),
-        (place(PAGE_FOLD), rgba(AMBER)),
+        (place(PAGE_FOLD), rgba(TEAL)),
     ]
 
 
+def _page_glyph():
+    return glyph_primitives(rgba(INK), rgba(DEEP_TEAL))
+
+
 def document_icon(size):
-    """Icon for ``.FCStd`` documents: the mark on a sheet of paper."""
+    """Icon for ``.FCStd`` documents: the glyph on a sheet of paper."""
     scale = size / 64.0
-    shapes = _page_shapes(scale)
-    shapes += mark_polygons(
-        (16.0 * scale, 22.0 * scale, 33.0 * scale, 30.0 * scale),
-        rgba(STEEL),
-        rgba(AMBER_LIT),
-        rgba(AMBER),
-        plane_line=rgba(STEEL, 120),
+    canvas = render_polygons((size, size), _page_shapes(scale))
+    x, y, side = PAGE_GLYPH_BOX
+    canvas.alpha_composite(
+        render_primitives((size, size), _page_glyph(), box=(x * scale, y * scale, side * scale))
     )
-    return render_polygons((size, size), shapes)
+    return canvas
 
 
 def script_icon(size):
@@ -136,8 +127,8 @@ def script_icon(size):
         return [(x * scale, y * scale) for x, y in polygon]
 
     shapes = _page_shapes(scale)
-    shapes.append((place(PROMPT_CHEVRON), rgba(STEEL)))
-    shapes.append((place(PROMPT_RULE), rgba(AMBER)))
+    shapes.append((place(PROMPT_CHEVRON), rgba(INK)))
+    shapes.append((place(PROMPT_RULE), rgba(DEEP_TEAL)))
     return render_polygons((size, size), shapes)
 
 
@@ -147,72 +138,58 @@ def script_icon(size):
 
 
 def _workbench(size, spacing, glow_at=(0.72, 0.62)):
-    """The workbench: deep teal gradient, construction lines and a warm glow.
+    """The night backdrop: dark gradient, faint construction lines, a teal glow.
 
-    ``glow_at`` is a fraction of the canvas; put it where the ghost mark stands
-    so the light appears to fall on its sketch plane.
+    ``glow_at`` is a fraction of the canvas; put it where the ghost icon stands
+    so the portal appears to light the bench.
     """
     width, height = size
-    canvas = linear_gradient(size, BENCH_LIT, BENCH_DEEP, 52.0).convert("RGBA")
-    canvas.alpha_composite(isometric_grid(size, spacing, PAPER, 11))
+    canvas = linear_gradient(size, NIGHT_LIT, NIGHT, 52.0).convert("RGBA")
+    canvas.alpha_composite(isometric_grid(size, spacing, PAPER, 8))
     canvas.alpha_composite(
-        radial_glow(size, (width * glow_at[0], height * glow_at[1]), width * 0.5, AMBER, 34)
+        radial_glow(size, (width * glow_at[0], height * glow_at[1]), width * 0.5, TEAL, 26)
     )
     return canvas
 
 
-def _ghost_mark(canvas, centre, height, alpha=(18, 30, 12, 40, 6)):
-    """Composite an oversized, barely-there mark used as a watermark.
+def _ghost_icon(canvas, centre, height, alpha=(46, 12, 22, 30)):
+    """Composite an oversized, barely-there portal and glyph as a watermark.
 
     ``centre`` and ``height`` are fractions of the canvas, so the watermark
-    keeps the same weight whatever surface it lands on. ``alpha`` holds the
-    opacity of the top face, lit walls, shaded walls, plane outline and plane
-    fill in that order.
+    keeps the same weight whatever surface it lands on; ``height`` is the
+    diameter of the ring's glow. ``alpha`` holds the opacity of the ring, the
+    ring's glow, the glyph lines and the accent in that order.
     """
     canvas_width, canvas_height = canvas.size
-    tall = canvas_height * height
-    wide = tall * MARK_ASPECT
-    box = (canvas_width * centre[0] - wide / 2, canvas_height * centre[1] - tall / 2, wide, tall)
-    shapes = mark_polygons(
-        box,
-        rgba(PAPER, alpha[0]),
-        rgba(PAPER, alpha[1]),
+    side = canvas_height * height / RING_SPAN
+    box = (canvas_width * centre[0] - side / 2, canvas_height * centre[1] - side / 2, side)
+    shapes = glyph_primitives(
         rgba(PAPER, alpha[2]),
-        plane_line=rgba(PAPER, alpha[3]),
-        plane_fill=rgba(PAPER, alpha[4]),
+        rgba(GLOW, alpha[3]),
+        ring=rgba(TEAL, alpha[0]),
+        ring_glow=rgba(TEAL, alpha[1]),
     )
-    canvas.alpha_composite(render_polygons(canvas.size, shapes))
+    canvas.alpha_composite(render_primitives(canvas.size, shapes, box=box))
 
 
-def _lockup(
-    canvas, origin, scale, wordmark_size, tagline_size, ink=PAPER, subtle=MIST, wordmark=WORDMARK
-):
-    """Draw the plate icon, the wordmark, the accent rule and the tagline."""
+def _lockup(canvas, origin, wordmark_size, tagline_size):
+    """Draw the icon, the wordmark and the tagline on a dark surface."""
     draw = ImageDraw.Draw(canvas)
-    plate_size = int(round(wordmark_size * 1.45))
-    plate = app_icon(plate_size)
-    plate_y = int(round(origin[1] - wordmark_size * 0.98))
-    canvas.alpha_composite(plate, (int(round(origin[0])), plate_y))
+    icon_size = int(round(wordmark_size * 1.45))
+    icon_y = int(round(origin[1] - wordmark_size * 0.98))
+    canvas.alpha_composite(app_icon(icon_size), (int(round(origin[0])), icon_y))
 
-    text_x = origin[0] + plate_size + wordmark_size * 0.42
-    word_font = load_font(int(round(wordmark_size)), "SemiBold")
-    tracking = wordmark_size * 0.012
+    text_x = origin[0] + icon_size + wordmark_size * 0.36
     baseline = origin[1] + wordmark_size * 0.06
-    width = draw_tracked(draw, (text_x, baseline), wordmark, word_font, rgba(ink), tracking)
-
-    rule_y = baseline + wordmark_size * 0.24
-    draw.rectangle(
-        (text_x, rule_y, text_x + width * 0.62, rule_y + max(2.0, 3.0 * scale)),
-        fill=rgba(AMBER),
-    )
+    draw_wordmark(draw, (text_x, baseline), int(round(wordmark_size)), rgba(PAPER), rgba(TEAL))
 
     tag_font = load_font(int(round(tagline_size)), "Regular")
     draw_tracked(
         draw,
-        (text_x + 1.0, rule_y + tagline_size * 2.05),
+        (text_x + 1.0, baseline + tagline_size * 2.3),
         TAGLINE,
         tag_font,
-        rgba(subtle),
+        rgba(MUTED),
         tagline_size * 0.26,
     )
 
@@ -220,10 +197,10 @@ def _lockup(
 def splash(scale=1):
     """Startup splash screen; the version string is painted on it at runtime."""
     size = (640 * scale, 400 * scale)
-    canvas = _workbench(size, 30 * scale)
-    _ghost_mark(canvas, (0.76, 0.54), 0.74)
+    canvas = _workbench(size, 30 * scale, glow_at=(0.88, 0.7))
+    _ghost_icon(canvas, (0.90, 0.72), 0.80)
 
-    _lockup(canvas, (52 * scale, 150 * scale), scale, 72 * scale, 14 * scale)
+    _lockup(canvas, (52 * scale, 150 * scale), 72 * scale, 14 * scale)
 
     draw = ImageDraw.Draw(canvas)
     footer = load_font(int(round(12 * scale)), "Regular")
@@ -232,7 +209,7 @@ def splash(scale=1):
         (52 * scale, 382 * scale),
         ATTRIBUTION,
         footer,
-        rgba(MIST, 205),
+        rgba(MUTED, 205),
         0.9 * scale,
     )
     return canvas
@@ -241,25 +218,23 @@ def splash(scale=1):
 def about_image(development):
     """Banner shown at the top of the About dialog."""
     size = (552, 189)
-    canvas = _workbench(size, 22, glow_at=(0.82, 0.62))
-    _ghost_mark(canvas, (0.84, 0.52), 0.95)
+    canvas = _workbench(size, 22, glow_at=(0.88, 0.62))
+    _ghost_icon(canvas, (0.88, 0.62), 0.80)
 
-    _lockup(canvas, (32, 96), 1.0, 52, 12)
+    _lockup(canvas, (32, 96), 52, 12)
 
     draw = ImageDraw.Draw(canvas)
     footer = load_font(11, "Regular")
-    draw_tracked(draw, (34, 170), ATTRIBUTION, footer, rgba(MIST, 205), 0.8)
+    draw_tracked(draw, (34, 170), ATTRIBUTION, footer, rgba(MUTED, 205), 0.8)
 
     if development:
         chip_font = load_font(12, "SemiBold")
         label = "DEVELOPMENT BUILD"
         tracking = 1.6
         width = tracked_width(chip_font, label, tracking)
-        left, top = size[0] - width - 46, 22
-        draw.rounded_rectangle(
-            (left, top, left + width + 24, top + 26), radius=13, fill=rgba(AMBER)
-        )
-        draw_tracked(draw, (left + 12, top + 18), label, chip_font, rgba(INK), tracking)
+        left, top = size[0] - width - 46, 14
+        draw.rounded_rectangle((left, top, left + width + 24, top + 26), radius=13, fill=rgba(TEAL))
+        draw_tracked(draw, (left + 12, top + 18), label, chip_font, rgba(NIGHT), tracking)
 
     return canvas
 
@@ -267,9 +242,9 @@ def about_image(development):
 def readme_banner():
     """Wide lockup used as the project hero image in the README."""
     size = (1200, 300)
-    canvas = _workbench(size, 34, glow_at=(0.8, 0.62))
-    _ghost_mark(canvas, (0.82, 0.52), 1.0)
-    _lockup(canvas, (88, 158), 1.0, 96, 19)
+    canvas = _workbench(size, 34, glow_at=(0.84, 0.5))
+    _ghost_icon(canvas, (0.84, 0.50), 1.1)
+    _lockup(canvas, (88, 158), 96, 19)
     return canvas
 
 
@@ -282,28 +257,23 @@ def installer_banner():
     """Left-hand panel of the Windows installer wizard."""
     size = (164, 314)
     canvas = _workbench(size, 24, glow_at=(0.5, 0.88))
-    _ghost_mark(canvas, (0.50, 0.84), 0.42)
+    _ghost_icon(canvas, (0.50, 0.86), 0.46)
 
-    plate = app_icon(76)
-    canvas.alpha_composite(plate, ((size[0] - 76) // 2, 52))
+    canvas.alpha_composite(app_icon(76), ((size[0] - 76) // 2, 52))
 
     draw = ImageDraw.Draw(canvas)
-    word_font = load_font(29, "SemiBold")
-    tracking = 0.6
-    width = tracked_width(word_font, WORDMARK, tracking)
-    left = (size[0] - width) / 2
-    draw_tracked(draw, (left, 172), WORDMARK, word_font, rgba(PAPER), tracking)
-    draw.rectangle((left, 184, left + width, 187), fill=rgba(AMBER))
+    width = wordmark_width(30)
+    draw_wordmark(draw, ((size[0] - width) / 2, 176), 30, rgba(PAPER), rgba(TEAL))
 
     tag_font = load_font(9, "Regular")
     for index, line in enumerate(("PARAMETRIC 3D", "MODELING")):
         line_width = tracked_width(tag_font, line, 2.0)
         draw_tracked(
             draw,
-            ((size[0] - line_width) / 2, 208 + index * 14),
+            ((size[0] - line_width) / 2, 204 + index * 14),
             line,
             tag_font,
-            rgba(MIST),
+            rgba(MUTED),
             2.0,
         )
     return canvas.convert("RGB")
@@ -312,44 +282,40 @@ def installer_banner():
 def installer_header():
     """Small logo strip shown in the installer header, on a light background."""
     size = (150, 57)
-    canvas = Image.new("RGBA", size, rgba(PAPER))
+    canvas = Image.new("RGBA", size, (255, 255, 255, 255))
     canvas.alpha_composite(app_icon(40), (104, 9))
 
     draw = ImageDraw.Draw(canvas)
-    word_font = load_font(21, "SemiBold")
-    tracking = 0.4
-    width = tracked_width(word_font, WORDMARK, tracking)
-    draw_tracked(draw, (96 - width, 35), WORDMARK, word_font, rgba(INK), tracking)
-    draw.rectangle((96 - width, 41, 96, 43), fill=rgba(AMBER))
+    width = wordmark_width(19)
+    draw_wordmark(draw, (96 - width, 35), 19, rgba(INK), rgba(DEEP_TEAL))
     return canvas.convert("RGB")
 
 
 def dmg_background():
     """Backdrop for the macOS disk image, sized around the Finder icon layout."""
     size = (640, 347)
-    canvas = linear_gradient(size, (255, 255, 255), (226, 235, 238), 70.0).convert("RGBA")
-    canvas.alpha_composite(isometric_grid(size, 26, STEEL, 16))
+    canvas = linear_gradient(size, (255, 255, 255), PAPER, 70.0).convert("RGBA")
+    canvas.alpha_composite(isometric_grid(size, 26, INK, 10))
 
     canvas.alpha_composite(app_icon(52), (34, 26))
     draw = ImageDraw.Draw(canvas)
-    word_font = load_font(30, "SemiBold")
-    width = draw_tracked(draw, (100, 62), WORDMARK, word_font, rgba(INK), 0.5)
+    draw_wordmark(draw, (100, 62), 30, rgba(INK), rgba(DEEP_TEAL))
     tag_font = load_font(11, "Regular")
-    draw_tracked(draw, (102, 82), TAGLINE, tag_font, rgba(STEEL), 2.4)
+    draw_tracked(draw, (102, 82), TAGLINE, tag_font, rgba(MUTED), 2.4)
 
     # Finder places the application at x=250 and the Applications link at x=475,
     # so the arrow points across the gap between them.
     arrow_y = 150
-    draw.rectangle((330, arrow_y - 4, 388, arrow_y + 4), fill=rgba(AMBER))
+    draw.rectangle((330, arrow_y - 4, 388, arrow_y + 4), fill=rgba(DEEP_TEAL))
     draw.polygon(
         [(384, arrow_y - 18), (410, arrow_y), (384, arrow_y + 18)],
-        fill=rgba(AMBER),
+        fill=rgba(DEEP_TEAL),
     )
 
     hint_font = load_font(13, "Regular")
     hint = "DRAG OTHERCAD INTO YOUR APPLICATIONS FOLDER"
     hint_width = tracked_width(hint_font, hint, 2.2)
-    draw_tracked(draw, ((size[0] - hint_width) / 2, 296), hint, hint_font, rgba(STEEL), 2.2)
+    draw_tracked(draw, ((size[0] - hint_width) / 2, 296), hint, hint_font, rgba(MUTED), 2.2)
     return canvas.convert("RGB")
 
 
@@ -359,53 +325,58 @@ def dmg_background():
 
 
 def app_icon_svg():
-    """Vector master of the application icon."""
-    inset = 48 * 0.13
-    shapes = mark_polygons(
-        (inset, inset, 48 - 2 * inset, 48 - 2 * inset),
-        PAPER,
-        AMBER_LIT,
-        AMBER,
-        plane_line=rgba(PAPER, 90),
-        plane_fill=rgba(PAPER, 14),
-    )
-    faces = "\n".join(
-        f'  <path d="{svg_path(points)}" {svg_fill(colour)}/>' for points, colour in shapes
-    )
+    """Vector master of the application icon, laid out like the family icons."""
+    size = int(TILE)
+    cx, cy = TILE_GLOW_CENTRE
     body = (
         "  <defs>\n"
-        '    <linearGradient id="plate" x1="0" y1="0" x2="1" y2="1">\n'
-        f'      <stop offset="0" stop-color="{hex_of(STEEL_LIT)}"/>\n'
-        f'      <stop offset="1" stop-color="{hex_of(STEEL_DEEP)}"/>\n'
-        "    </linearGradient>\n"
+        f'    <radialGradient id="bg" gradientUnits="userSpaceOnUse" cx="{cx:g}" cy="{cy:g}"'
+        f' r="{TILE_GLOW_RADIUS:g}">\n'
+        f'      <stop offset="0" stop-color="{hex_of(NIGHT_LIT)}"/>\n'
+        f'      <stop offset="1" stop-color="{hex_of(NIGHT)}"/>\n'
+        "    </radialGradient>\n"
         "  </defs>\n"
-        '  <rect x="0" y="0" width="48" height="48" rx="10.3" ry="10.3" fill="url(#plate)"/>\n'
-        '  <rect x="0.5" y="0.5" width="47" height="47" rx="9.8" ry="9.8" fill="none"'
-        f' stroke="{hex_of(PAPER)}" stroke-opacity="0.15" stroke-width="1"/>\n'
-        f"{faces}"
+        f'  <rect width="{size}" height="{size}" rx="{TILE_RADIUS:g}" fill="url(#bg)"/>\n'
+        f"{svg_primitives(icon_primitives())}"
     )
-    return svg_document(48, 48, body, "OtherCAD")
+    return svg_document(size, size, body, "OtherCAD")
 
 
 def document_icon_svg():
     """Vector master of the ``.FCStd`` document icon."""
-    shapes = [(PAGE_BORDER, STEEL), (PAGE, PAPER), (PAGE_FOLD, AMBER)]
-    shapes += mark_polygons(
-        (16.0, 22.0, 33.0, 30.0), STEEL, AMBER_LIT, AMBER, plane_line=rgba(STEEL, 120)
-    )
+    page = [(PAGE_BORDER, INK), (PAGE, PAPER), (PAGE_FOLD, TEAL)]
+    x, y, side = PAGE_GLYPH_BOX
     body = "\n".join(
-        f'  <path d="{svg_path(points)}" {svg_fill(colour)}/>' for points, colour in shapes
+        f'  <path d="{svg_path(points)}" {svg_fill(colour)}/>' for points, colour in page
+    )
+    body += (
+        f'\n  <g transform="translate({x:g} {y:g}) scale({side / TILE:g})">\n'
+        f"{svg_primitives(_page_glyph(), indent='    ')}\n"
+        "  </g>"
     )
     return svg_document(64, 64, body, "OtherCAD document")
 
 
+def _watermark_shapes(colour):
+    return glyph_primitives(colour, colour, ring=colour)
+
+
+def _watermark_box():
+    """Where the tile lands so the ring, without its glow, fills the watermark."""
+    side = WATERMARK_SIZE * TILE / (2.0 * RING_RADIUS + RING_WIDTH)
+    return ((WATERMARK_SIZE - side) / 2, (WATERMARK_SIZE - side) / 2, side)
+
+
 def background_svg(colour, opacity):
     """Vector master of the watermark shown behind an empty workspace."""
-    width, height = WATERMARK_SIZE
-    shapes = mark_polygons((0.0, 0.0, width, height), colour, colour, colour, plane_line=colour)
-    faces = "\n".join(f'    <path d="{svg_path(points)}"/>' for points, _ in shapes)
-    body = f'  <g fill="{hex_of(colour)}" opacity="{opacity}">\n{faces}\n  </g>'
-    return svg_document(round(width), round(height), body, "OtherCAD")
+    x, y, side = _watermark_box()
+    body = (
+        f'  <g opacity="{opacity}" transform="translate({x:.3f} {y:.3f}) '
+        f'scale({side / TILE:.5f})">\n'
+        f"{svg_primitives(_watermark_shapes(rgba(colour)), indent='    ')}\n"
+        "  </g>"
+    )
+    return svg_document(WATERMARK_SIZE, WATERMARK_SIZE, body, "OtherCAD")
 
 
 # --------------------------------------------------------------------------
@@ -473,7 +444,7 @@ def generate(repo):
 
     print("workspace watermarks")
     watermarks = (
-        ("background_othercad", STEEL, 0.20),
+        ("background_othercad", TEAL, 0.20),
         ("background_othercad_dark", PAPER, 0.14),
         ("background_othercad_light", INK, 0.16),
     )
@@ -481,9 +452,9 @@ def generate(repo):
         for folder in ("images_classic", "images_dark-light"):
             out.text(f"{stylesheets}/{folder}/{name}.svg", background_svg(colour, opacity))
         tint = rgba(colour, round(opacity * 255))
-        shapes = mark_polygons((0.0, 0.0) + WATERMARK_SIZE, tint, tint, tint, plane_line=tint)
-        pixels = (int(WATERMARK_SIZE[0]), int(WATERMARK_SIZE[1]))
-        out.image(f"{stylesheets}/images_classic/{name}.png", render_polygons(pixels, shapes))
+        pixels = (WATERMARK_SIZE, WATERMARK_SIZE)
+        image = render_primitives(pixels, _watermark_shapes(tint), box=_watermark_box())
+        out.image(f"{stylesheets}/images_classic/{name}.png", image)
 
     print("windows")
     windows_icons = [app_icon(size) for size in ICON_SIZES]
