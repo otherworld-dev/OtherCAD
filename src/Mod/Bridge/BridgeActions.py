@@ -106,11 +106,13 @@ def _abort(doc):
     doc.recompute()
 
 
-def change(doc, label, func, keep_on_error=False, summary=None):
+def change(doc, label, func, keep_on_error=False, summary=None, verify=None):
     """Run func as one undo step, rebuild, and report or undo what it did.
 
     func may return a dict merged into the report; summary, if given, is called after
-    the rebuild for more of it (a sketch's degrees of freedom, say).
+    the rebuild for more of it (a sketch's degrees of freedom, say). verify, if given, is
+    called after the rebuild for a problem the model's own checks miss, such as a pocket
+    that cut nothing; it returns an error entry, or None.
     """
 
     _check_ready()
@@ -143,6 +145,10 @@ def change(doc, label, func, keep_on_error=False, summary=None):
         if name not in created and doc.getObject(name) is not None
     }
     errors = [_error_entry(o) for o in doc.Objects if not o.isValid() and o.Name not in broken_before]
+    if verify and not errors:
+        problem = verify()
+        if problem:
+            errors.append(problem)
     report = {"change": label, "created": created, "deleted": deleted, "changed": changed}
     report.update(extra)
     if errors:
@@ -427,11 +433,12 @@ def _geo_index(value, new):
 def _constraint_args(entry, new):
     args = []
     for ref in entry.get("refs", []):
-        if ref == "origin":
-            args += [-1, 1]
-            continue
         if not isinstance(ref, (list, tuple)):
             ref = [ref]
+        if ref and ref[0] == "origin":
+            # The origin is the root point, whether written "origin" or ["origin"]
+            args += [-1, 1]
+            continue
         args.append(_geo_index(ref[0], new))
         if len(ref) > 1:
             pos = ref[1]
@@ -601,9 +608,30 @@ def _extrude(kind, profile, length, type, reversed, symmetric, up_to_face, label
     doc = _document(document)
     sketch = _object(doc, profile)
     body = _body_of(sketch)
+    made = {}
+    tip = body.Tip
+    before = tip.Shape.Volume if tip is not None and tip.isValid() and not tip.Shape.isNull() else 0.0
+
+    def verify():
+        # A pocket that cuts away from the solid, or a pad wholly inside it, builds
+        # without an error but leaves the solid as it was
+        feature = made["feature"]
+        after = feature.Shape.Volume if not feature.Shape.isNull() else before
+        moved = before - after if kind == "Pocket" else after - before
+        if moved > 1e-6 * max(before, 1.0):
+            return None
+        what = "removed" if kind == "Pocket" else "added"
+        return {
+            "name": feature.Name,
+            "label": feature.Label,
+            "type": feature.TypeId,
+            "error": f"The {kind.lower()} {what} no material: it went the wrong way from the "
+            "sketch plane, or missed the solid. Try reversed: true, or symmetric: true.",
+        }
 
     def make():
         feature = body.newObject(f"PartDesign::{kind}", kind)
+        made["feature"] = feature
         feature.Profile = sketch
         if length is not None:
             feature.Length = float(length)
@@ -622,7 +650,7 @@ def _extrude(kind, profile, length, type, reversed, symmetric, up_to_face, label
         sketch.Visibility = False
         return {"feature": feature.Name, "body": body.Name}
 
-    return change(doc, kind, make, keep_on_error)
+    return change(doc, kind, make, keep_on_error, verify=verify)
 
 
 @tool(
