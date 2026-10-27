@@ -16,7 +16,8 @@ concurrency:
 jobs:
   upload_src:
     runs-on: ubuntu-latest
-    # Forks are kept off the weekly cron, but a release they publish still has to get binaries.
+    # Only otherworld-dev runs the weekly cron. Other forks of OtherCAD still build the releases they
+    # publish and manual runs. OtherCAD itself is a fork of FreeCAD, so check the owner, not the fork flag.
     if: github.repository_owner == 'otherworld-dev' || github.event_name == 'workflow_dispatch' || github.event_name == 'release'
     permissions:
       contents: write
