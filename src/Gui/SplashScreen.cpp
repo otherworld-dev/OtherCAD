@@ -37,6 +37,7 @@
 
 #include <App/Application.h>
 #include <App/Metadata.h>
+#include <App/ProgramInformation.h>
 #include <Base/Console.h>
 
 #include "BitmapFactory.h"
@@ -358,11 +359,9 @@ QPixmap SplashScreen::splashImage()
     );
     if (tc != App::Application::Config().end() && wc != App::Application::Config().end()) {
         QString title = qApp->applicationName();
-        QString major = QString::fromStdString(App::Application::Config()["BuildVersionMajor"]);
-        QString minor = QString::fromStdString(App::Application::Config()["BuildVersionMinor"]);
-        QString point = QString::fromStdString(App::Application::Config()["BuildVersionPoint"]);
-        QString suffix = QString::fromStdString(App::Application::Config()["BuildVersionSuffix"]);
-        QString version = QStringLiteral("%1.%2.%3%4").arg(major, minor, point, suffix);
+        QString version = QString::fromStdString(
+            App::ProgramInformation::versionString(App::Application::Config())
+        );
         QString position, fontFamily;
 
         std::map<std::string, std::string>::const_iterator te = App::Application::Config().find(
@@ -440,7 +439,8 @@ QPixmap SplashScreen::splashImage()
             painter.setFont(fontVer);
             painter.drawText(x + l, y, version);
             QColor warningColor(QString::fromStdString(wc->second));
-            if (suffix == QLatin1String("dev") && warningColor.isValid()) {
+            const bool devBuild = App::Application::Config()["BuildVersionSuffix"] == "dev";
+            if (devBuild && warningColor.isValid()) {
                 fontVer.setPointSizeF(14.0);
                 painter.setFont(fontVer);
                 const int lineHeight = metricVer.lineSpacing();

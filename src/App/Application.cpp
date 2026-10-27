@@ -1375,11 +1375,7 @@ std::string Application::getNameWithVersion()
 {
     auto appname = QCoreApplication::applicationName().toStdString();
     auto config = Application::Config();
-    auto major = config["BuildVersionMajor"];
-    auto minor = config["BuildVersionMinor"];
-    auto point = config["BuildVersionPoint"];
-    auto suffix = config["BuildVersionSuffix"];
-    return fmt::format("{} {}.{}.{}{}", appname, major, minor, point, suffix);
+    return fmt::format("{} {}", appname, ProgramInformation::versionString(config));
 }
 
 bool Application::isDevelopmentVersion()
@@ -2755,11 +2751,15 @@ void Application::initConfig(int argc, char ** argv)
         str << FCVersionMajor
             << "." << FCVersionMinor
             << "." << FCVersionPoint;
+        if (std::string_view(FCVersionBuild) != "0") {
+            str << "." << FCVersionBuild;
+        }
         Application::Config()["ExeVersion"         ] = str.str();
         Application::Config()["BuildVersionMajor"  ] = FCVersionMajor;
         Application::Config()["BuildVersionMinor"  ] = FCVersionMinor;
         Application::Config()["BuildVersionPoint"  ] = FCVersionPoint;
         Application::Config()["BuildVersionSuffix" ] = FCVersionSuffix;
+        Application::Config()["BuildVersionBuild"  ] = FCVersionBuild;
         Application::Config()["BuildRevision"      ] = FCRevision;
         Application::Config()["BuildRepositoryURL" ] = FCRepositoryURL;
         Application::Config()["BuildRevisionDate"  ] = FCRevisionDate;
