@@ -28,6 +28,9 @@ done in this fork.
     is resized. A pad or pocket of a sketch that is not fully constrained comes with a
     warning.
   - The seam down a hole's wall is not offered as an edge to fillet.
+  - Desktop apps that only start stdio servers reach it through
+    `Mod/Bridge/BridgeStdio.py`, which needs only Python. If OtherCAD is not running
+    yet, the tools appear once its bridge is switched on.
   - Each change is one undo step named "Bridge: ...". A change that leaves the model
     in error is undone and the errors are reported back. So is a pad or pocket that adds
     or removes no material, with a hint to reverse it.
