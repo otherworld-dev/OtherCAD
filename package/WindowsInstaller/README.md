@@ -15,10 +15,9 @@ To set up your system for building an NSIS installer:
 
 ## Build the installer
 Next, update the installer settings for the current version of OtherCAD. Starting from the *package/WindowsInstaller* folder in the OtherCAD source tree:
-1. Set the appropriate version strings for the release you are creating. These are used to construct the filename of the installer, among other things. If you have to upload a new version of the installer for the exact same release of OtherCAD, increment `APP_VERSION BUILD` as needed. The main version numbers are dynamically obtained by calling `othercadcmd.exe`.
+1. The version numbers are obtained by calling `othercadcmd.exe`, so they follow `version.json`: the FreeCAD version, plus `build_version` as the OtherCAD release (26.3.0.1). Only set `APP_VERSION_EMERGENCY` if you need a custom suffix:
 ```nsis
 !define APP_VERSION_EMERGENCY "RC1"
-!define APP_VERSION_BUILD 1
 ```
 2. If the installer will be made from a LibPack build create a new folder called MSVCRedist within the folder *package/WindowsInstaller* and copy the following files from your MSVC installation into it:
 ```

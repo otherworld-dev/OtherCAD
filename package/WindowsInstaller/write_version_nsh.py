@@ -9,12 +9,16 @@ import os
 
 filepath=os.path.join(os.path.dirname(os.path.abspath(__file__)),"version.nsh")
 v=FreeCAD.Version()
+# OtherCAD release on top of the FreeCAD version, e.g. the 1 in 26.3.0.1 (0 = none)
+release=FreeCAD.ConfigGet('BuildVersionBuild') or '0'
 content=f'''\
 !define COPYRIGHT_YEAR {datetime.date.today().year}
 !define APP_VERSION_MAJOR "{v[0]}"
 !define APP_VERSION_MINOR "{v[1]}"
 !define APP_VERSION_PATCH "{v[2]}"
 !define APP_VERSION_REVISION "{v[3].split()[0]}"
+!define APP_VERSION_BUILD "{release}"
+!define APP_VERSION_RELEASE "{'' if release == '0' else '.' + release}"
 !define APP_NAME "{FreeCAD.ConfigGet('ExeName')}"
 '''
 

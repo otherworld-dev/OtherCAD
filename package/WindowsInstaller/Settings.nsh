@@ -41,16 +41,17 @@ These typically need to be modified for each OtherCAD release
 !define APP_VERSION_EMERGENCY "" # use "1" for an emergency release of OtherCAD otherwise ""
 	# alternatively you can use APP_VERSION_EMERGENCY for a custom suffix of the version number
 !define APP_EMERGENCY_DOT "" # use "." for an emergency release of OtherCAD otherwise ""
-!define APP_VERSION_BUILD 1 # Start with 1 for the installer releases of each version
+# APP_VERSION_BUILD and APP_VERSION_RELEASE come from version.json's build_version, the OtherCAD
+# release on top of the FreeCAD version (APP_VERSION_RELEASE is ".1" for 26.3.0.1, or empty)
 
-!define APP_VERSION "${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}${APP_EMERGENCY_DOT}${APP_VERSION_EMERGENCY}" # Version to display
+!define APP_VERSION "${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}${APP_VERSION_RELEASE}${APP_EMERGENCY_DOT}${APP_VERSION_EMERGENCY}" # Version to display
 
 #--------------------------------
 # Installer file name
 # Typical names for the release are "OtherCAD-020-Installer-1.exe" etc.
 
 !ifndef ExeFile
-    !define ExeFile "${APP_NAME}_${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}${APP_VERSION_EMERGENCY}-Windows-x86_64-installer-${APP_VERSION_BUILD}.exe"
+    !define ExeFile "${APP_NAME}_${APP_VERSION}-Windows-x86_64-installer.exe"
 !endif
 
 #--------------------------------
