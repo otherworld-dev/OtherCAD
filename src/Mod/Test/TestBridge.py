@@ -33,7 +33,11 @@ import base64
 import json
 import math
 import os
+import queue
 import shutil
+import socket
+import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -661,6 +665,122 @@ class TestBridgeActions(BridgeCase):
             self.assertNotIn("run_python", names)
         finally:
             server.httpd.server_close()
+
+
+def python_interpreter():
+    """A plain Python to run the stdio relay with; sys.executable is OtherCAD itself."""
+
+    for candidate in (
+        os.path.join(sys.prefix, "python.exe"),
+        os.path.join(sys.prefix, "bin", "python3"),
+        shutil.which("python3"),
+        shutil.which("python"),
+    ):
+        if candidate and os.path.exists(candidate):
+            return candidate
+    return None
+
+
+def free_port():
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+class Relay:
+    """BridgeStdio.py in a subprocess, read on a thread while the test pumps events."""
+
+    def __init__(self, url):
+        script = os.path.join(os.path.dirname(BridgeTools.__file__), "BridgeStdio.py")
+        env = dict(os.environ, OTHERCAD_BRIDGE_URL=url)
+        self.process = subprocess.Popen(
+            [python_interpreter(), script],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            env=env,
+            text=True,
+            encoding="utf-8",
+        )
+        self.lines = queue.Queue()
+        threading.Thread(target=self._read, daemon=True).start()
+
+    def _read(self):
+        for line in self.process.stdout:
+            self.lines.put(json.loads(line))
+
+    def send(self, message):
+        self.process.stdin.write(json.dumps(message) + "\n")
+        self.process.stdin.flush()
+
+    def receive(self, timeout=20.0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            QtWidgets.QApplication.instance().processEvents()
+            try:
+                return self.lines.get(timeout=0.02)
+            except queue.Empty:
+                pass
+        raise AssertionError("The relay did not answer")
+
+    def request(self, msg_id, method, params=None):
+        self.send({"jsonrpc": "2.0", "id": msg_id, "method": method, "params": params or {}})
+        answer = self.receive()
+        while answer.get("id") != msg_id:
+            answer = self.receive()
+        return answer
+
+    def close(self):
+        self.process.stdin.close()
+        try:
+            self.process.wait(10)
+        except subprocess.TimeoutExpired:
+            self.process.kill()
+
+
+class TestBridgeRelay(BridgeCase):
+    """The stdio relay that lets desktop apps that only start stdio servers reach the bridge."""
+
+    def setUp(self):
+        if python_interpreter() is None:
+            raise unittest.SkipTest("No Python interpreter to run the relay with")
+        if Bridge.isRunning():
+            raise unittest.SkipTest("The bridge is already running in this session")
+        super().setUp()
+        self.port = free_port()
+        self.relay = None
+
+    def tearDown(self):
+        if self.relay:
+            self.relay.close()
+        Bridge.stop()
+        super().tearDown()
+
+    def test_the_relay_passes_tool_calls_through(self):
+        Bridge.start(port=self.port, token="")
+        self.relay = Relay(f"http://127.0.0.1:{self.port}/mcp")
+        init = self.relay.request(1, "initialize", {"protocolVersion": "2025-06-18"})
+        self.assertEqual(init["result"]["serverInfo"]["name"], "othercad")
+        self.assertTrue(init["result"]["capabilities"]["tools"]["listChanged"])
+        tools = self.relay.request(2, "tools/list")["result"]["tools"]
+        self.assertIn("get_timeline", {t["name"] for t in tools})
+        result = self.relay.request(
+            3, "tools/call", {"name": "get_timeline", "arguments": {"document": self.doc.Name}}
+        )["result"]
+        self.assertEqual(json.loads(result["content"][0]["text"])["tip"], "Pad")
+
+    def test_tools_appear_when_the_bridge_starts_after_the_client(self):
+        self.relay = Relay(f"http://127.0.0.1:{self.port}/mcp")
+        init = self.relay.request(1, "initialize", {"protocolVersion": "2025-06-18"})
+        self.assertIn("LLM Bridge", init["result"]["instructions"])
+        self.assertEqual(self.relay.request(2, "tools/list")["result"]["tools"], [])
+        called = self.relay.request(3, "tools/call", {"name": "get_timeline"})["result"]
+        self.assertTrue(called["isError"])
+
+        Bridge.start(port=self.port, token="")
+        notice = self.relay.receive(timeout=30)
+        self.assertEqual(notice["method"], "notifications/tools/list_changed")
+        tools = self.relay.request(4, "tools/list")["result"]["tools"]
+        self.assertIn("pad", {t["name"] for t in tools})
 
 
 class TestBridgeServer(BridgeCase):
