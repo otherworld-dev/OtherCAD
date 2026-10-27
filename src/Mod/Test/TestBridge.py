@@ -31,6 +31,7 @@ To run tests:
 
 import base64
 import json
+import math
 import threading
 import time
 import unittest
@@ -44,6 +45,7 @@ import Sketcher
 from PySide import QtWidgets
 
 import Bridge
+import BridgeServer
 import BridgeTools
 
 WIDTH, DEPTH, HEIGHT = 10.0, 6.0, 4.0
@@ -198,6 +200,257 @@ class TestBridgeTools(BridgeCase):
         self.assertTrue(view.getCameraNode().position.getValue().equals(before_position, 1e-5))
 
 
+class TestBridgeActions(BridgeCase):
+    def _call(self, name, arguments):
+        return BridgeTools.call(name, dict(arguments, document=self.doc.Name))
+
+    def _volume(self, name="Pad"):
+        return self._call("get_shape", {"name": name})["volume"]
+
+    def test_a_part_can_be_modelled_from_an_empty_document(self):
+        doc = FreeCAD.newDocument("TestBridgeEmpty")
+        try:
+            made = BridgeTools.call("new_sketch", {"on": "XY", "document": doc.Name})
+            self.assertEqual(doc.getObject(made["body"]).TypeId, "PartDesign::Body")
+            added = BridgeTools.call(
+                "sketch_add",
+                {
+                    "sketch": made["sketch"],
+                    "geometry": [{"type": "rectangle", "corner": [0, 0], "size": [20, 10]}],
+                    "constraints": [
+                        {
+                            "type": "DistanceX",
+                            "refs": [["new0", "start"], ["new0", "end"]],
+                            "value": 20,
+                        },
+                        {
+                            "type": "DistanceY",
+                            "refs": [["new1", "start"], ["new1", "end"]],
+                            "value": 10,
+                        },
+                        {"type": "Coincident", "refs": [["new0", "start"], "origin"]},
+                    ],
+                    "document": doc.Name,
+                },
+            )
+            self.assertEqual(len(added["geometry"]), 4)
+            self.assertEqual(added["dof"], 0)
+            self.assertTrue(added["fully_constrained"])
+
+            padded = BridgeTools.call(
+                "pad", {"profile": made["sketch"], "length": 5, "document": doc.Name}
+            )
+            self.assertFalse(padded["rolled_back"])
+            self.assertIn(padded["feature"], padded["created"])
+            shape = BridgeTools.call("get_shape", {"name": padded["feature"], "document": doc.Name})
+            self.assertAlmostEqual(shape["volume"], 1000.0, places=4)
+        finally:
+            FreeCAD.closeDocument(doc.Name)
+
+    def test_a_pocket_cuts_through_the_pad(self):
+        made = self._call("new_sketch", {"on": "XY"})
+        self._call(
+            "sketch_add",
+            {
+                "sketch": made["sketch"],
+                "geometry": [{"type": "circle", "center": [5, 3], "radius": 1}],
+            },
+        )
+        self._call("pocket", {"profile": made["sketch"], "type": "ThroughAll", "symmetric": True})
+        tip = self.body.Tip
+        self.assertEqual(tip.TypeId, "PartDesign::Pocket")
+        self.assertAlmostEqual(
+            tip.Shape.Volume, WIDTH * DEPTH * HEIGHT - math.pi * HEIGHT, places=3
+        )
+
+    def test_a_sketch_goes_on_a_face_found_by_what_it_is(self):
+        top = self._call(
+            "describe_faces",
+            {"name": "Pad", "normal": "+Z", "sort_by": "z", "descending": True, "limit": 1},
+        )["faces"][0]["face"]
+        made = self._call("new_sketch", {"on": f"Pad:{top}"})
+        sketch = self.doc.getObject(made["sketch"])
+        self.assertEqual(sketch.AttachmentSupport[0][1], (top,))
+        self.assertAlmostEqual(sketch.Placement.Base.z, HEIGHT, places=4)
+        with self.assertRaises(BridgeTools.ToolError):
+            self._call("new_sketch", {"on": "Pad:Face99"})
+
+    def test_a_change_that_breaks_the_model_is_undone_with_its_errors(self):
+        made = self._call("new_sketch", {"on": "XY"})
+        # One line is not a closed profile, so a pad of it fails
+        self._call(
+            "sketch_add",
+            {
+                "sketch": made["sketch"],
+                "geometry": [{"type": "line", "start": [0, 0], "end": [5, 0]}],
+            },
+        )
+        objects = len(self.doc.Objects)
+        undo_count = self.doc.UndoCount
+        with self.assertRaises(BridgeTools.ActionFailed) as caught:
+            self._call("pad", {"profile": made["sketch"], "length": 3})
+        details = caught.exception.details
+        self.assertTrue(details["rolled_back"])
+        self.assertTrue(details["errors"])
+        self.assertEqual(len(self.doc.Objects), objects)
+        self.assertEqual(self.doc.UndoCount, undo_count)
+        self.assertTrue(self.pad.isValid())
+
+    def test_conflicting_constraints_are_undone_and_named(self):
+        with self.assertRaises(BridgeTools.ActionFailed) as caught:
+            self._call(
+                "sketch_add",
+                {
+                    "sketch": "Sketch",
+                    "constraints": [
+                        {"type": "Distance", "refs": [[0]], "value": 10},
+                        {"type": "Distance", "refs": [[0]], "value": 12},
+                    ],
+                },
+            )
+        error = caught.exception.details["errors"][0]
+        self.assertEqual(error["name"], "Sketch")
+        self.assertTrue(error["conflicting"])
+        self.assertEqual(len(self.sketch.Constraints), 4)
+
+    def test_a_property_or_an_expression_drives_the_model(self):
+        report = self._call("set_property", {"name": "Pad", "property": "Length", "value": "8 mm"})
+        self.assertEqual(report["changed"]["Pad"], ["Length"])
+        self.assertAlmostEqual(self._volume(), WIDTH * DEPTH * 8, places=4)
+        self._call("set_property", {"name": "Pad", "property": "Length", "expression": "3 * 2 mm"})
+        self.assertAlmostEqual(self.pad.Length.Value, 6.0)
+        with self.assertRaises(BridgeTools.ToolError) as caught:
+            self._call("set_property", {"name": "Pad", "property": "Lenght", "value": 3})
+        self.assertIn("Length", str(caught.exception))
+
+    def test_sketch_values_change_by_name(self):
+        self._call(
+            "sketch_add",
+            {
+                "sketch": "Sketch",
+                "constraints": [
+                    {
+                        "type": "DistanceX",
+                        "refs": [[0, "start"], [0, "end"]],
+                        "value": 10,
+                        "name": "width",
+                    }
+                ],
+            },
+        )
+        self._call("sketch_set_value", {"sketch": "Sketch", "constraint": "width", "value": 15})
+        self.assertAlmostEqual(self.sketch.Constraints[-1].Value, 15.0)
+        line = self.sketch.Geometry[0]
+        self.assertAlmostEqual(line.EndPoint.x - line.StartPoint.x, 15.0, places=4)
+
+    def test_edges_found_by_direction_are_filleted(self):
+        found = self._call("describe_edges", {"name": "Pad", "direction": "Z"})
+        self.assertEqual(found["matched"], 4)
+        edges = [f"Pad:{e['edge']}" for e in found["edges"]]
+        made = self._call("fillet", {"edges": edges, "radius": 1})
+        corner_loss = 4 * (1 - math.pi / 4) * HEIGHT
+        self.assertAlmostEqual(
+            self.doc.getObject(made["feature"]).Shape.Volume,
+            WIDTH * DEPTH * HEIGHT - corner_loss,
+            places=3,
+        )
+        rim = self._call("describe_edges", {"name": "Pad", "of_face": "Face1"})
+        self.assertEqual(rim["matched"], 4)
+
+    def test_the_tip_rolls_the_timeline_back(self):
+        # A sketch cannot carry the tip, so with no solid before it the history rolls
+        # off its start, as the playhead does
+        moved = self._call("set_tip", {"feature": "Sketch"})
+        self.assertIsNone(moved["tip"])
+        self.assertIsNone(self.body.Tip)
+        self.assertTrue(self.body.isValid())
+        timeline = self._call("get_timeline", {})
+        self.assertTrue(timeline["features"][1]["rolled_back"])
+
+        self._call("set_tip", {"feature": "Pad"})
+        self.assertEqual(self.body.Tip, self.pad)
+
+    def test_deleting_a_feature_others_need_is_refused_unless_kept(self):
+        with self.assertRaises(BridgeTools.ActionFailed):
+            self._call("delete_object", {"name": "Sketch"})
+        self.assertIsNotNone(self.doc.getObject("Sketch"))
+        self.assertTrue(self.pad.isValid())
+
+    def test_a_change_can_be_undone_and_redone(self):
+        self._call("set_property", {"name": "Pad", "property": "Length", "value": 9})
+        undone = self._call("undo", {})
+        self.assertEqual(undone["undone"], ["Bridge: Set Length"])
+        self.assertAlmostEqual(self.pad.Length.Value, HEIGHT)
+        self._call("redo", {})
+        self.assertAlmostEqual(self.pad.Length.Value, 9.0)
+
+    def test_python_returns_output_and_the_last_value(self):
+        ran = self._call("run_python", {"code": "x = 21\nprint('hello')\nx * 2"})
+        self.assertEqual(ran["output"], "hello\n")
+        self.assertEqual(ran["result"], "42")
+        # Names persist between calls, and doc is the document
+        ran = self._call("run_python", {"code": "x + len(doc.Objects) * 0"})
+        self.assertEqual(ran["result"], "21")
+        ran = self._call("run_python", {"code": "doc.addObject('Part::Box', 'Box')\nNone"})
+        self.assertIn("Box", ran["created"])
+
+    def test_python_that_raises_is_undone_with_its_traceback(self):
+        with self.assertRaises(BridgeTools.ActionFailed) as caught:
+            self._call(
+                "run_python",
+                {"code": "doc.addObject('Part::Box', 'Doomed')\nprint('made it')\n1 / 0"},
+            )
+        details = caught.exception.details
+        self.assertIn("ZeroDivisionError", details["traceback"])
+        self.assertNotIn("BridgeActions", details["traceback"])
+        self.assertEqual(details["output"], "made it\n")
+        self.assertTrue(details["rolled_back"])
+        self.assertIsNone(self.doc.getObject("Doomed"))
+
+    def test_changes_wait_while_the_user_has_a_task_panel_open(self):
+        FreeCADGui.getDocument(self.doc.Name).setEdit(self.pad.Name)
+        process_events(100)
+        try:
+            if not FreeCADGui.Control.activeDialog():
+                raise unittest.SkipTest("The Pad task panel did not open")
+            with self.assertRaises(BridgeTools.ToolError):
+                self._call("set_property", {"name": "Pad", "property": "Length", "value": 9})
+            # Reading still works
+            self._call("get_timeline", {})
+        finally:
+            FreeCADGui.getDocument(self.doc.Name).resetEdit()
+            process_events(100)
+            if FreeCADGui.Control.activeDialog():
+                FreeCADGui.Control.closeDialog()
+                process_events(100)
+        self.assertAlmostEqual(self.pad.Length.Value, HEIGHT)
+
+    def test_read_only_preferences_hide_the_tools_that_change_things(self):
+        # Never started, so only the socket needs closing
+        server = BridgeServer.Server("127.0.0.1", 0, read_only=True)
+        try:
+            answer = server.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+            tools = {t["name"]: t for t in answer["result"]["tools"]}
+            self.assertIn("get_timeline", tools)
+            self.assertNotIn("pad", tools)
+            self.assertNotIn("run_python", tools)
+            self.assertTrue(tools["get_timeline"]["annotations"]["readOnlyHint"])
+            refused = server.handle(
+                {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "pad"}}
+            )
+            self.assertEqual(refused["error"]["code"], -32602)
+        finally:
+            server.httpd.server_close()
+        server = BridgeServer.Server("127.0.0.1", 0, allow_python=False)
+        try:
+            answer = server.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+            names = {t["name"] for t in answer["result"]["tools"]}
+            self.assertIn("pad", names)
+            self.assertNotIn("run_python", names)
+        finally:
+            server.httpd.server_close()
+
+
 class TestBridgeServer(BridgeCase):
     @classmethod
     def setUpClass(cls):
@@ -292,6 +545,14 @@ class TestBridgeServer(BridgeCase):
         result = self._call("get_shape", {"name": "Nothing", "document": self.doc.Name})
         self.assertTrue(result["isError"])
         self.assertIn("Nothing", result["content"][0]["text"])
+
+    def test_an_undone_change_comes_back_as_an_error_with_its_details(self):
+        result = self._call("delete_object", {"name": "Sketch", "document": self.doc.Name})
+        self.assertTrue(result["isError"])
+        text = result["content"][0]["text"]
+        self.assertIn("undone", text)
+        self.assertIn('"rolled_back": true', text)
+        self.assertIsNotNone(self.doc.getObject("Sketch"))
 
     def test_a_screenshot_comes_back_as_an_image(self):
         view = FreeCADGui.getDocument(self.doc.Name).ActiveView

@@ -2,6 +2,7 @@
 
 SET(Bridge_SRCS
     Bridge.py
+    BridgeActions.py
     BridgeServer.py
     BridgeTools.py
     InitGui.py
