@@ -44,6 +44,16 @@ public:
     static std::string prettyProductInfoWrapper();
 
     /**
+     * @brief Format the version for display, e.g. "26.3.0.2" or "26.3.0dev".
+     *
+     * The first three numbers are the FreeCAD version the build is based on. A non-zero
+     * BuildVersionBuild is the OtherCAD release on top of it and is shown as a fourth number.
+     *
+     * @param[in] mConfig The application configuration.
+     */
+    static std::string versionString(const std::map<std::string, std::string>& mConfig);
+
+    /**
      * @brief Get verbose information about the application.
      *
      * @param[in,out] str The text stream to write the information to.

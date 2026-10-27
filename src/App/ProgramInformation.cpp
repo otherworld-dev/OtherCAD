@@ -152,6 +152,18 @@ static std::string getModuleInfoString(const std::string& path)
     return str.str();
 }
 
+std::string ProgramInformation::versionString(const std::map<std::string, std::string>& mConfig)
+{
+    std::string version = getValueOrEmpty(mConfig, "BuildVersionMajor") + "."
+        + getValueOrEmpty(mConfig, "BuildVersionMinor") + "."
+        + getValueOrEmpty(mConfig, "BuildVersionPoint");
+    const auto release = getValueOrEmpty(mConfig, "BuildVersionBuild");
+    if (!release.empty() && release != "0") {
+        version += "." + release;
+    }
+    return version + getValueOrEmpty(mConfig, "BuildVersionSuffix");
+}
+
 std::string ProgramInformation::getValueOrEmpty(
     const std::map<std::string, std::string>& map,
     const std::string& key)
@@ -234,12 +246,8 @@ void ProgramInformation::getVersionInformation(
     const std::map<std::string, std::string>& mConfig,
     std::stringstream& str)
 {
-    const auto major = getValueOrEmpty(mConfig, "BuildVersionMajor");
-    const auto minor = getValueOrEmpty(mConfig, "BuildVersionMinor");
-    const auto point = getValueOrEmpty(mConfig, "BuildVersionPoint");
-    const auto suffix = getValueOrEmpty(mConfig, "BuildVersionSuffix");
     const auto build = getValueOrEmpty(mConfig, "BuildRevision");
-    str << "Version: " << major << "." << minor << "." << point << suffix << "." << build;
+    str << "Version: " << versionString(mConfig) << " (revision " << build << ")";
 }
 
 void ProgramInformation::getBuildInformation(

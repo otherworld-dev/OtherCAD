@@ -53,6 +53,12 @@ done in this fork.
 
 ### Changed
 
+- The version number now follows FreeCAD's. The first three numbers are the FreeCAD
+  version the build is based on (26.3.0, as of the 9 September 2026 merge), and a fourth
+  number counts OtherCAD releases on top of it, so this release is 26.3.0.1. 26.4.0 was
+  numbered ahead of FreeCAD, which would have let addons that need FreeCAD 26.4 install.
+  Settings are kept per version, so copy `v26-4` to `v26-3` in the OtherCAD settings
+  folder to keep them.
 - FuCadUp is now OtherCAD. It has a new logo, a padded O in place of the F, and new
   executable names (OtherCAD and OtherCADCmd). Settings now live in an OtherCAD folder, so
   nothing carries over from FuCadUp. The theme, stylesheets and icons that came from FuCad

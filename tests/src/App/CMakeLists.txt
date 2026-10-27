@@ -20,6 +20,7 @@ add_executable(App_tests_run
         MappedElement.cpp
         MappedName.cpp
         Metadata.cpp
+        ProgramInformation.cpp
         ProjectFile.cpp
         PropertyFile.cpp
         Property.h
