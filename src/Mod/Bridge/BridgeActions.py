@@ -369,9 +369,32 @@ def _point(value):
     return FreeCAD.Vector(float(value[0]), float(value[1]), 0)
 
 
+GEOMETRY_TYPES = ("line", "circle", "arc", "point", "rectangle", "polygon")
+GEOMETRY_EXAMPLE = '{"type": "circle", "center": [0, 0], "radius": 5}'
+
+
 def _geometry(item):
     """Part geometry for one sketch_add item, and the constraints that hold its shape."""
 
+    if not isinstance(item, dict):
+        raise ToolError(f"A geometry item is an object such as {GEOMETRY_EXAMPLE}")
+    if "type" not in item:
+        # Also take the shorthand {"circle": {"center": ..., "radius": ...}}
+        named = [k for k in item if k.lower() in GEOMETRY_TYPES and isinstance(item[k], dict)]
+        if len(named) != 1:
+            raise ToolError(
+                f"Each geometry item needs a type ({', '.join(GEOMETRY_TYPES)}), "
+                f"e.g. {GEOMETRY_EXAMPLE}"
+            )
+        rest = {k: v for k, v in item.items() if k != named[0]}
+        item = {"type": named[0], **item[named[0]], **rest}
+    try:
+        return _build_geometry(item)
+    except KeyError as missing:
+        raise ToolError(f"A {item['type']} needs {missing}, e.g. {GEOMETRY_EXAMPLE}") from None
+
+
+def _build_geometry(item):
     import Part
 
     kind = str(item.get("type", "")).lower()
@@ -411,7 +434,7 @@ def _geometry(item):
     )
 
 
-def _geo_index(value, new):
+def _geo_index(value, new, ext=()):
     if isinstance(value, int):
         return value
     text = str(value).strip()
@@ -424,13 +447,21 @@ def _geo_index(value, new):
         if not 0 <= i < len(new):
             raise ToolError(f"{text} is not geometry added in this call (new0 to new{len(new) - 1})")
         return new[i]
+    if text.lower().startswith("ext"):
+        i = int(text[3:])
+        if not 0 <= i < len(ext):
+            raise ToolError(
+                f"{text} is not one of the sketch's {len(ext)} projected edges; get_sketch "
+                "lists them"
+            )
+        return ext[i]
     try:
         return int(text)
     except ValueError:
-        raise ToolError(f"'{value}' is not a geometry index, newN, H or V") from None
+        raise ToolError(f"'{value}' is not a geometry index, newN, extN, H or V") from None
 
 
-def _constraint_args(entry, new):
+def _constraint_args(entry, new, ext=()):
     args = []
     for ref in entry.get("refs", []):
         if not isinstance(ref, (list, tuple)):
@@ -439,7 +470,7 @@ def _constraint_args(entry, new):
             # The origin is the root point, whether written "origin" or ["origin"]
             args += [-1, 1]
             continue
-        args.append(_geo_index(ref[0], new))
+        args.append(_geo_index(ref[0], new, ext))
         if len(ref) > 1:
             pos = ref[1]
             args.append(POSITIONS[pos.lower()] if isinstance(pos, str) else int(pos))
@@ -447,6 +478,23 @@ def _constraint_args(entry, new):
         value = float(entry["value"])
         args.append(math.radians(value) if entry.get("type") == "Angle" else value)
     return args
+
+
+def _external_count(sketch):
+    return sum(len(subs) for _, subs in sketch.ExternalGeometry)
+
+
+def _evaluate(sketch, expression):
+    """An expression's value in mm or degrees, as the starting value of its constraint."""
+
+    try:
+        value = sketch.evalExpression(expression)
+    except Exception as error:
+        raise ToolError(
+            f"The expression '{expression}' could not be worked out ({error}). Check the "
+            "names it uses, or give a starting value as well."
+        ) from None
+    return float(getattr(value, "Value", value))
 
 
 def _sketch(doc, name):
@@ -478,9 +526,21 @@ def _solver(sketch):
     "DistanceX, DistanceY, Radius, Diameter, Angle or Block; refs are [geo] or [geo, pos] "
     "with pos start, end or center, geo an index, newN, H or V (the axes), or 'origin'. "
     "For example a 20 mm wide rectangle is DistanceX {refs: [[new0, start], [new0, end]], "
-    "value: 20}. Returns the new indices and the degrees of freedom left.",
+    "value: 20}. Fully constrain every sketch, and tie positions to the part rather than "
+    "to fixed numbers from the origin: external lists edges of other features to project "
+    "in (Pad:Edge3), which become the sketch's ext0, ext1, ... for refs in this or any "
+    "later call (get_sketch lists them with their ends), so a hole can be dimensioned from "
+    "the plate's edge; and a constraint's expression (e.g. 'Constraints.Width / 2', or "
+    "'Sketch.Constraints.Width - 12' from another sketch, naming constraints by name) "
+    "keeps it in step with other dimensions. Returns the new indices and the degrees of "
+    "freedom left.",
     {
         "sketch": {"type": "string"},
+        "external": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Edges or vertices of other features to project in, as Object:EdgeN.",
+        },
         "geometry": {"type": "array", "items": {"type": "object"}},
         "constraints": {"type": "array", "items": {"type": "object"}},
         **DOCUMENT_ARG,
@@ -489,14 +549,25 @@ def _solver(sketch):
     required=("sketch",),
     readonly=False,
 )
-def sketch_add(sketch, geometry=None, constraints=None, document=None, keep_on_error=False):
+def sketch_add(
+    sketch, geometry=None, constraints=None, external=None, document=None, keep_on_error=False
+):
     import Sketcher
 
     doc = _document(document)
     target = _sketch(doc, sketch)
 
     def add():
-        new, added = [], []
+        new, added, projected = [], [], []
+        for text in external or []:
+            obj, sub = _element(doc, text)
+            if not sub:
+                raise ToolError(f"Name an edge or vertex to project, e.g. {obj.Name}:Edge3")
+            projected.append(f"ext{_external_count(target)}")
+            target.addExternal(obj.Name, sub)
+        # extN is the sketch's Nth projected edge, from this call or an earlier one; they
+        # are numbered -3, -4, ... after the two axes
+        ext = [-3 - i for i in range(_external_count(target))]
         for item in geometry or []:
             parts, shape_constraints = _geometry(item)
             first = None
@@ -510,14 +581,26 @@ def sketch_add(sketch, geometry=None, constraints=None, document=None, keep_on_e
                 added.append(target.addConstraint(Sketcher.Constraint(kind, *shifted)))
         for entry in constraints or []:
             kind = entry.get("type")
+            expression = entry.get("expression")
+            if expression and "value" not in entry:
+                entry = dict(entry, value=_evaluate(target, expression))
             try:
-                index = target.addConstraint(Sketcher.Constraint(kind, *_constraint_args(entry, new)))
+                index = target.addConstraint(
+                    Sketcher.Constraint(kind, *_constraint_args(entry, new, ext))
+                )
             except (TypeError, ValueError, RuntimeError) as error:
                 raise ToolError(f"Constraint {entry} could not be made: {error}") from None
             if entry.get("name"):
                 target.renameConstraint(index, entry["name"])
+            if expression:
+                target.setExpression(f"Constraints[{index}]", expression)
             added.append(index)
-        return {"sketch": target.Name, "geometry": new, "constraints": added}
+        return {
+            "sketch": target.Name,
+            "geometry": new,
+            "external": projected,
+            "constraints": added,
+        }
 
     return change(doc, "Sketch add", add, keep_on_error, summary=lambda: _solver(target))
 
@@ -650,7 +733,18 @@ def _extrude(kind, profile, length, type, reversed, symmetric, up_to_face, label
         sketch.Visibility = False
         return {"feature": feature.Name, "body": body.Name}
 
-    return change(doc, kind, make, keep_on_error, verify=verify)
+    def summary():
+        if sketch.DoF > 0:
+            return {
+                "warnings": [
+                    f"{sketch.Label} is not fully constrained ({sketch.DoF} degrees of freedom "
+                    "left), so its shape can drift when other values change. Constrain it "
+                    "with sketch_add."
+                ]
+            }
+        return {}
+
+    return change(doc, kind, make, keep_on_error, summary=summary, verify=verify)
 
 
 @tool(
@@ -867,6 +961,46 @@ def delete_object(name, document=None, keep_on_error=False):
         return {"deleted_object": target}
 
     return change(doc, "Delete", delete, keep_on_error)
+
+
+@tool(
+    "new_document",
+    "Make a new, empty document and make it the active one.",
+    {"name": {"type": "string", "description": "Document name (default Unnamed)."}},
+    readonly=False,
+)
+def new_document(name=None):
+    _check_ready()
+    doc = FreeCAD.newDocument(name or "Unnamed")
+    FreeCAD.setActiveDocument(doc.Name)
+    try:
+        import FreeCADGui
+
+        FreeCADGui.ActiveDocument = FreeCADGui.getDocument(doc.Name)
+    except Exception:
+        pass
+    return {"document": doc.Name, "label": doc.Label}
+
+
+@tool(
+    "save_document",
+    "Save a document to its file, or to path (an .FCStd file) to save it somewhere new. "
+    "A document never saved needs a path; ask the user where it should go.",
+    {"path": {"type": "string"}, **DOCUMENT_ARG},
+    readonly=False,
+    destructive=True,
+)
+def save_document(path=None, document=None):
+    doc = _document(document)
+    if path:
+        if not path.lower().endswith(".fcstd"):
+            path += ".FCStd"
+        doc.saveAs(path)
+    elif doc.FileName:
+        doc.save()
+    else:
+        raise ToolError(f"{doc.Name} has never been saved, so it needs a path")
+    return {"document": doc.Name, "file": doc.FileName}
 
 
 def _history(doc):

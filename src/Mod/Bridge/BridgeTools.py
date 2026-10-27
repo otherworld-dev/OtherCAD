@@ -436,12 +436,12 @@ def _edge_entry(index, edge):
         "length": _round(edge.Length),
         "center": _vector(edge.CenterOfMass),
     }
-    if entry["curve"] == "Line":
-        start, end = edge.Vertexes[0].Point, edge.Vertexes[-1].Point
+    start, end = edge.Vertexes[0].Point, edge.Vertexes[-1].Point
+    # Straight whatever its curve type: a hole's seam is often a straight B-spline
+    if edge.Length > 0 and abs((end - start).Length - edge.Length) < 1e-6:
         entry["start"] = _vector(start)
         entry["end"] = _vector(end)
-        if edge.Length > 0:
-            entry["direction"] = _vector((end - start).normalize())
+        entry["direction"] = _vector((end - start).normalize())
     elif hasattr(curve, "Radius"):
         entry["radius"] = _round(curve.Radius)
         if hasattr(curve, "Axis"):
@@ -454,7 +454,8 @@ def _edge_entry(index, edge):
     "Describe an object's edges so they can be picked for a fillet or chamfer: curve type, "
     "length, centre, and the direction of straight edges or the radius of round ones. "
     "of_face keeps only the edges bounding that face, e.g. of_face=Face6 for the rim of "
-    "the top face.",
+    "the top face. Seams, the lines where a round face such as a hole's wall closes on "
+    "itself, are not real edges of the part and are left out unless include_seams.",
     {
         "name": {"type": "string", "description": "Object name or label."},
         "of_face": {"type": "string", "description": "Only edges of this face, e.g. Face6."},
@@ -463,14 +464,31 @@ def _edge_entry(index, edge):
             "description": "Only straight edges along this axis either way: X, Y, Z or [x, y, z].",
             "anyOf": [{"type": "string"}, {"type": "array", "items": {"type": "number"}}],
         },
+        "include_seams": {"type": "boolean", "description": "List seam edges too, marked seam."},
         "limit": {"type": "integer", "description": "At most this many edges (default 100)."},
         **DOCUMENT_ARG,
     },
     required=("name",),
 )
-def describe_edges(name, of_face=None, curve=None, direction=None, limit=100, document=None):
+def describe_edges(
+    name,
+    of_face=None,
+    curve=None,
+    direction=None,
+    include_seams=False,
+    limit=100,
+    document=None,
+):
     shape = _shape(_object(_document(document), name))
     edges = list(enumerate(shape.Edges, 1))
+    # A seam bounds a single face, which meets itself along it
+    seams = {
+        i
+        for i, edge in edges
+        if len([f for f in shape.Faces if any(edge.isSame(e) for e in f.Edges)]) == 1
+    }
+    if not include_seams:
+        edges = [(i, e) for i, e in edges if i not in seams]
     if of_face:
         try:
             face = shape.getElement(of_face)
@@ -478,6 +496,9 @@ def describe_edges(name, of_face=None, curve=None, direction=None, limit=100, do
             raise ToolError(f"{name} has no {of_face}") from None
         edges = [(i, e) for i, e in edges if any(e.isSame(f) for f in face.Edges)]
     entries = [_edge_entry(i, e) for i, e in edges]
+    for entry in entries:
+        if int(entry["edge"][4:]) in seams:
+            entry["seam"] = True
     if curve:
         entries = [e for e in entries if e["curve"].lower() == curve.lower()]
     if direction is not None:
@@ -497,7 +518,9 @@ def describe_edges(name, of_face=None, curve=None, direction=None, limit=100, do
 
 def _geometry_entry(sketch, index, geo):
     kind = geo.__class__.__name__
-    entry = {"index": index, "type": kind, "construction": bool(sketch.getConstruction(index))}
+    entry = {"index": index, "type": kind}
+    if index >= 0:
+        entry["construction"] = bool(sketch.getConstruction(index))
     if kind == "LineSegment":
         entry["start"] = _vector(geo.StartPoint)
         entry["end"] = _vector(geo.EndPoint)
@@ -536,7 +559,9 @@ def _constraint_entry(index, c):
     "A sketch's geometry, constraints and solver state: degrees of freedom left, and "
     "constraints that conflict, are redundant or malformed. Coordinates are in the "
     "sketch's own plane, in mm; angles in degrees. In refs, [geo, pos] uses pos 1 start, "
-    "2 end, 3 centre; geo -1 is the H axis, -2 the V axis.",
+    "2 end, 3 centre; geo -1 is the H axis, -2 the V axis, and -3, -4, ... the edges "
+    "projected from other features, listed under external as ext0, ext1, ... with where "
+    "they came from. A constraint driven by an expression shows it.",
     {"name": {"type": "string", "description": "Sketch name or label."}, **DOCUMENT_ARG},
     required=("name",),
 )
@@ -558,10 +583,40 @@ def get_sketch(name, document=None):
         "partially_redundant": list(sketch.PartiallyRedundantConstraints),
         "malformed": list(sketch.MalformedConstraints),
         "geometry": [_geometry_entry(sketch, i, g) for i, g in enumerate(sketch.Geometry)],
+        "external": _external_entries(sketch),
         "constraints": [_constraint_entry(i, c) for i, c in enumerate(sketch.Constraints)],
     }
+    _add_expressions(sketch, result["constraints"])
     result.update(_state(sketch))
     return result
+
+
+def _external_entries(sketch):
+    sources = [f"{obj.Name}:{sub}" for obj, subs in sketch.ExternalGeometry for sub in subs]
+    # ExternalGeo starts with the two axes
+    entries = []
+    for i, geo in enumerate(list(sketch.ExternalGeo)[2:]):
+        entry = _geometry_entry(sketch, -3 - i, geo)
+        entry["ref"] = f"ext{i}"
+        if i < len(sources):
+            entry["source"] = sources[i]
+        entries.append(entry)
+    return entries
+
+
+def _add_expressions(sketch, constraints):
+    names = {c.get("name"): c for c in constraints if c.get("name")}
+    for path, expression in getattr(sketch, "ExpressionEngine", []):
+        key = path.lstrip(".")
+        if not key.startswith("Constraints"):
+            continue
+        key = key[len("Constraints") :]
+        if key.startswith("[") and key.endswith("]") and key[1:-1].isdigit():
+            target = constraints[int(key[1:-1])] if int(key[1:-1]) < len(constraints) else None
+        else:
+            target = names.get(key.lstrip("."))
+        if target is not None:
+            target["expression"] = expression
 
 
 # -- the GUI -----------------------------------------------------------------

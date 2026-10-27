@@ -18,10 +18,16 @@ done in this fork.
     measure shapes, find faces and edges by what they are (the top face, the vertical
     edges), read a sketch's constraints and degrees of freedom, see the selection and
     take screenshots.
-  - To change it, it can start sketches on a plane or face, add geometry and
-    constraints, change dimensions, pad, pocket, fillet and chamfer, set properties and
-    expressions, move the timeline's tip, delete, undo and redo, and run Python for
-    anything else.
+  - To change it, it can make and save documents, start sketches on a plane or face,
+    add geometry and constraints, change dimensions, pad, pocket, fillet and chamfer,
+    set properties and expressions, move the timeline's tip, delete, undo and redo, and
+    run Python for anything else.
+  - It is asked to fully constrain its sketches and to tie positions to the part rather
+    than to the origin. It can project other features' edges into a sketch and drive
+    dimensions with expressions, so a hole stays put relative to the edge when the part
+    is resized. A pad or pocket of a sketch that is not fully constrained comes with a
+    warning.
+  - The seam down a hole's wall is not offered as an edge to fillet.
   - Each change is one undo step named "Bridge: ...". A change that leaves the model
     in error is undone and the errors are reported back. So is a pad or pocket that adds
     or removes no material, with a hint to reverse it.

@@ -32,6 +32,9 @@ To run tests:
 import base64
 import json
 import math
+import os
+import shutil
+import tempfile
 import threading
 import time
 import unittest
@@ -300,6 +303,166 @@ class TestBridgeActions(BridgeCase):
             self._call("pad", {"profile": made["sketch"], "length": 2})
         self.assertIn("added no material", caught.exception.details["errors"][0]["error"])
         self.assertEqual(self.body.Tip, self.pad)
+
+    def test_a_hole_tied_to_the_plate_edges_follows_them(self):
+        doc = FreeCAD.newDocument("TestBridgeParametric")
+        try:
+
+            def call(name, arguments):
+                return BridgeTools.call(name, dict(arguments, document=doc.Name))
+
+            plate = call("new_sketch", {"on": "XY"})["sketch"]
+            call(
+                "sketch_add",
+                {
+                    "sketch": plate,
+                    "geometry": [{"type": "rectangle", "corner": [0, 0], "size": [20, 10]}],
+                    "constraints": [
+                        {
+                            "type": "DistanceX",
+                            "refs": [["new0", "start"], ["new0", "end"]],
+                            "value": 20,
+                            "name": "Width",
+                        },
+                        {
+                            "type": "DistanceY",
+                            "refs": [["new1", "start"], ["new1", "end"]],
+                            "value": 10,
+                            "name": "Depth",
+                        },
+                        {"type": "Coincident", "refs": [["new0", "start"], "origin"]},
+                    ],
+                },
+            )
+            pad = call("pad", {"profile": plate, "length": 5})["feature"]
+            top = call(
+                "describe_faces",
+                {"name": pad, "normal": "+Z", "sort_by": "z", "descending": True, "limit": 1},
+            )["faces"][0]["face"]
+            rim = call("describe_edges", {"name": pad, "of_face": top})["edges"]
+            right = max(rim, key=lambda e: e["center"][0])["edge"]
+            bottom = min(rim, key=lambda e: e["center"][1])["edge"]
+
+            holes = call("new_sketch", {"on": f"{pad}:{top}"})["sketch"]
+            # Projected in one call and used in the next, as a client does once it has
+            # looked at them
+            projected = call(
+                "sketch_add", {"sketch": holes, "external": [f"{pad}:{right}", f"{pad}:{bottom}"]}
+            )
+            self.assertEqual(projected["external"], ["ext0", "ext1"])
+            external = call("get_sketch", {"name": holes})["external"]
+            self.assertEqual([e["ref"] for e in external], ["ext0", "ext1"])
+            self.assertEqual([e["index"] for e in external], [-3, -4])
+            self.assertEqual(external[0]["source"], f"{pad}:{right}")
+            self.assertIn("start", external[0])
+            with self.assertRaises(BridgeTools.ToolError):
+                call(
+                    "sketch_add",
+                    {"sketch": holes, "constraints": [{"type": "Block", "refs": [["ext5"]]}]},
+                )
+            added = call(
+                "sketch_add",
+                {
+                    "sketch": holes,
+                    "geometry": [{"circle": {"center": [14, 6], "radius": 2}}],
+                    "constraints": [
+                        {"type": "Distance", "refs": [["new0", "center"], ["ext0"]], "value": 6},
+                        {"type": "Distance", "refs": [["new0", "center"], ["ext1"]], "value": 6},
+                        {
+                            "type": "Radius",
+                            "refs": [["new0"]],
+                            "expression": f"{plate}.Constraints.Depth / 5",
+                        },
+                    ],
+                },
+            )
+            self.assertEqual(added["external"], [])
+            self.assertEqual(added["dof"], 0)
+            radius = call("get_sketch", {"name": holes})["constraints"][-1]
+            self.assertEqual(radius["expression"], f"{plate}.Constraints.Depth / 5")
+
+            pocket = call("pocket", {"profile": holes, "type": "ThroughAll"})["feature"]
+
+            def hole():
+                return call("describe_faces", {"name": pocket, "surface": "Cylinder"})["faces"][0]
+
+            self.assertAlmostEqual(hole()["center"][0], 14.0, places=4)
+            self.assertAlmostEqual(hole()["radius"], 2.0, places=4)
+
+            # Wider and deeper: the hole keeps 6 mm from the right edge and grows with Depth
+            call("sketch_set_value", {"sketch": plate, "constraint": "Width", "value": 30})
+            call("sketch_set_value", {"sketch": plate, "constraint": "Depth", "value": 15})
+            self.assertAlmostEqual(hole()["center"][0], 24.0, places=4)
+            self.assertAlmostEqual(hole()["center"][1], 6.0, places=4)
+            self.assertAlmostEqual(hole()["radius"], 3.0, places=4)
+        finally:
+            FreeCAD.closeDocument(doc.Name)
+
+    def test_a_pad_of_a_loose_sketch_is_kept_with_a_warning(self):
+        made = self._call("new_sketch", {"on": "XY"})
+        self._call(
+            "sketch_add",
+            {
+                "sketch": made["sketch"],
+                "geometry": [{"type": "circle", "center": [5, 3], "radius": 1}],
+            },
+        )
+        padded = self._call("pad", {"profile": made["sketch"], "length": 6})
+        self.assertFalse(padded["rolled_back"])
+        self.assertIn("not fully constrained", padded["warnings"][0])
+
+    def test_geometry_without_a_type_is_explained_or_understood(self):
+        added = self._call(
+            "sketch_add",
+            {"sketch": "Sketch", "geometry": [{"circle": {"center": [5, 3], "radius": 1}}]},
+        )
+        self.assertEqual(self.sketch.Geometry[added["geometry"][0]].Radius, 1.0)
+        with self.assertRaises(BridgeTools.ToolError) as caught:
+            self._call("sketch_add", {"sketch": "Sketch", "geometry": [{"center": [5, 3]}]})
+        self.assertIn('"type"', str(caught.exception))
+        with self.assertRaises(BridgeTools.ToolError) as caught:
+            self._call(
+                "sketch_add",
+                {"sketch": "Sketch", "geometry": [{"type": "circle", "center": [5, 3]}]},
+            )
+        self.assertIn("radius", str(caught.exception))
+
+    def test_hole_seams_are_not_offered_as_edges(self):
+        made = self._call("new_sketch", {"on": "XY"})
+        self._call(
+            "sketch_add",
+            {
+                "sketch": made["sketch"],
+                "geometry": [{"type": "circle", "center": [5, 3], "radius": 1}],
+            },
+        )
+        pocket = self._call(
+            "pocket", {"profile": made["sketch"], "type": "ThroughAll", "symmetric": True}
+        )["feature"]
+        vertical = self._call("describe_edges", {"name": pocket, "direction": "Z"})
+        self.assertEqual(vertical["matched"], 4)
+        everything = self._call(
+            "describe_edges", {"name": pocket, "direction": "Z", "include_seams": True}
+        )
+        self.assertEqual(everything["matched"], 5)
+        self.assertEqual(sum(1 for e in everything["edges"] if e.get("seam")), 1)
+
+    def test_documents_are_made_and_saved(self):
+        folder = tempfile.mkdtemp(prefix="TestBridge")
+        made = BridgeTools.call("new_document", {"name": "TestBridgeNew"})
+        name = made["document"]
+        try:
+            self.assertEqual(FreeCAD.ActiveDocument.Name, name)
+            with self.assertRaises(BridgeTools.ToolError):
+                BridgeTools.call("save_document", {"document": name})
+            saved = BridgeTools.call(
+                "save_document", {"document": name, "path": os.path.join(folder, "part")}
+            )
+            self.assertTrue(saved["file"].endswith("part.FCStd"))
+            self.assertTrue(os.path.exists(saved["file"]))
+        finally:
+            FreeCAD.closeDocument(name)
+            shutil.rmtree(folder, ignore_errors=True)
 
     def test_the_origin_ref_can_be_written_as_a_list(self):
         added = self._call(
