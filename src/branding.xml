@@ -13,7 +13,7 @@
     <!-- The wordmark is part of the artwork, so only the version is painted on the splash. -->
     <SplashTitleInImage>true</SplashTitleInImage>
     <SplashInfoPosition>52,258</SplashInfoPosition>
-    <SplashInfoColor>#7C98A1</SplashInfoColor>
-    <SplashTextColor>#F0A202</SplashTextColor>
+    <SplashInfoColor>#8A97A3</SplashInfoColor>
+    <SplashTextColor>#22D3C4</SplashTextColor>
     <SplashWarningColor>#CA333B</SplashWarningColor>
 </Branding>

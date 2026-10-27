@@ -225,11 +225,11 @@ int main(int argc, char** argv)
     App::Application::Config()["StartWorkbench"] = "PartDesignWorkbench";
     // App::Application::Config()["HiddenDockWindow"] = "Property editor";
     App::Application::Config()["SplashAlignment"] = "Bottom|Left";
-    App::Application::Config()["SplashTextColor"] = "#F0A202";
+    App::Application::Config()["SplashTextColor"] = "#22D3C4";
     App::Application::Config()["SplashWarningColor"] = "#CA333B";
     // The wordmark is part of the splash artwork, so only the version is painted on it.
     App::Application::Config()["SplashTitleInImage"] = "true";
-    App::Application::Config()["SplashInfoColor"] = "#7C98A1";
+    App::Application::Config()["SplashInfoColor"] = "#8A97A3";
     App::Application::Config()["SplashInfoPosition"] = "52,258";
     App::Application::Config()["DesktopFileName"] = "dev.otherworld.OtherCAD";
 

@@ -3,16 +3,17 @@
 
 """Single source of truth for the OtherCAD visual identity.
 
-The palette and the geometry of the OtherCAD mark are defined here once and are
+The palette and the geometry of the OtherCAD icon are defined here once and are
 consumed by ``generate_brand_assets.py`` to emit every logo, icon, splash and
 packaging graphic in the repository. Nothing else should hard-code brand
-colours or redraw the mark.
+colours or redraw the icon.
 
-The mark is a padded "O": a ring sketched on an isometric plane and pushed
-straight up out of it, the operation every parametric CAD model starts with.
-The top face reads as the letter, the walls give it the depth and the accent
-colour, and the sketch plane it rises from shows underneath and through the
-middle of the ring.
+OtherCAD belongs to Otherworld Dev's Other family, so it follows the family
+brand sheet: a night tile, the teal portal ring every family icon shares, and
+one paper-white glyph inside it with at most one small glow accent. The
+OtherCAD glyph is an isometric cube drawn as a line sketch, with a glow profile
+sketched on its top face: the sketch-then-pad step every parametric model
+starts with. The wordmark sets "Other" in a light weight and "CAD" in bold teal.
 """
 
 import math
@@ -24,19 +25,18 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 # --------------------------------------------------------------------------
-# Palette
+# Palette: the Other family brand sheet
 # --------------------------------------------------------------------------
 
-INK = (7, 31, 39)  # near-black teal, text on light surfaces
-STEEL_DEEP = (8, 45, 56)  # darkest plate tone
-STEEL = (11, 61, 74)  # primary
-STEEL_LIT = (18, 82, 95)  # lightest plate tone
-BENCH_LIT = (16, 52, 68)  # bright end of the workbench backdrop
-BENCH_DEEP = (4, 18, 26)  # dark end of the workbench backdrop
-AMBER = (240, 162, 2)  # accent
-AMBER_LIT = (255, 194, 77)  # accent highlight
-PAPER = (242, 247, 248)  # near-white
-MIST = (124, 152, 161)  # cool grey, secondary text
+NIGHT = (10, 15, 22)  # #0A0F16, backgrounds and the dark end of the tile
+NIGHT_LIT = (18, 32, 43)  # #12202B, the lit centre of the tile
+INK = (10, 17, 24)  # #0A1118, text on light surfaces
+TEAL = (34, 211, 196)  # #22D3C4, the portal ring and the wordmark suffix
+GLOW = (94, 234, 212)  # #5EEAD4, the single accent inside a glyph
+MINT = (155, 232, 222)  # #9BE8DE
+PAPER = (242, 239, 230)  # #F2EFE6, glyphs and text on dark surfaces
+DEEP_TEAL = (13, 148, 136)  # #0D9488, teal on light backgrounds
+MUTED = (138, 151, 163)  # #8A97A3, secondary text
 
 TAGLINE = "PARAMETRIC 3D MODELING"
 
@@ -52,169 +52,184 @@ def rgba(rgb, alpha=255):
 
 
 # --------------------------------------------------------------------------
-# Mark geometry: the letter is sketched on an isometric plane and padded up.
-# Sketch coordinates live in a 48 unit design box with y pointing down the
-# page; the projection below lays that page flat and views it from the front.
+# Icon geometry, in the family's 512 unit tile
 # --------------------------------------------------------------------------
 
-# The ring of the letter as drawn on the sketch plane: centre and radii.
-RING_CENTRE = (22.0, 24.0)
-RING_OUTER = 13.0
-RING_INNER = 6.5
+TILE = 512.0
+TILE_RADIUS = 112.0
 
-# Straight segments each circle is drawn with. Fine enough to read as round
-# on the splash, coarse enough to keep the vector masters small.
-RING_SEGMENTS = 96
+# The tile's radial gradient runs from NIGHT_LIT at this point out to NIGHT.
+TILE_GLOW_CENTRE = (256.0, 0.42 * TILE)
+TILE_GLOW_RADIUS = 0.65 * TILE
 
-# The square of sketch plane the ring sits on, in the same coordinates.
-SKETCH_PLANE = ((6.0, 8.0), (38.0, 8.0), (38.0, 40.0), (6.0, 40.0))
+# The portal ring, the same on every family icon, and its soft glow.
+RING_CENTRE = (256.0, 256.0)
+RING_RADIUS = 178.0
+RING_WIDTH = 20.0
+RING_GLOW_WIDTH = 44.0
+RING_GLOW_OPACITY = 0.14
 
-# How far the ring is padded up out of the plane, in screen units.
-PAD_HEIGHT = 8.5
+# The cube glyph: a pointy-topped hexagon with the three edges that meet at the
+# near top corner. It stays inside the brand sheet's 120 unit glyph circle.
+GLYPH_WIDTH = 24.0
+_CUBE_R = 104.0
+_CUBE_X = _CUBE_R * math.cos(math.radians(30.0))
+_CUBE_Y = _CUBE_R * math.sin(math.radians(30.0))
+CUBE_TOP = (256.0, 256.0 - _CUBE_R)
+CUBE_CENTRE = (256.0, 256.0)
+CUBE_OUTLINE = [
+    CUBE_TOP,
+    (256.0 + _CUBE_X, 256.0 - _CUBE_Y),
+    (256.0 + _CUBE_X, 256.0 + _CUBE_Y),
+    (256.0, 256.0 + _CUBE_R),
+    (256.0 - _CUBE_X, 256.0 + _CUBE_Y),
+    (256.0 - _CUBE_X, 256.0 - _CUBE_Y),
+]
+CUBE_EDGES = [
+    [CUBE_OUTLINE[5], CUBE_CENTRE, CUBE_OUTLINE[1]],
+    [CUBE_CENTRE, CUBE_OUTLINE[3]],
+]
 
-# Width of the sketch plane's outline, in screen units.
-PLANE_LINE = 0.9
 
-_COS30 = math.cos(math.radians(30.0))
-_SIN30 = math.sin(math.radians(30.0))
+def _top_face_profile(scale=0.5):
+    """The glow accent: the top face, shrunk about its own centre."""
+    face = [CUBE_TOP, CUBE_OUTLINE[1], CUBE_CENTRE, CUBE_OUTLINE[5]]
+    cx = sum(x for x, _ in face) / 4.0
+    cy = sum(y for _, y in face) / 4.0
+    return [(cx + (x - cx) * scale, cy + (y - cy) * scale) for x, y in face]
 
 
-def _project(point):
-    """Map a sketch-plane point onto the screen.
+CUBE_PROFILE = _top_face_profile()
 
-    Sketch x runs down and to the right, sketch y runs down and to the left, so
-    the page appears to lie flat with its top edge furthest from the viewer.
+
+def glyph_primitives(line, accent, ring=None, ring_glow=None):
+    """Return the drawing primitives of the icon, without its tile.
+
+    Each primitive is ``("ring", centre, radius, width, colour)``,
+    ``("path", points, width, colour, closed)`` or ``("fill", points, colour)``,
+    in the 512 unit tile space, back to front. The ring is left out when no
+    colour is given for it.
     """
-    x, y = point
-    return ((x - y) * _COS30, (x + y) * _SIN30)
-
-
-def _circle(radius, start=0.0, end=2.0 * math.pi, segments=RING_SEGMENTS):
-    """Return points on a ring circle, projected, running clockwise from ``start``.
-
-    Angles grow clockwise because sketch y points down the page. The arc keeps
-    the spacing of a full circle drawn with ``segments`` steps.
-    """
-    steps = max(1, round((end - start) / (2.0 * math.pi) * segments))
-    cx, cy = RING_CENTRE
-    points = []
-    for step in range(steps + 1):
-        angle = start + (end - start) * step / steps
-        points.append(_project((cx + radius * math.cos(angle), cy + radius * math.sin(angle))))
-    return points
-
-
-def _walls(points, height, visible, lit):
-    """Return the wall quads hanging ``height`` below the edges that ``visible`` keeps.
-
-    Each quad is tagged with whether ``lit`` says it faces the light. Walls come
-    back sorted far to near, so painting them in order gives the right overlaps.
-    """
-    walls = []
-    for p1, p2 in zip(points, points[1:]):
-        dx, dy = p2[0] - p1[0], p2[1] - p1[1]
-        if not visible(dx):
-            continue
-        quad = [p1, p2, (p2[0], p2[1] + height), (p1[0], p1[1] + height)]
-        walls.append((quad, lit(dy)))
-    walls.sort(key=lambda wall: max(y for _, y in wall[0]))
-    return walls
-
-
-def _pad_faces(height):
-    """Return the top face of the padded ring and the walls that face the viewer.
-
-    The walls hang straight down from the projected circles. Round the outside,
-    only the near half shows: the edges whose projection runs leftwards. Inside
-    the hole it is the other way round, and the far half of the inner wall shows
-    above the patch of sketch plane at the bottom of the hole. That inner wall
-    hangs past the hole, so it is painted first: the outer walls and the top
-    face then cover everything of it that should be hidden, and nothing needs
-    clipping.
-
-    The top face has a hole, which flat polygon fills cannot draw, so it comes
-    back as two half rings that overlap by one segment and leave no seam.
-    """
-    outer = _circle(RING_OUTER)
-    inner = _circle(RING_INNER)
-    outer_walls = _walls(outer, height, lambda dx: dx < 0, lambda dy: dy > 0)
-    inner_walls = _walls(inner, height, lambda dx: dx > 0, lambda dy: dy < 0)
-
-    overlap = 2.0 * math.pi / RING_SEGMENTS
-    halves = []
-    for start in (0.0, math.pi):
-        arc = (start - overlap, start + math.pi + overlap)
-        halves.append(_circle(RING_OUTER, *arc) + _circle(RING_INNER, *arc)[::-1])
-    return outer, halves, outer_walls, inner_walls
-
-
-PAD_OUTLINE, PAD_TOP, PAD_WALLS, PAD_INNER_WALLS = _pad_faces(PAD_HEIGHT)
-PLANE_OUTLINE = [(x, y + PAD_HEIGHT) for x, y in map(_project, SKETCH_PLANE)]
-
-
-def _bounds(polygons):
-    xs = [x for polygon in polygons for x, _ in polygon]
-    ys = [y for polygon in polygons for _, y in polygon]
-    return min(xs), min(ys), max(xs), max(ys)
-
-
-MARK_BOUNDS = _bounds([PLANE_OUTLINE] + [quad for quad, _ in PAD_WALLS] + [PAD_OUTLINE])
-MARK_ASPECT = (MARK_BOUNDS[2] - MARK_BOUNDS[0]) / (MARK_BOUNDS[3] - MARK_BOUNDS[1])
-
-
-def _edge_bands(polygon, width):
-    """Return thin quads tracing each edge of ``polygon``: a stroke built from fills.
-
-    Renderers here only fill polygons, so an outline is drawn as one band per edge.
-    Each band runs half a width past its corners so neighbours meet without a notch.
-    """
-    bands = []
-    count = len(polygon)
-    for index in range(count):
-        (x1, y1), (x2, y2) = polygon[index], polygon[(index + 1) % count]
-        length = math.hypot(x2 - x1, y2 - y1)
-        along = ((x2 - x1) / length * width / 2, (y2 - y1) / length * width / 2)
-        across = (-along[1], along[0])
-        start = (x1 - along[0], y1 - along[1])
-        end = (x2 + along[0], y2 + along[1])
-        bands.append(
-            [
-                (start[0] + across[0], start[1] + across[1]),
-                (end[0] + across[0], end[1] + across[1]),
-                (end[0] - across[0], end[1] - across[1]),
-                (start[0] - across[0], start[1] - across[1]),
-            ]
-        )
-    return bands
-
-
-def mark_polygons(box, face, lit, shade, plane_line=None, plane_fill=None):
-    """Return ``(points, colour)`` pairs for the mark fitted into ``box``.
-
-    ``box`` is ``(x, y, width, height)``; the mark keeps its aspect ratio and is
-    centred inside it. Shapes are returned back to front, so painting them in
-    order produces the correct silhouette: the sketch plane first (only when a
-    colour is given for its fill or outline), then the inner and outer walls,
-    then the top face that carries the letter.
-    """
-    x, y, width, height = box
-    min_x, min_y, max_x, max_y = MARK_BOUNDS
-    scale = min(width / (max_x - min_x), height / (max_y - min_y))
-    offset_x = x + (width - (max_x - min_x) * scale) / 2 - min_x * scale
-    offset_y = y + (height - (max_y - min_y) * scale) / 2 - min_y * scale
-
-    def place(polygon):
-        return [(px * scale + offset_x, py * scale + offset_y) for px, py in polygon]
-
     shapes = []
-    if plane_fill is not None:
-        shapes.append((place(PLANE_OUTLINE), plane_fill))
-    if plane_line is not None:
-        shapes += [(place(band), plane_line) for band in _edge_bands(PLANE_OUTLINE, PLANE_LINE)]
-    for walls in (PAD_INNER_WALLS, PAD_WALLS):
-        shapes += [(place(quad), lit if is_lit else shade) for quad, is_lit in walls]
-    shapes += [(place(half), face) for half in PAD_TOP]
+    if ring_glow is not None:
+        shapes.append(("ring", RING_CENTRE, RING_RADIUS, RING_GLOW_WIDTH, ring_glow))
+    if ring is not None:
+        shapes.append(("ring", RING_CENTRE, RING_RADIUS, RING_WIDTH, ring))
+    shapes.append(("path", CUBE_OUTLINE, GLYPH_WIDTH, line, True))
+    for edge in CUBE_EDGES:
+        shapes.append(("path", edge, GLYPH_WIDTH, line, False))
+    shapes.append(("fill", CUBE_PROFILE, accent))
     return shapes
+
+
+def icon_primitives():
+    """The full-colour glyph and ring as they sit on the night tile."""
+    glow_alpha = round(255 * RING_GLOW_OPACITY)
+    return glyph_primitives(
+        rgba(PAPER), rgba(GLOW), ring=rgba(TEAL), ring_glow=rgba(TEAL, glow_alpha)
+    )
+
+
+def render_primitives(size, shapes, box=None, supersample=None):
+    """Draw primitives into a transparent RGBA image of ``size``.
+
+    ``box`` is ``(x, y, side)``: where the 512 unit tile lands, in pixels. By
+    default the tile fills a square image.
+    """
+    width, height = size
+    if box is None:
+        box = (0.0, 0.0, float(min(width, height)))
+    if supersample is None:
+        supersample = 8 if box[2] < 96 else SUPERSAMPLE
+    x0, y0, side = box
+    scale = side / TILE * supersample
+
+    def place(point):
+        return (x0 * supersample + point[0] * scale, y0 * supersample + point[1] * scale)
+
+    canvas = Image.new("RGBA", (width * supersample, height * supersample), (0, 0, 0, 0))
+    for shape in shapes:
+        # Each shape gets its own layer so translucent colours composite over
+        # what is underneath instead of replacing it.
+        layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(layer)
+        kind = shape[0]
+        if kind == "ring":
+            _, centre, radius, stroke, colour = shape
+            cx, cy = place(centre)
+            outer = (radius + stroke / 2.0) * scale
+            draw.ellipse(
+                (cx - outer, cy - outer, cx + outer, cy + outer),
+                outline=colour,
+                width=max(1, round(stroke * scale)),
+            )
+        elif kind == "path":
+            _, points, stroke, colour, closed = shape
+            placed = [place(point) for point in points]
+            if closed:
+                placed = placed + placed[:2]
+            pixels = max(1, round(stroke * scale))
+            draw.line(placed, fill=colour, width=pixels, joint="curve")
+            cap = pixels / 2.0
+            for px, py in placed:
+                draw.ellipse((px - cap, py - cap, px + cap, py + cap), fill=colour)
+        else:
+            _, points, colour = shape
+            draw.polygon([place(point) for point in points], fill=colour)
+        canvas.alpha_composite(layer)
+    return canvas.resize((width, height), Image.LANCZOS)
+
+
+def svg_primitives(shapes, indent="  "):
+    """Return SVG elements for drawing primitives, in tile units."""
+    lines = []
+    for shape in shapes:
+        kind = shape[0]
+        if kind == "ring":
+            _, (cx, cy), radius, stroke, colour = shape
+            lines.append(
+                f'{indent}<circle cx="{cx:g}" cy="{cy:g}" r="{radius:g}" fill="none" '
+                f'{svg_stroke(colour)} stroke-width="{stroke:g}"/>'
+            )
+        elif kind == "path":
+            _, points, stroke, colour, closed = shape
+            data = " ".join(
+                ("M" if index == 0 else "L") + f"{x:.1f} {y:.1f}"
+                for index, (x, y) in enumerate(points)
+            )
+            if closed:
+                data += " Z"
+            lines.append(
+                f'{indent}<path d="{data}" fill="none" {svg_stroke(colour)} '
+                f'stroke-width="{stroke:g}" stroke-linecap="round" stroke-linejoin="round"/>'
+            )
+        else:
+            _, points, colour = shape
+            lines.append(f'{indent}<path d="{svg_path(points)}" {svg_fill(colour)}/>')
+    return "\n".join(lines)
+
+
+def tile_background(size):
+    """Return the night tile: a radial gradient inside a rounded square."""
+    ys, xs = np.mgrid[0:size, 0:size].astype(np.float32) + 0.5
+    unit = size / TILE
+    distance = np.hypot(xs - TILE_GLOW_CENTRE[0] * unit, ys - TILE_GLOW_CENTRE[1] * unit)
+    ramp = np.clip(distance / (TILE_GLOW_RADIUS * unit), 0.0, 1.0)[:, :, None]
+    colours = np.array(NIGHT_LIT, np.float32) * (1.0 - ramp) + np.array(NIGHT, np.float32) * ramp
+    tile = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    tile.paste(
+        Image.fromarray(colours.astype(np.uint8), "RGB"),
+        (0, 0),
+        rounded_rect_mask((size, size), size * TILE_RADIUS / TILE),
+    )
+    return tile
+
+
+def app_icon(size):
+    """The OtherCAD application icon, rendered at ``size`` pixels square."""
+    canvas = tile_background(size)
+    canvas.alpha_composite(render_primitives((size, size), icon_primitives()))
+    return canvas
 
 
 # --------------------------------------------------------------------------
@@ -245,19 +260,6 @@ def rounded_rect_mask(size, radius, supersample=SUPERSAMPLE):
         (0, 0, width * supersample - 1, height * supersample - 1),
         radius=radius * supersample,
         fill=255,
-    )
-    return mask.resize((width, height), Image.LANCZOS)
-
-
-def rounded_rect_ring(size, radius, thickness, supersample=SUPERSAMPLE):
-    """Return an 8-bit mask holding the outline of a rounded rectangle."""
-    width, height = size
-    mask = Image.new("L", (width * supersample, height * supersample), 0)
-    ImageDraw.Draw(mask).rounded_rectangle(
-        (0, 0, width * supersample - 1, height * supersample - 1),
-        radius=radius * supersample,
-        outline=255,
-        width=max(1, int(thickness * supersample)),
     )
     return mask.resize((width, height), Image.LANCZOS)
 
@@ -316,11 +318,6 @@ def isometric_grid(size, spacing, colour, alpha, supersample=2):
     return layer.resize((width, height), Image.LANCZOS)
 
 
-def paste_shapes(base, size, shapes):
-    """Render polygons and alpha-composite them onto ``base`` in place."""
-    base.alpha_composite(render_polygons(size, shapes))
-
-
 # --------------------------------------------------------------------------
 # Type
 # --------------------------------------------------------------------------
@@ -333,12 +330,13 @@ _FONT_CANDIDATES = (
 )
 
 
-def load_font(pixels, weight="SemiBold"):
+def load_font(pixels, weight="Regular"):
     """Load the brand typeface at ``pixels`` em size.
 
     Bahnschrift is a DIN derivative and carries the technical-drawing feel the
-    brand is after; the other candidates are fallbacks for machines that do not
-    have it so the generator still runs.
+    product is after, and its weight axis gives the wordmark its light and bold
+    halves; the other candidates are fallbacks for machines that do not have it
+    so the generator still runs.
     """
     for path, variable in _FONT_CANDIDATES:
         if not Path(path).exists():
@@ -369,6 +367,33 @@ def draw_tracked(draw, position, text, font, fill, tracking=0.0, anchor="ls"):
     for character in text:
         draw.text((x, y), character, font=font, fill=fill, anchor="l" + anchor[1])
         x += font.getlength(character) + tracking
+    return x - position[0]
+
+
+# The family wordmark: "Other" in a light weight, then the product suffix in bold.
+WORDMARK_PARTS = ("Other", "CAD")
+WORDMARK_TRACKING = -0.01  # in ems, as on the brand sheet
+
+
+def wordmark_width(pixels):
+    """Return the advance width of the wordmark set at ``pixels``."""
+    tracking = pixels * WORDMARK_TRACKING
+    light, bold = load_font(pixels, "Light"), load_font(pixels, "Bold")
+    prefix, suffix = WORDMARK_PARTS
+    return tracked_width(light, prefix, tracking) + tracking + tracked_width(bold, suffix, tracking)
+
+
+def draw_wordmark(draw, position, pixels, prefix_colour, suffix_colour):
+    """Draw the wordmark with its baseline starting at ``position``; return its width.
+
+    On dark surfaces use PAPER and TEAL, on light ones INK and DEEP_TEAL.
+    """
+    tracking = pixels * WORDMARK_TRACKING
+    prefix, suffix = WORDMARK_PARTS
+    x, y = position
+    x += draw_tracked(draw, (x, y), prefix, load_font(pixels, "Light"), prefix_colour, tracking)
+    x += tracking
+    x += draw_tracked(draw, (x, y), suffix, load_font(pixels, "Bold"), suffix_colour, tracking)
     return x - position[0]
 
 
@@ -457,6 +482,14 @@ def svg_fill(colour):
     attributes = f'fill="{hex_of(colour)}"'
     if len(colour) > 3 and colour[3] < 255:
         attributes += f' fill-opacity="{colour[3] / 255:.3f}"'
+    return attributes
+
+
+def svg_stroke(colour):
+    """Return the stroke attributes for an RGB or RGBA colour."""
+    attributes = f'stroke="{hex_of(colour)}"'
+    if len(colour) > 3 and colour[3] < 255:
+        attributes += f' stroke-opacity="{colour[3] / 255:.3f}"'
     return attributes
 
 

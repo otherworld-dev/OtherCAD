@@ -59,8 +59,10 @@ done in this fork.
   numbered ahead of FreeCAD, which would have let addons that need FreeCAD 26.4 install.
   Settings are kept per version, so copy `v26-4` to `v26-3` in the OtherCAD settings
   folder to keep them.
-- FuCadUp is now OtherCAD. It has a new logo, a padded O in place of the F, and new
-  executable names (OtherCAD and OtherCADCmd). Settings now live in an OtherCAD folder, so
+- FuCadUp is now OtherCAD, one of Otherworld Dev's Other family of tools, and takes the
+  family's look: a night-blue icon with a teal ring round a sketched cube, a wordmark with
+  "CAD" in bold teal, and new splash, About, installer and file icons to match. It also
+  has new executable names (OtherCAD and OtherCADCmd). Settings now live in an OtherCAD folder, so
   nothing carries over from FuCadUp. The theme, stylesheets and icons that came from FuCad
   are renamed to match.
 - Extrude, Revolve, Hole, Sweep, Loft and Coil with nothing selected wait for a click

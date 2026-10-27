@@ -68,6 +68,11 @@ class TestOtherCADIdentity(unittest.TestCase):
         self.assertTrue(banner.startswith("OtherCAD is a fork of FreeCAD"), banner)
         self.assertIn("FuCad", banner)
 
+    def test_the_splash_text_uses_the_other_family_palette(self):
+        # Teal for messages and muted grey for the version, as on the family brand sheet.
+        self.assertEqual(FreeCAD.ConfigGet("SplashTextColor").upper(), "#22D3C4")
+        self.assertEqual(FreeCAD.ConfigGet("SplashInfoColor").upper(), "#8A97A3")
+
     def test_settings_live_in_an_othercad_folder(self):
         if any(os.environ.get(name) for name in ("FREECAD_USER_HOME", "FREECAD_USER_DATA")):
             self.skipTest("the settings folder is overridden by the environment")
