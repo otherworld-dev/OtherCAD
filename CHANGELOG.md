@@ -23,7 +23,8 @@ done in this fork.
     expressions, move the timeline's tip, delete, undo and redo, and run Python for
     anything else.
   - Each change is one undo step named "Bridge: ...". A change that leaves the model
-    in error is undone and the errors are reported back.
+    in error is undone and the errors are reported back. So is a pad or pocket that adds
+    or removes no material, with a hint to reverse it.
   - Changes wait while a task panel is open.
   - The ReadOnly and AllowPython preferences limit what clients may do.
 - Features can be suppressed from the timeline's right-click menu. A suppressed feature
