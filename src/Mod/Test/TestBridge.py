@@ -263,6 +263,55 @@ class TestBridgeActions(BridgeCase):
             tip.Shape.Volume, WIDTH * DEPTH * HEIGHT - math.pi * HEIGHT, places=3
         )
 
+    def test_a_pocket_that_cuts_nothing_is_undone_with_a_hint(self):
+        # From the XY plane at the bottom of the pad, a pocket cuts down, away from the
+        # solid: it builds without an error and removes nothing
+        made = self._call("new_sketch", {"on": "XY"})
+        self._call(
+            "sketch_add",
+            {
+                "sketch": made["sketch"],
+                "geometry": [{"type": "circle", "center": [5, 3], "radius": 1}],
+            },
+        )
+        with self.assertRaises(BridgeTools.ActionFailed) as caught:
+            self._call("pocket", {"profile": made["sketch"], "type": "ThroughAll"})
+        details = caught.exception.details
+        self.assertTrue(details["rolled_back"])
+        self.assertIn("reversed", details["errors"][0]["error"])
+        self.assertEqual(self.body.Tip, self.pad)
+        self.assertEqual([o for o in self.doc.Objects if o.TypeId == "PartDesign::Pocket"], [])
+
+        self._call("pocket", {"profile": made["sketch"], "type": "ThroughAll", "reversed": True})
+        self.assertAlmostEqual(
+            self.body.Tip.Shape.Volume, WIDTH * DEPTH * HEIGHT - math.pi * HEIGHT, places=3
+        )
+
+    def test_a_pad_inside_the_solid_is_undone(self):
+        made = self._call("new_sketch", {"on": "XY"})
+        self._call(
+            "sketch_add",
+            {
+                "sketch": made["sketch"],
+                "geometry": [{"type": "circle", "center": [5, 3], "radius": 1}],
+            },
+        )
+        with self.assertRaises(BridgeTools.ActionFailed) as caught:
+            self._call("pad", {"profile": made["sketch"], "length": 2})
+        self.assertIn("added no material", caught.exception.details["errors"][0]["error"])
+        self.assertEqual(self.body.Tip, self.pad)
+
+    def test_the_origin_ref_can_be_written_as_a_list(self):
+        added = self._call(
+            "sketch_add",
+            {
+                "sketch": "Sketch",
+                "constraints": [{"type": "Coincident", "refs": [[0, "start"], ["origin"]]}],
+            },
+        )
+        constraint = self.sketch.Constraints[added["constraints"][0]]
+        self.assertEqual((constraint.Second, constraint.SecondPos), (-1, 1))
+
     def test_a_sketch_goes_on_a_face_found_by_what_it_is(self):
         top = self._call(
             "describe_faces",
