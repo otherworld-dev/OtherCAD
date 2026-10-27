@@ -75,8 +75,8 @@ jobs:
               return;
             }
 
-            // If event is a normal release (not pre-release), skip automatically-run case;
-            // but allow manual override (manual runs can patch any weekly tag).
+            // Automatic runs only touch weekly pre-releases, so a full OtherCAD release is left alone.
+            // Manual runs can patch any weekly tag.
             const isManual = context.eventName === 'workflow_dispatch';
             if (!isManual && !curRel.prerelease) {
               core.info('Current release is not a pre-release; skipping (auto run).');
