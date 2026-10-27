@@ -25,9 +25,10 @@ cp -a ${conda_env}/Library/mingw-w64/bin/* ${copy_dir}/bin
 cp -a ${conda_env}/Library/share ${copy_dir}/share
 # get all the dependency .dlls
 cp -a ${conda_env}/Library/bin/*.dll ${copy_dir}/bin
-# Copy OtherCAD build. The conda package lowercases the executables (othercad.exe, othercadcmd.exe) and the
-# Python module keeps the FreeCAD name (FreeCAD.pyd); globs are case-sensitive here, so match both.
-cp -a ${conda_env}/Library/bin/othercad* ${copy_dir}/bin
+# Copy OtherCAD build. The conda package lowercases the executables (othercad.exe, othercadcmd.exe), a local
+# `pixi run install-release` leaves them as OtherCAD.exe and OtherCADCmd.exe, and the Python module keeps the
+# FreeCAD name (FreeCAD.pyd); globs are case-sensitive here, so match all of them.
+cp -a ${conda_env}/Library/bin/[Oo]ther[Cc][Aa][Dd]* ${copy_dir}/bin
 cp -a ${conda_env}/Library/bin/FreeCAD* ${copy_dir}/bin
 cp -a ${conda_env}/Library/data ${copy_dir}/data
 cp -a ${conda_env}/Library/Ext ${copy_dir}/Ext
