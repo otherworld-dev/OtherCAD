@@ -23,9 +23,18 @@ MAX_BODY = 4 * 1024 * 1024
 
 INSTRUCTIONS = (
     "You are connected to a running OtherCAD session (a FreeCAD fork with a Fusion-style "
-    "timeline). Read the model with get_document and get_timeline, inspect parts with "
-    "get_shape, describe_faces and get_sketch, and look at it with screenshot. Lengths "
-    "are in mm. get_selection shows what the user is pointing at."
+    "timeline) that the user is watching. Lengths are in mm, angles in degrees.\n"
+    "Look before you change: get_document and get_timeline for the model, get_shape, "
+    "describe_faces, describe_edges and get_sketch for the details, get_selection for "
+    "what the user is pointing at, and screenshot to see it.\n"
+    "To model: new_sketch on XY, XZ, YZ or a flat face found with describe_faces; "
+    "sketch_add a profile with its dimensions; get_sketch to check it is fully "
+    "constrained; then pad or pocket, and fillet or chamfer edges found with "
+    "describe_edges. Check the result with get_shape or a screenshot.\n"
+    "Every change is one undo step. If the model rebuilds with errors the change is "
+    "undone and the errors come back, so read them and try again. Use run_python for "
+    "anything the other tools do not cover. Do not undo the user's own changes unless "
+    "asked."
 )
 
 
@@ -83,9 +92,11 @@ def _tool_error(text):
 
 
 class Server:
-    def __init__(self, host="127.0.0.1", port=7720, token=""):
+    def __init__(self, host="127.0.0.1", port=7720, token="", read_only=False, allow_python=True):
         self.host = host
         self.token = token
+        self.read_only = read_only
+        self.allow_python = allow_python
         self.runner = MainThreadRunner()
         self.httpd = http.server.ThreadingHTTPServer((host, port), self._handler_class())
         self.httpd.daemon_threads = True
@@ -136,20 +147,29 @@ class Server:
         if method == "ping":
             return {"jsonrpc": "2.0", "id": msg_id, "result": {}}
         if method == "tools/list":
-            tools = [t.spec() for t in BridgeTools.TOOLS.values()]
+            tools = [t.spec() for t in BridgeTools.TOOLS.values() if self.offers(t.name)]
             return {"jsonrpc": "2.0", "id": msg_id, "result": {"tools": tools}}
         if method == "tools/call":
             name = params.get("name")
-            if name not in BridgeTools.TOOLS:
+            if name not in BridgeTools.TOOLS or not self.offers(name):
                 return _rpc_error(msg_id, -32602, f"Unknown tool '{name}'")
             arguments = params.get("arguments") or {}
             return {"jsonrpc": "2.0", "id": msg_id, "result": self.call_tool(name, arguments)}
         return _rpc_error(msg_id, -32601, f"Unknown method '{method}'")
 
+    def offers(self, name):
+        """Whether the preferences let clients use this tool."""
+
+        if name == "run_python" and not self.allow_python:
+            return False
+        return not (self.read_only and not BridgeTools.TOOLS[name].readonly)
+
     def call_tool(self, name, arguments):
         FreeCAD.Console.PrintLog(f"Bridge: {name} {json.dumps(arguments)}\n")
         try:
             return _tool_result(self.runner.call(lambda: BridgeTools.call(name, arguments)))
+        except BridgeTools.ActionFailed as error:
+            return _tool_error(f"{error}\n{json.dumps(error.details, indent=1)}")
         except BridgeTools.ToolError as error:
             return _tool_error(str(error))
         except Exception as error:

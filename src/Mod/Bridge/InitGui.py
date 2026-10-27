@@ -7,7 +7,7 @@ class BridgeToggleCommand:
     def GetResources(self):
         return {
             "MenuText": "LLM Bridge",
-            "ToolTip": "Let an LLM client read and look at the open "
+            "ToolTip": "Let an LLM client read, look at and change the open "
             "model through MCP, on this computer only",
         }
 

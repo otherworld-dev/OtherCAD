@@ -32,6 +32,14 @@ class ToolError(Exception):
     """A problem with the request that the caller can fix, such as an unknown object."""
 
 
+class ActionFailed(ToolError):
+    """A change that was undone, with the details of what went wrong."""
+
+    def __init__(self, message, details):
+        super().__init__(message)
+        self.details = details
+
+
 class Image:
     """A tool result that is a picture rather than JSON."""
 
@@ -41,19 +49,32 @@ class Image:
 
 
 class Tool:
-    def __init__(self, name, description, func, properties, required):
+    def __init__(self, name, description, func, properties, required, readonly, destructive):
         self.name = name
         self.description = description
         self.func = func
+        self.readonly = readonly
+        self.destructive = destructive
         self.schema = {"type": "object", "properties": properties, "required": list(required)}
 
     def spec(self):
-        return {"name": self.name, "description": self.description, "inputSchema": self.schema}
+        return {
+            "name": self.name,
+            "description": self.description,
+            "inputSchema": self.schema,
+            "annotations": {
+                "readOnlyHint": self.readonly,
+                "destructiveHint": self.destructive,
+                "openWorldHint": False,
+            },
+        }
 
 
-def tool(name, description, properties=None, required=()):
+def tool(name, description, properties=None, required=(), readonly=True, destructive=False):
     def register(func):
-        TOOLS[name] = Tool(name, description, func, properties or {}, required)
+        TOOLS[name] = Tool(
+            name, description, func, properties or {}, required, readonly, destructive
+        )
         return func
 
     return register
@@ -407,6 +428,70 @@ def describe_faces(
     return {"object": name, "matched": total, "faces": faces}
 
 
+def _edge_entry(index, edge):
+    curve = edge.Curve
+    entry = {
+        "edge": f"Edge{index}",
+        "curve": curve.__class__.__name__,
+        "length": _round(edge.Length),
+        "center": _vector(edge.CenterOfMass),
+    }
+    if entry["curve"] == "Line":
+        start, end = edge.Vertexes[0].Point, edge.Vertexes[-1].Point
+        entry["start"] = _vector(start)
+        entry["end"] = _vector(end)
+        if edge.Length > 0:
+            entry["direction"] = _vector((end - start).normalize())
+    elif hasattr(curve, "Radius"):
+        entry["radius"] = _round(curve.Radius)
+        if hasattr(curve, "Axis"):
+            entry["axis"] = _vector(curve.Axis)
+    return entry
+
+
+@tool(
+    "describe_edges",
+    "Describe an object's edges so they can be picked for a fillet or chamfer: curve type, "
+    "length, centre, and the direction of straight edges or the radius of round ones. "
+    "of_face keeps only the edges bounding that face, e.g. of_face=Face6 for the rim of "
+    "the top face.",
+    {
+        "name": {"type": "string", "description": "Object name or label."},
+        "of_face": {"type": "string", "description": "Only edges of this face, e.g. Face6."},
+        "curve": {"type": "string", "description": "Only this curve type: Line, Circle, ..."},
+        "direction": {
+            "description": "Only straight edges along this axis either way: X, Y, Z or [x, y, z].",
+            "anyOf": [{"type": "string"}, {"type": "array", "items": {"type": "number"}}],
+        },
+        "limit": {"type": "integer", "description": "At most this many edges (default 100)."},
+        **DOCUMENT_ARG,
+    },
+    required=("name",),
+)
+def describe_edges(name, of_face=None, curve=None, direction=None, limit=100, document=None):
+    shape = _shape(_object(_document(document), name))
+    edges = list(enumerate(shape.Edges, 1))
+    if of_face:
+        try:
+            face = shape.getElement(of_face)
+        except Exception:
+            raise ToolError(f"{name} has no {of_face}") from None
+        edges = [(i, e) for i, e in edges if any(e.isSame(f) for f in face.Edges)]
+    entries = [_edge_entry(i, e) for i, e in edges]
+    if curve:
+        entries = [e for e in entries if e["curve"].lower() == curve.lower()]
+    if direction is not None:
+        text = direction if isinstance(direction, (list, tuple)) else direction.lstrip("+-")
+        wanted = _parse_direction(text)
+        entries = [
+            e
+            for e in entries
+            if "direction" in e and abs(FreeCAD.Vector(*e["direction"]).dot(wanted)) > 1 - 1e-6
+        ]
+    total = len(entries)
+    return {"object": name, "matched": total, "edges": entries[: max(1, int(limit))]}
+
+
 # -- sketches ----------------------------------------------------------------
 
 
@@ -556,3 +641,7 @@ def screenshot(view="current", fit=False, width=1024, height=768, document=None)
     if not data:
         raise ToolError("The view rendered an empty image")
     return Image(data)
+
+
+# Registers the tools that change the model
+import BridgeActions  # noqa: E402,F401

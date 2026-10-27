@@ -11,12 +11,21 @@ done in this fork.
 
 ### Added
 
-- LLM Bridge, in the Tools menu, lets an LLM client read and look
-  at the open model over MCP, on this computer only, at `http://127.0.0.1:7720/mcp`.
-  It can list documents, the timeline and an object's properties, measure shapes,
-  find faces by what they are (the top face, the largest cylinder), read a sketch's
-  constraints and degrees of freedom, see the selection and take screenshots. It is
-  read-only for now and off until switched on.
+- LLM Bridge, in the Tools menu, lets an LLM client read, look at and change the open
+  model over MCP, on this computer only, at `http://127.0.0.1:7720/mcp`. It is off
+  until switched on.
+  - To read the model it can list documents, the timeline and an object's properties,
+    measure shapes, find faces and edges by what they are (the top face, the vertical
+    edges), read a sketch's constraints and degrees of freedom, see the selection and
+    take screenshots.
+  - To change it, it can start sketches on a plane or face, add geometry and
+    constraints, change dimensions, pad, pocket, fillet and chamfer, set properties and
+    expressions, move the timeline's tip, delete, undo and redo, and run Python for
+    anything else.
+  - Each change is one undo step named "Bridge: ...". A change that leaves the model
+    in error is undone and the errors are reported back.
+  - Changes wait while a task panel is open.
+  - The ReadOnly and AllowPython preferences limit what clients may do.
 - Features can be suppressed from the timeline's right-click menu. A suppressed feature
   is drawn greyed out and struck through, and its tooltip says so.
 - Repeat Last Command, at the top of the right-click menu in the 3D view and in the

@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""The LLM bridge: an MCP server that lets an LLM client read and look at the open model.
+"""The LLM bridge: an MCP server that lets an LLM client read, look at and change the model.
 
     import Bridge
     Bridge.start()      # listens on http://127.0.0.1:7720/mcp
     Bridge.stop()
 
-Preferences live in BaseApp/Preferences/Mod/Bridge: Port (7720), Token (empty for none)
-and AutoStart (off).
+Preferences live in BaseApp/Preferences/Mod/Bridge: Port (7720), Token (empty for none),
+AutoStart (off), ReadOnly (off: clients may change the model) and AllowPython (on: the
+run_python tool is offered).
 """
 
 import FreeCAD
@@ -30,7 +31,7 @@ def url():
     return _server.url if _server else None
 
 
-def start(port=None, token=None):
+def start(port=None, token=None, read_only=None, allow_python=None):
     """Start listening on 127.0.0.1. Port 0 picks a free port. Returns the URL."""
 
     global _server
@@ -42,7 +43,11 @@ def start(port=None, token=None):
         port = params().GetInt("Port", DEFAULT_PORT)
     if token is None:
         token = params().GetString("Token", "")
-    server = BridgeServer.Server("127.0.0.1", port, token)
+    if read_only is None:
+        read_only = params().GetBool("ReadOnly", False)
+    if allow_python is None:
+        allow_python = params().GetBool("AllowPython", True)
+    server = BridgeServer.Server("127.0.0.1", port, token, read_only, allow_python)
     server.start()
     _server = server
     FreeCAD.Console.PrintMessage(f"LLM bridge listening on {server.url}\n")
