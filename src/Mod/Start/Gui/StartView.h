@@ -34,15 +34,21 @@
 #include "../App/ExamplesModel.h"
 #include "../App/CustomFolderModel.h"
 
+#include <QSortFilterProxyModel>
+
+class QAbstractItemModel;
 class QCheckBox;
 class QEvent;
 class QGridLayout;
 class QLabel;
+class QLineEdit;
 class QListView;
 class QMdiSubWindow;
 class QScrollArea;
 class QStackedWidget;
 class QPushButton;
+class QTime;
+class QVBoxLayout;
 
 namespace Gui
 {
@@ -51,6 +57,10 @@ class Document;
 
 namespace StartGui
 {
+
+class FileCardView;
+class FlowLayout;
+class NewFileButton;
 
 class StartGuiExport StartView: public Gui::MDIView
 {
@@ -87,8 +97,21 @@ protected:
     void changeEvent(QEvent* e) override;
     void showEvent(QShowEvent* event) override;
 
-    void configureNewFileButtons(QLayout* layout) const;
-    static void configureFileCardWidget(QListView* fileCardWidget);
+    QWidget* createSidebar();
+    QWidget* createFileSection(
+        FileCardView* view,
+        QSortFilterProxyModel* proxy,
+        QLabel** heading,
+        QLabel** count,
+        int cardSpacing
+    );
+    void configureNewFileButtons(QVBoxLayout* layout);
+    static void configureFileCardWidget(
+        QListView* fileCardWidget,
+        QSortFilterProxyModel* proxy,
+        QAbstractItemModel* model,
+        bool showAge
+    );
     void configureRecentFilesListWidget(QListView* recentFilesListWidget, QLabel* recentFilesLabel);
     void configureExamplesListWidget(QListView* examplesListWidget);
     void configureCustomFolderListWidget(QListView* customFolderListWidget);
@@ -99,8 +122,13 @@ protected:
     void showOnStartupChanged(bool checked);
     void openFirstStartClicked();
     void firstStartWidgetDismissed();
+    void filterChanged(const QString& text);
+    void updateFileSections();
 
-    QString fileCardStyle() const;
+    /// "Good morning", "Good afternoon" or "Good evening"
+    static QString greetingFor(const QTime& time);
+    /// The version as the title bar gives it, e.g. 26.3.0.1
+    static QString versionText();
 
 private Q_SLOTS:
     void onMdiSubWindowActivated(QMdiSubWindow* subWindow);
@@ -108,19 +136,42 @@ private Q_SLOTS:
 private:
     void retranslateUi();
     void setListViewUpdatesEnabled(bool enabled);
+    void rebuildShortcutChips();
 
     QStackedWidget* _contents = nullptr;
     Start::RecentFilesModel _recentFilesModel;
     Start::ExamplesModel _examplesModel;
     Start::CustomFolderModel _customFolderModel;
-    QLabel* _newFileLabel;
-    QLabel* _examplesLabel;
-    QLabel* _recentFilesLabel;
-    QLabel* _customFolderLabel;
-    QLabel* _fusionControlsLabel;
-    QLabel* _fusionControlsBodyLabel;
-    QPushButton* _openFirstStart;
-    QCheckBox* _showOnStartupCheckBox;
+    QSortFilterProxyModel _recentFilesProxy;
+    QSortFilterProxyModel _examplesProxy;
+    QSortFilterProxyModel _customFolderProxy;
+
+    // Sidebar
+    QLabel* _brandLabel = nullptr;
+    QPushButton* _newDesignButton = nullptr;
+    NewFileButton* _openFileButton = nullptr;
+    QLabel* _createHeading = nullptr;
+    QPushButton* _openFirstStart = nullptr;
+    QCheckBox* _showOnStartupCheckBox = nullptr;
+
+    // Main column
+    QLabel* _greetingLabel = nullptr;
+    QLabel* _subtitleLabel = nullptr;
+    QLineEdit* _filterEdit = nullptr;
+    QLabel* _noMatchesLabel = nullptr;
+    QWidget* _recentSection = nullptr;
+    QWidget* _customFolderSection = nullptr;
+    QWidget* _examplesSection = nullptr;
+    QWidget* _shortcutsSection = nullptr;
+    QLabel* _examplesLabel = nullptr;
+    QLabel* _examplesCount = nullptr;
+    QLabel* _recentFilesLabel = nullptr;
+    QLabel* _recentFilesCount = nullptr;
+    QLabel* _customFolderLabel = nullptr;
+    QLabel* _customFolderCount = nullptr;
+    QLabel* _fusionControlsLabel = nullptr;
+    FlowLayout* _shortcutChips = nullptr;
+    bool _hasRecentFiles = false;
     fastsignals::scoped_connection _saveddoc;
 
     bool isInitialized = false;

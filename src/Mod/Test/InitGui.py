@@ -130,6 +130,7 @@ FreeCAD.__unit_test__ += [
     "TestRibbonLayout",
     "TestRibbonSketchSolid",
     "TestShellVocabulary",
+    "TestStartPageLayout",
     "TestFeatureDialogs",
     "TestOtherCADDefaults",
     "TestViewCube",

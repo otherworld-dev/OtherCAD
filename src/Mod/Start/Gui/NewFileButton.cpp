@@ -40,57 +40,70 @@ NewFileButton::NewFileButton(const NewButton& newButton)
     , headingLabel(new QLabel())
     , descriptionLabel(new QLabel())
 {
+    // A row in the start page sidebar: icon, name and a one-line description. The
+    // stylesheet gives the row its hover background, see #newFileButton in the QSS.
     setObjectName(QStringLiteral("newFileButton"));
+    setFlat(true);
+    setCursor(Qt::PointingHandCursor);
     auto hGrp = App::GetApplication().GetParameterGroupByPath(
         "User parameter:BaseApp/Preferences/Mod/Start"
     );
 
-    constexpr int defaultWidth = 180;  // #newFileButton width in QSS
-    labelWidth = int(hGrp->GetInt("FileCardLabelWith", defaultWidth));
-
-    constexpr int defaultSize = 48;
+    constexpr int defaultSize = 28;
     iconSize = int(hGrp->GetInt("NewFileIconSize", defaultSize));
 
     auto iconLabel = new QLabel(this);
+    iconLabel->setObjectName(QStringLiteral("newFileButtonIcon"));
     QIcon baseIcon(newButton.iconPath);
     iconLabel->setPixmap(baseIcon.pixmap(iconSize, iconSize));
+    iconLabel->setFixedSize(iconSize, iconSize);
 
     textLayout->addWidget(headingLabel);
     textLayout->addWidget(descriptionLabel);
     textLayout->setSpacing(0);
     textLayout->setContentsMargins(0, 0, 0, 0);
 
+    headingLabel->setObjectName(QStringLiteral("newFileButtonHeading"));
     headingLabel->setText(newButton.heading);
-    QFont font = headingLabel->font();
-    font.setWeight(QFont::Bold);
-    headingLabel->setFont(font);
 
+    descriptionLabel->setObjectName(QStringLiteral("newFileButtonDescription"));
     descriptionLabel->setText(newButton.description);
-    descriptionLabel->setWordWrap(true);
-    descriptionLabel->setFixedWidth(labelWidth);
-    descriptionLabel->setAlignment(Qt::AlignTop);
+    QFont small = descriptionLabel->font();
+    small.setPointSizeF(small.pointSizeF() * 0.9);
+    descriptionLabel->setFont(small);
+    QPalette muted = descriptionLabel->palette();
+    muted.setColor(QPalette::WindowText, muted.color(QPalette::PlaceholderText));
+    descriptionLabel->setPalette(muted);
 
+    for (auto label : {iconLabel, headingLabel, descriptionLabel}) {
+        // Clicks go to the button underneath
+        label->setAttribute(Qt::WA_TransparentForMouseEvents);
+    }
+
+    QFontMetrics qfm(font());
+    int margin = qfm.height() / 2;
     mainLayout->setAlignment(Qt::AlignVCenter);
     mainLayout->addWidget(iconLabel);
-    mainLayout->addLayout(textLayout);
-    mainLayout->addStretch();
-    QFontMetrics qfm(font);
-    int margin = qfm.height() / 2;
-    mainLayout->setSpacing(margin);
-    mainLayout->setContentsMargins(margin, margin, 2 * margin, margin);
+    mainLayout->addLayout(textLayout, 1);
+    mainLayout->setSpacing(margin + margin / 2);
+    mainLayout->setContentsMargins(margin, margin / 2 + 1, margin, margin / 2 + 1);
     setLayout(mainLayout);
-    setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+}
+
+QSize NewFileButton::sizeHint() const
+{
+    return minimumSizeHint();
 }
 
 QSize NewFileButton::minimumSizeHint() const
 {
-    int minWidth = labelWidth + iconSize + mainLayout->contentsMargins().left()
-        + mainLayout->contentsMargins().right() + mainLayout->spacing();
+    const auto margins = mainLayout->contentsMargins();
+    int textWidth = std::max(headingLabel->sizeHint().width(), descriptionLabel->sizeHint().width());
+    int minWidth = iconSize + mainLayout->spacing() + textWidth + margins.left() + margins.right();
 
     int textHeight = headingLabel->sizeHint().height() + descriptionLabel->sizeHint().height();
-
-    int minHeight = std::max(iconSize, textHeight) + mainLayout->contentsMargins().top()
-        + mainLayout->contentsMargins().bottom();
+    int minHeight = std::max(iconSize, textHeight) + margins.top() + margins.bottom();
 
     return {minWidth, minHeight};
 }

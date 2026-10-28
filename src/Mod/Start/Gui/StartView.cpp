@@ -27,6 +27,7 @@
 #include <QFrame>
 #include <QGridLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QListView>
 #include <QMdiSubWindow>
 #include <QMessageBox>
@@ -36,6 +37,7 @@
 #include <QWidget>
 #include <QStackedWidget>
 #include <QShowEvent>
+#include <QTime>
 
 #include "StartView.h"
 #include "FileCardDelegate.h"
@@ -67,27 +69,17 @@ TYPESYSTEM_SOURCE_ABSTRACT(StartGui::StartView, Gui::MDIView)  // NOLINT
 StartView::StartView(QWidget* parent)
     : Gui::MDIView(nullptr, parent)
     , _contents(new QStackedWidget(parent))
-    , _newFileLabel {nullptr}
-    , _examplesLabel {nullptr}
-    , _recentFilesLabel {nullptr}
-    , _customFolderLabel {nullptr}
-    , _fusionControlsLabel {nullptr}
-    , _fusionControlsBodyLabel {nullptr}
-    , _showOnStartupCheckBox {nullptr}
 {
     setObjectName(QLatin1String("StartView"));
     auto hGrp = App::GetApplication().GetParameterGroupByPath(
         "User parameter:BaseApp/Preferences/Mod/Start"
     );
-    auto cardSpacing = hGrp->GetInt("FileCardSpacing", 15);  // NOLINT
+    auto cardSpacing = static_cast<int>(hGrp->GetInt("FileCardSpacing", 16));  // NOLINT
     auto showExamples = hGrp->GetBool("ShowExamples", true);
 
     // Verify that the folder specified in preferences is available before showing it
     std::string customFolder(hGrp->GetASCII("CustomFolder", ""));
-    bool showCustomFolder = false;
-    if (!customFolder.empty()) {
-        showCustomFolder = true;
-    }
+    bool showCustomFolder = !customFolder.empty();
 
     // First start page
     auto firstStartScrollArea = gsl::owner<QScrollArea*>(new QScrollArea());
@@ -102,90 +94,122 @@ StartView::StartView(QWidget* parent)
     firstStartRegion->addWidget(firstStartWidget);
     _contents->addWidget(firstStartScrollArea);
 
-    // Documents page
+    // Documents page: the ways to start on the left, the files to open on the right
     auto documentsWidget = gsl::owner<QWidget*>(new QWidget());
+    documentsWidget->setObjectName(QStringLiteral("StartDocumentsPage"));
     _contents->addWidget(documentsWidget);
-    auto documentsMainLayout = gsl::owner<QVBoxLayout*>(new QVBoxLayout());
-    documentsWidget->setLayout(documentsMainLayout);
+    auto documentsMainLayout = gsl::owner<QHBoxLayout*>(new QHBoxLayout(documentsWidget));
+    documentsMainLayout->setContentsMargins({});
+    documentsMainLayout->setSpacing(0);
+    documentsMainLayout->addWidget(createSidebar());
+
     auto documentsScrollArea = gsl::owner<QScrollArea*>(new QScrollArea());
+    documentsScrollArea->setObjectName(QStringLiteral("StartMainScrollArea"));
+    documentsScrollArea->setFrameShape(QFrame::NoFrame);
     documentsScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarPolicy::ScrollBarAsNeeded);
-    documentsMainLayout->addWidget(documentsScrollArea);
+    documentsScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarPolicy::ScrollBarAlwaysOff);
+    documentsMainLayout->addWidget(documentsScrollArea, 1);
     auto documentsScrollWidget = gsl::owner<QWidget*>(new QWidget(documentsScrollArea));
+    documentsScrollWidget->setObjectName(QStringLiteral("StartMain"));
     documentsScrollArea->setWidget(documentsScrollWidget);
     documentsScrollArea->setWidgetResizable(true);
     auto documentsContentLayout = gsl::owner<QVBoxLayout*>(new QVBoxLayout(documentsScrollWidget));
     documentsContentLayout->setSizeConstraint(QLayout::SizeConstraint::SetMinAndMaxSize);
+    // The card grids keep a card spacing all round, so everything else is inset by the same
+    // amount to line up with the cards
+    constexpr int pageMargin = 20;
+    documentsContentLayout
+        ->setContentsMargins(pageMargin, pageMargin + cardSpacing, pageMargin, pageMargin);
+    constexpr int sectionSpacing = 12;
+    documentsContentLayout->setSpacing(sectionSpacing);
 
-    _newFileLabel = gsl::owner<QLabel*>(new QLabel());
-    documentsContentLayout->addWidget(_newFileLabel);
+    // Greeting, and the filter that narrows every list of files below it
+    auto greetingRow = gsl::owner<QHBoxLayout*>(new QHBoxLayout());
+    greetingRow->setContentsMargins(cardSpacing, 0, cardSpacing, 0);
+    auto greetingText = gsl::owner<QVBoxLayout*>(new QVBoxLayout());
+    greetingText->setSpacing(2);
+    _greetingLabel = gsl::owner<QLabel*>(new QLabel());
+    _greetingLabel->setObjectName(QStringLiteral("StartGreeting"));
+    QFont greetingFont = _greetingLabel->font();
+    constexpr double greetingScale = 1.7;
+    greetingFont.setPointSizeF(greetingFont.pointSizeF() * greetingScale);
+    greetingFont.setWeight(QFont::DemiBold);
+    _greetingLabel->setFont(greetingFont);
+    _subtitleLabel = gsl::owner<QLabel*>(new QLabel());
+    _subtitleLabel->setObjectName(QStringLiteral("StartSubtitle"));
+    greetingText->addWidget(_greetingLabel);
+    greetingText->addWidget(_subtitleLabel);
+    greetingRow->addLayout(greetingText);
+    greetingRow->addStretch();
+    _filterEdit = gsl::owner<QLineEdit*>(new QLineEdit());
+    _filterEdit->setObjectName(QStringLiteral("StartFilter"));
+    _filterEdit->setClearButtonEnabled(true);
+    constexpr int filterWidth = 240;
+    _filterEdit->setFixedWidth(filterWidth);
+    connect(_filterEdit, &QLineEdit::textChanged, this, &StartView::filterChanged);
+    greetingRow->addWidget(_filterEdit, 0, Qt::AlignBottom);
+    documentsContentLayout->addLayout(greetingRow);
+    documentsContentLayout->addSpacing(sectionSpacing);
 
-    auto createNewRow = gsl::owner<QWidget*>(new QWidget);
-    auto flowLayout = gsl::owner<FlowLayout*>(new FlowLayout);
-
-    // Reset margins of layout to provide consistent spacing
-    flowLayout->setContentsMargins({});
-
-    // This allows new file widgets to be targeted via QSS
-    createNewRow->setObjectName(QStringLiteral("CreateNewRow"));
-    createNewRow->setLayout(flowLayout);
-
-    documentsContentLayout->addWidget(createNewRow);
-    configureNewFileButtons(flowLayout);
-
-    _recentFilesLabel = gsl::owner<QLabel*>(new QLabel());
-    documentsContentLayout->addWidget(_recentFilesLabel);
     auto recentFilesListWidget = gsl::owner<FileCardView*>(new FileCardView(_contents));
-    connect(recentFilesListWidget, &QListView::clicked, this, &StartView::fileCardSelected);
-    documentsContentLayout->addWidget(recentFilesListWidget);
+    _recentSection = createFileSection(
+        recentFilesListWidget,
+        &_recentFilesProxy,
+        &_recentFilesLabel,
+        &_recentFilesCount,
+        cardSpacing
+    );
+    documentsContentLayout->addWidget(_recentSection);
 
+    // Shortcuts, as key caps
+    _shortcutsSection = gsl::owner<QWidget*>(new QWidget());
+    _shortcutsSection->setObjectName(QStringLiteral("StartShortcuts"));
+    auto shortcutsLayout = gsl::owner<QVBoxLayout*>(new QVBoxLayout(_shortcutsSection));
+    shortcutsLayout->setContentsMargins(cardSpacing, 0, cardSpacing, cardSpacing);
+    shortcutsLayout->setSpacing(sectionSpacing);
     _fusionControlsLabel = gsl::owner<QLabel*>(new QLabel());
-    documentsContentLayout->addWidget(_fusionControlsLabel);
-    _fusionControlsBodyLabel = gsl::owner<QLabel*>(new QLabel());
-    _fusionControlsBodyLabel->setWordWrap(true);
-    documentsContentLayout->addWidget(_fusionControlsBodyLabel);
+    _fusionControlsLabel->setObjectName(QStringLiteral("StartSectionHeading"));
+    shortcutsLayout->addWidget(_fusionControlsLabel);
+    auto chipsWidget = gsl::owner<QWidget*>(new QWidget());
+    constexpr int chipSpacing = 8;
+    _shortcutChips = gsl::owner<FlowLayout*>(new FlowLayout(chipsWidget, 0, chipSpacing, chipSpacing));
+    shortcutsLayout->addWidget(chipsWidget);
+    documentsContentLayout->addWidget(_shortcutsSection);
 
     FileCardView* customFolderListWidget {};
     if (showCustomFolder) {
         customFolderListWidget = gsl::owner<FileCardView*>(new FileCardView(_contents));
-        _customFolderLabel = gsl::owner<QLabel*>(new QLabel());
-        documentsContentLayout->addWidget(_customFolderLabel);
-
-        connect(customFolderListWidget, &QListView::clicked, this, &StartView::fileCardSelected);
-        documentsContentLayout->addWidget(customFolderListWidget);
+        _customFolderSection = createFileSection(
+            customFolderListWidget,
+            &_customFolderProxy,
+            &_customFolderLabel,
+            &_customFolderCount,
+            cardSpacing
+        );
+        documentsContentLayout->addWidget(_customFolderSection);
     }
 
     FileCardView* examplesListWidget {};
     if (showExamples) {
         examplesListWidget = gsl::owner<FileCardView*>(new FileCardView(_contents));
-        _examplesLabel = gsl::owner<QLabel*>(new QLabel());
-        documentsContentLayout->addWidget(_examplesLabel);
-
-        connect(examplesListWidget, &QListView::clicked, this, &StartView::fileCardSelected);
-        documentsContentLayout->addWidget(examplesListWidget);
+        _examplesSection = createFileSection(
+            examplesListWidget,
+            &_examplesProxy,
+            &_examplesLabel,
+            &_examplesCount,
+            cardSpacing
+        );
+        documentsContentLayout->addWidget(_examplesSection);
     }
 
-    documentsContentLayout->setSpacing(static_cast<int>(cardSpacing));
+    // Shown when the filter matches nothing at all
+    _noMatchesLabel = gsl::owner<QLabel*>(new QLabel());
+    _noMatchesLabel->setObjectName(QStringLiteral("StartNoMatches"));
+    _noMatchesLabel->setContentsMargins(cardSpacing, 0, cardSpacing, 0);
+    _noMatchesLabel->hide();
+    documentsContentLayout->addWidget(_noMatchesLabel);
+
     documentsContentLayout->addStretch();
-
-
-    // Documents page footer
-    auto footerLayout = gsl::owner<QHBoxLayout*>(new QHBoxLayout());
-    documentsMainLayout->addLayout(footerLayout);
-
-    _openFirstStart = gsl::owner<QPushButton*>(new QPushButton());
-    _openFirstStart->setIcon(QIcon(QLatin1String(":/icons/preferences-general.svg")));
-    connect(_openFirstStart, &QPushButton::clicked, this, &StartView::openFirstStartClicked);
-
-    _showOnStartupCheckBox = gsl::owner<QCheckBox*>(new QCheckBox());
-    bool showOnStartup = hGrp->GetBool("ShowOnStartup", true);
-    _showOnStartupCheckBox->setCheckState(
-        showOnStartup ? Qt::CheckState::Unchecked : Qt::CheckState::Checked
-    );
-    connect(_showOnStartupCheckBox, &QCheckBox::toggled, this, &StartView::showOnStartupChanged);
-
-    footerLayout->addWidget(_openFirstStart);
-    footerLayout->addStretch();
-    footerLayout->addWidget(_showOnStartupCheckBox);
 
     setCentralWidget(_contents);
 
@@ -210,9 +234,18 @@ StartView::StartView(QWidget* parent)
         }
     });
 
+    // The counts follow the models, which fill in from worker threads
+    for (auto proxy : {&_recentFilesProxy, &_examplesProxy, &_customFolderProxy}) {
+        connect(proxy, &QAbstractItemModel::rowsInserted, this, &StartView::updateFileSections);
+        connect(proxy, &QAbstractItemModel::rowsRemoved, this, &StartView::updateFileSections);
+        connect(proxy, &QAbstractItemModel::modelReset, this, &StartView::updateFileSections);
+        connect(proxy, &QAbstractItemModel::layoutChanged, this, &StartView::updateFileSections);
+    }
+
     isInitialized = true;
 
     retranslateUi();
+    updateFileSections();
 
     // NOLINTBEGIN
     _saveddoc = App::GetApplication().signalFinishSaveDocument.connect(
@@ -223,99 +256,309 @@ StartView::StartView(QWidget* parent)
     // NOLINTEND
 }
 
-void StartView::configureNewFileButtons(QLayout* layout) const
+QWidget* StartView::createSidebar()
 {
-    auto newEmptyFile = gsl::owner<NewFileButton*>(new NewFileButton(
-        {tr("Empty File"),
-         tr("Creates a new empty OtherCAD file"),
-         QLatin1String(":/icons/document-new.svg")}
+    auto sidebar = gsl::owner<QFrame*>(new QFrame());
+    sidebar->setObjectName(QStringLiteral("StartSidebar"));
+    constexpr int sidebarWidth = 264;
+    sidebar->setFixedWidth(sidebarWidth);
+    auto layout = gsl::owner<QVBoxLayout*>(new QVBoxLayout(sidebar));
+    constexpr int sideMargin = 14;
+    constexpr int topMargin = 22;
+    layout->setContentsMargins(sideMargin, topMargin, sideMargin, sideMargin);
+    layout->setSpacing(2);
+
+    // Logo, name and version
+    auto brandRow = gsl::owner<QHBoxLayout*>(new QHBoxLayout());
+    constexpr int brandIndent = 8;
+    brandRow->setContentsMargins(brandIndent, 0, 0, 0);
+    constexpr int brandSpacing = 10;
+    brandRow->setSpacing(brandSpacing);
+    auto logo = gsl::owner<QLabel*>(new QLabel());
+    constexpr int logoSize = 36;
+    logo->setPixmap(QIcon(QStringLiteral(":/icons/othercad.svg")).pixmap(logoSize, logoSize));
+    logo->setFixedSize(logoSize, logoSize);
+    brandRow->addWidget(logo);
+    auto brandText = gsl::owner<QVBoxLayout*>(new QVBoxLayout());
+    brandText->setSpacing(0);
+    _brandLabel = gsl::owner<QLabel*>(new QLabel());
+    _brandLabel->setObjectName(QStringLiteral("StartBrandName"));
+    QFont brandFont = _brandLabel->font();
+    constexpr double brandScale = 1.3;
+    brandFont.setPointSizeF(brandFont.pointSizeF() * brandScale);
+    brandFont.setWeight(QFont::DemiBold);
+    _brandLabel->setFont(brandFont);
+    auto version = gsl::owner<QLabel*>(new QLabel(versionText()));
+    version->setObjectName(QStringLiteral("StartBrandVersion"));
+    brandText->addWidget(_brandLabel);
+    brandText->addWidget(version);
+    brandRow->addLayout(brandText);
+    brandRow->addStretch();
+    layout->addLayout(brandRow);
+    constexpr int brandGap = 18;
+    layout->addSpacing(brandGap);
+
+    // The usual way in gets the big button, the others are listed under it
+    _newDesignButton = gsl::owner<QPushButton*>(new QPushButton());
+    _newDesignButton->setObjectName(QStringLiteral("StartPrimaryButton"));
+    _newDesignButton->setCursor(Qt::PointingHandCursor);
+    connect(_newDesignButton, &QPushButton::clicked, this, &StartView::newPartDesignFile);
+    layout->addWidget(_newDesignButton);
+    layout->addSpacing(4);
+
+    configureNewFileButtons(layout);
+
+    layout->addStretch();
+
+    _openFirstStart = gsl::owner<QPushButton*>(new QPushButton());
+    _openFirstStart->setObjectName(QStringLiteral("StartLinkButton"));
+    _openFirstStart->setFlat(true);
+    _openFirstStart->setCursor(Qt::PointingHandCursor);
+    _openFirstStart->setIcon(QIcon(QLatin1String(":/icons/preferences-general.svg")));
+    connect(_openFirstStart, &QPushButton::clicked, this, &StartView::openFirstStartClicked);
+    layout->addWidget(_openFirstStart, 0, Qt::AlignLeft);
+
+    auto hGrp = App::GetApplication().GetParameterGroupByPath(
+        "User parameter:BaseApp/Preferences/Mod/Start"
+    );
+    _showOnStartupCheckBox = gsl::owner<QCheckBox*>(new QCheckBox());
+    _showOnStartupCheckBox->setObjectName(QStringLiteral("StartShowOnStartup"));
+    _showOnStartupCheckBox->setChecked(hGrp->GetBool("ShowOnStartup", true));
+    connect(_showOnStartupCheckBox, &QCheckBox::toggled, this, &StartView::showOnStartupChanged);
+    auto checkRow = gsl::owner<QHBoxLayout*>(new QHBoxLayout());
+    checkRow->setContentsMargins(brandIndent, 4, 0, 0);
+    checkRow->addWidget(_showOnStartupCheckBox);
+    layout->addLayout(checkRow);
+
+    return sidebar;
+}
+
+QWidget* StartView::createFileSection(
+    FileCardView* view,
+    QSortFilterProxyModel* proxy,
+    QLabel** heading,
+    QLabel** count,
+    int cardSpacing
+)
+{
+    auto section = gsl::owner<QWidget*>(new QWidget());
+    auto layout = gsl::owner<QVBoxLayout*>(new QVBoxLayout(section));
+    layout->setContentsMargins({});
+    layout->setSpacing(0);
+
+    auto headRow = gsl::owner<QHBoxLayout*>(new QHBoxLayout());
+    headRow->setContentsMargins(cardSpacing, 0, cardSpacing, 0);
+    constexpr int headSpacing = 8;
+    headRow->setSpacing(headSpacing);
+    *heading = gsl::owner<QLabel*>(new QLabel());
+    (*heading)->setObjectName(QStringLiteral("StartSectionHeading"));
+    *count = gsl::owner<QLabel*>(new QLabel());
+    (*count)->setObjectName(QStringLiteral("StartSectionCount"));
+    headRow->addWidget(*heading);
+    headRow->addWidget(*count);
+    headRow->addStretch();
+    layout->addLayout(headRow);
+
+    proxy->setFilterRole(static_cast<int>(Start::DisplayedFilesModelRoles::baseName));
+    proxy->setFilterCaseSensitivity(Qt::CaseInsensitive);
+    connect(view, &QListView::clicked, this, &StartView::fileCardSelected);
+    layout->addWidget(view);
+    return section;
+}
+
+QString StartView::versionText()
+{
+    auto& config = App::Application::Config();
+    QStringList parts;
+    for (const char* key :
+         {"BuildVersionMajor", "BuildVersionMinor", "BuildVersionPoint", "BuildVersionBuild"}) {
+        auto it = config.find(key);
+        if (it == config.end() || it->second.empty()) {
+            break;
+        }
+        parts << QString::fromStdString(it->second);
+    }
+    return parts.join(QLatin1Char('.'));
+}
+
+void StartView::configureNewFileButtons(QVBoxLayout* layout)
+{
+    _openFileButton = gsl::owner<NewFileButton*>(new NewFileButton(
+        {tr("Open"), tr("CAD files and 3D models"), QLatin1String(":/icons/document-open.svg")}
     ));
-    auto openFile = gsl::owner<NewFileButton*>(new NewFileButton(
-        {tr("Open File"),
-         tr("Opens an existing CAD file or 3D model"),
-         QLatin1String(":/icons/document-open.svg")}
-    ));
-    auto partDesign = gsl::owner<NewFileButton*>(new NewFileButton(
-        {tr("Parametric Body"),
-         tr("Creates a parametric solid body"),
-         QLatin1String(":/icons/PartDesignWorkbench.svg")}
-    ));
+    layout->addWidget(_openFileButton);
+
+    _createHeading = gsl::owner<QLabel*>(new QLabel());
+    _createHeading->setObjectName(QStringLiteral("StartSidebarHeading"));
+    constexpr int headingIndent = 8;
+    constexpr int headingTop = 14;
+    _createHeading->setContentsMargins(headingIndent, headingTop, 0, 4);
+    layout->addWidget(_createHeading);
+
     auto assembly = gsl::owner<NewFileButton*>(new NewFileButton(
         {tr("Assembly"),
-         tr("Creates an assembly project"),
+         tr("Parts and the joints between them"),
          QLatin1String(":/icons/AssemblyWorkbench.svg")}
     ));
     auto draft = gsl::owner<NewFileButton*>(new NewFileButton(
-        {tr("2D Draft"), tr("Creates a 2D Draft document"), QLatin1String(":/icons/DraftWorkbench.svg")}
+        {tr("2D Draft"),
+         tr("A drawing, viewed from the top"),
+         QLatin1String(":/icons/DraftWorkbench.svg")}
     ));
     auto arch = gsl::owner<NewFileButton*>(new NewFileButton(
         {tr("BIM/Architecture"),
-         tr("Creates an architectural project"),
+         tr("Buildings, viewed at room scale"),
          QLatin1String(":/icons/BIMWorkbench.svg")}
+    ));
+    auto newEmptyFile = gsl::owner<NewFileButton*>(new NewFileButton(
+        {tr("Empty File"), tr("A blank OtherCAD document"), QLatin1String(":/icons/document-new.svg")}
     ));
 
     // TODO: Ensure all of the required WBs are actually available
-    layout->addWidget(partDesign);
     layout->addWidget(assembly);
     layout->addWidget(draft);
     layout->addWidget(arch);
     layout->addWidget(newEmptyFile);
-    layout->addWidget(openFile);
 
     connect(newEmptyFile, &QPushButton::clicked, this, &StartView::newEmptyFile);
-    connect(openFile, &QPushButton::clicked, this, &StartView::openExistingFile);
-    connect(partDesign, &QPushButton::clicked, this, &StartView::newPartDesignFile);
+    connect(_openFileButton, &QPushButton::clicked, this, &StartView::openExistingFile);
     connect(assembly, &QPushButton::clicked, this, &StartView::newAssemblyFile);
     connect(draft, &QPushButton::clicked, this, &StartView::newDraftFile);
     connect(arch, &QPushButton::clicked, this, &StartView::newArchFile);
 }
 
-void StartView::configureFileCardWidget(QListView* fileCardWidget)
+void StartView::filterChanged(const QString& text)
 {
-    auto delegate = gsl::owner<FileCardDelegate*>(new FileCardDelegate(fileCardWidget));
-    fileCardWidget->setItemDelegate(delegate);
+    for (auto proxy : {&_recentFilesProxy, &_examplesProxy, &_customFolderProxy}) {
+        proxy->setFilterFixedString(text);
+    }
+    updateFileSections();
+}
 
-    fileCardWidget->setMinimumWidth(fileCardWidget->parentWidget()->width());
-    //    fileCardWidget->setGridSize(
-    //        fileCardWidget->itemDelegate()->sizeHint(QStyleOptionViewItem(),
-    //                                                 fileCardWidget->model()->index(0, 0)));
+void StartView::updateFileSections()
+{
+    if (!isInitialized) {
+        return;
+    }
+    const bool filtering = !_filterEdit->text().isEmpty();
+    bool anyMatches = false;
+    auto update = [&](QWidget* section, QSortFilterProxyModel& proxy, QLabel* count, bool wanted) {
+        if (!section) {
+            return;
+        }
+        const int rows = proxy.rowCount();
+        count->setText(rows > 0 ? QString::number(rows) : QString());
+        anyMatches = anyMatches || rows > 0;
+        // A section the filter empties goes away rather than leaving a heading over nothing
+        section->setVisible(wanted && (rows > 0 || !filtering));
+        if (auto view = section->findChild<QListView*>()) {
+            view->updateGeometry();
+        }
+    };
+    update(_recentSection, _recentFilesProxy, _recentFilesCount, _hasRecentFiles);
+    update(_customFolderSection, _customFolderProxy, _customFolderCount, true);
+    update(_examplesSection, _examplesProxy, _examplesCount, true);
+    _shortcutsSection->setVisible(!filtering);
+    _noMatchesLabel->setVisible(filtering && !anyMatches);
+}
+
+void StartView::rebuildShortcutChips()
+{
+    while (auto item = _shortcutChips->takeAt(0)) {
+        delete item->widget();
+        delete item;
+    }
+    const std::vector<std::pair<QString, QString>> shortcuts {
+        {QStringLiteral("S"), tr("Command palette")},
+        {QStringLiteral("E"), tr("Extrude")},
+        {QStringLiteral("Q"), tr("Press pull")},
+        {QStringLiteral("H"), tr("Hole")},
+        {QStringLiteral("F"), tr("Fillet")},
+        {QStringLiteral("D"), tr("Dimension")},
+        {tr("Right-click"), tr("Marking menu")},
+        {QString(), tr("Drag the timeline to roll the history back and forward")},
+    };
+    for (const auto& [key, action] : shortcuts) {
+        auto chip = gsl::owner<QFrame*>(new QFrame());
+        chip->setObjectName(QStringLiteral("StartShortcutChip"));
+        auto chipLayout = gsl::owner<QHBoxLayout*>(new QHBoxLayout(chip));
+        constexpr int chipPadding = 8;
+        chipLayout->setContentsMargins(
+            chipPadding,
+            chipPadding / 2 + 1,
+            chipPadding + 2,
+            chipPadding / 2 + 1
+        );
+        chipLayout->setSpacing(chipPadding);
+        if (!key.isEmpty()) {
+            auto keyLabel = gsl::owner<QLabel*>(new QLabel(key));
+            keyLabel->setObjectName(QStringLiteral("StartShortcutKey"));
+            keyLabel->setAlignment(Qt::AlignCenter);
+            chipLayout->addWidget(keyLabel);
+        }
+        auto actionLabel = gsl::owner<QLabel*>(new QLabel(action));
+        actionLabel->setObjectName(QStringLiteral("StartShortcutAction"));
+        chipLayout->addWidget(actionLabel);
+        _shortcutChips->addWidget(chip);
+    }
+}
+
+QString StartView::greetingFor(const QTime& time)
+{
+    constexpr int noon = 12;
+    constexpr int evening = 18;
+    constexpr int earlyMorning = 5;
+    if (time.hour() >= earlyMorning && time.hour() < noon) {
+        return tr("Good morning");
+    }
+    if (time.hour() >= noon && time.hour() < evening) {
+        return tr("Good afternoon");
+    }
+    return tr("Good evening");
+}
+
+void StartView::configureFileCardWidget(
+    QListView* fileCardWidget,
+    QSortFilterProxyModel* proxy,
+    QAbstractItemModel* model,
+    bool showAge
+)
+{
+    proxy->setSourceModel(model);
+    fileCardWidget->setModel(proxy);
+    auto delegate = gsl::owner<FileCardDelegate*>(new FileCardDelegate(fileCardWidget));
+    delegate->setShowAge(showAge);
+    fileCardWidget->setItemDelegate(delegate);
 }
 
 
 void StartView::configureRecentFilesListWidget(QListView* recentFilesListWidget, QLabel* recentFilesLabel)
 {
+    Q_UNUSED(recentFilesLabel);
     _recentFilesModel.loadRecentFiles();
-    recentFilesListWidget->setModel(&_recentFilesModel);
-    configureFileCardWidget(recentFilesListWidget);
+    if (recentFilesListWidget->model() != &_recentFilesProxy) {
+        configureFileCardWidget(recentFilesListWidget, &_recentFilesProxy, &_recentFilesModel, true);
+    }
 
     auto recentFilesGroup = App::GetApplication().GetParameterGroupByPath(
         "User parameter:BaseApp/Preferences/RecentFiles"
     );
-    auto numRecentFiles {recentFilesGroup->GetInt("RecentFiles", 0)};
-    if (numRecentFiles == 0) {
-        recentFilesListWidget->hide();
-        recentFilesLabel->hide();
-    }
-    else {
-        recentFilesListWidget->show();
-        recentFilesLabel->show();
-    }
+    _hasRecentFiles = recentFilesGroup->GetInt("RecentFiles", 0) != 0;
+    updateFileSections();
 }
 
 
 void StartView::configureExamplesListWidget(QListView* examplesListWidget)
 {
     _examplesModel.loadExamples();
-    examplesListWidget->setModel(&_examplesModel);
-    configureFileCardWidget(examplesListWidget);
+    configureFileCardWidget(examplesListWidget, &_examplesProxy, &_examplesModel, false);
 }
 
 
 void StartView::configureCustomFolderListWidget(QListView* customFolderListWidget)
 {
     _customFolderModel.loadCustomFolder();
-    customFolderListWidget->setModel(&_customFolderModel);
-    configureFileCardWidget(customFolderListWidget);
+    configureFileCardWidget(customFolderListWidget, &_customFolderProxy, &_customFolderModel, false);
 }
 
 
@@ -439,12 +682,7 @@ void StartView::showOnStartupChanged(bool checked)
     auto hGrp = App::GetApplication().GetParameterGroupByPath(
         "User parameter:BaseApp/Preferences/Mod/Start"
     );
-    hGrp->SetBool(
-        "ShowOnStartup",
-        !checked
-    );  // The sense of this option has been reversed: the checkbox actually says
-        // "*Don't* show on startup" now, but the option is preserved in its
-        // original sense, so is stored inverted.
+    hGrp->SetBool("ShowOnStartup", checked);
 }
 
 void StartView::openFirstStartClicked()
@@ -487,6 +725,10 @@ void StartView::changeEvent(QEvent* event)
 
 void StartView::showEvent(QShowEvent* event)
 {
+    // The page can stay open all day, so the greeting is worked out again whenever it shows
+    if (_greetingLabel) {
+        _greetingLabel->setText(greetingFor(QTime::currentTime()));
+    }
     if (auto mainWindow = Gui::getMainWindow()) {
         if (auto mdiArea = mainWindow->findChild<QMdiArea*>()) {
             connect(
@@ -531,23 +773,26 @@ void StartView::retranslateUi()
     QString title = QCoreApplication::translate("Workbench", "Start");
     setWindowTitle(title);
 
-    const QLatin1String h1Start("<h1>");
-    const QLatin1String h1End("</h1>");
+    // The wordmark is two-tone: the suffix takes the brand teal, the deep one on a light theme
+    const bool lightTheme = palette().color(QPalette::Window).lightness() > 128;  // NOLINT
+    const QString teal = lightTheme ? QStringLiteral("#0d9488") : QStringLiteral("#22d3c4");
+    _brandLabel->setText(QStringLiteral("Other<span style=\"color:%1\">CAD</span>").arg(teal));
 
-    _newFileLabel->setText(h1Start + tr("New File") + h1End);
+    _greetingLabel->setText(greetingFor(QTime::currentTime()));
+    _subtitleLabel->setText(tr("Pick up where you left off, or start something new."));
+    _filterEdit->setPlaceholderText(tr("Filter files"));
+    _noMatchesLabel->setText(tr("No files match the filter."));
+
+    _newDesignButton->setText(tr("New design"));
+    _newDesignButton->setToolTip(tr("Creates a parametric body, ready to sketch on"));
+    _createHeading->setText(tr("CREATE"));
+
     if (_examplesLabel) {
-        _examplesLabel->setText(h1Start + tr("Examples") + h1End);
+        _examplesLabel->setText(tr("Examples"));
     }
-    _recentFilesLabel->setText(h1Start + tr("Recent Files") + h1End);
-
-    _fusionControlsLabel->setText(h1Start + tr("Fusion-style controls") + h1End);
-    const QLatin1String lineBreak("<br>");
-    _fusionControlsBodyLabel->setText(
-        tr("S opens the command palette") + lineBreak
-        + tr("E extrudes, Q presses and pulls, H holes, F fillets, D dimensions") + lineBreak
-        + tr("Right-click the 3D view for the marking menu") + lineBreak
-        + tr("The timeline at the bottom rolls the history back and forward")
-    );
+    _recentFilesLabel->setText(tr("Recent"));
+    _fusionControlsLabel->setText(tr("Shortcuts"));
+    rebuildShortcutChips();
 
     auto hGrp = App::GetApplication().GetParameterGroupByPath(
         "User parameter:BaseApp/Preferences/Mod/Start"
@@ -558,10 +803,9 @@ void StartView::retranslateUi()
             _customFolderLabel->setToolTip(QString::fromUtf8(customFolder.c_str()));
             customFolder = customFolder.substr(customFolder.find_last_of("/\\") + 1);
         }
-        _customFolderLabel->setText(h1Start + QString::fromUtf8(customFolder.c_str()) + h1End);
+        _customFolderLabel->setText(QString::fromUtf8(customFolder.c_str()));
     }
 
-    QString application = QString::fromUtf8(App::Application::Config()["ExeName"].c_str());
-    _openFirstStart->setText(tr("Open First Start Setup"));
-    _showOnStartupCheckBox->setText(tr("Do not show this Start page again (start with blank screen)"));
+    _openFirstStart->setText(tr("First start setup"));
+    _showOnStartupCheckBox->setText(tr("Show this page on startup"));
 }

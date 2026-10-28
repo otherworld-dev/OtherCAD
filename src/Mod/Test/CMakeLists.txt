@@ -61,6 +61,7 @@ SET(Test_SRCS
     TestRibbonLayout.py
     TestRibbonSketchSolid.py
     TestShellVocabulary.py
+    TestStartPageLayout.py
     TestFeatureDialogs.py
     TestOtherCADDefaults.py
     TestViewCube.py
