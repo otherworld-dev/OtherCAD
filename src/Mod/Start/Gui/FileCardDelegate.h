@@ -25,6 +25,7 @@
 
 #include <Base/Parameter.h>
 #include <QCache>
+#include <QDateTime>
 #include <QEvent>
 #include <QFileInfo>
 #include <QImage>
@@ -45,17 +46,30 @@ public:
 
     QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const override;
 
+    /// Whether the cards say how long ago each file was saved. Recent files do; examples
+    /// would only show when they were installed.
+    void setShowAge(bool show)
+    {
+        _showAge = show;
+    }
+
+    /// How long before @p now the file was saved, in words: "yesterday", "3 hours ago"
+    static QString describeAge(const QDateTime& modified, const QDateTime& now);
+
 protected:
     QPixmap generateThumbnail(const QString& path) const;
 
 private:
     QString getCacheKey(const QString& path, int thumbnailSize) const;
     QPixmap loadAndCacheThumbnail(const QString& path, int thumbnailSize) const;
+    int cardWidth() const;
+    static QFont detailsFontFor(const QFont& font);
 
     Base::Reference<ParameterGrp> _parameterGroup;
-    const int margin = 11;
+    const int padding = 10;
     const int textspacing = 2;
-    QPushButton styleButton;
+    const double cardRadius = 8.0;
+    bool _showAge = false;
 
     static QCache<QString, QPixmap> _thumbnailCache;  // cache key structure: "path:modtime:size"
     static constexpr const int CACHE_SIZE_MB = 50;    // 50MB cache limit

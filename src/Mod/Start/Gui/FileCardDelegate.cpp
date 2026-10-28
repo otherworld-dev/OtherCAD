@@ -21,8 +21,11 @@
  *                                                                          *
  ***************************************************************************/
 
+#include <QDateTime>
 #include <QFile>
 #include <QFileIconProvider>
+#include <QLocale>
+#include <QPainterPath>
 #include <QImageReader>
 #include <QPainter>
 #include <QStyleOptionViewItem>
@@ -35,6 +38,7 @@
 #include <QAbstractItemView>
 
 #include "FileCardDelegate.h"
+#include "FileCardView.h"
 #include "../App/DisplayedFilesModel.h"
 #include "App/Application.h"
 #include <Base/Color.h>
@@ -75,85 +79,214 @@ void FileCardDelegate::paint(
 ) const
 {
     painter->save();
-    // Step 1: Styling
-    QStyleOptionButton buttonOption;
-    buttonOption.initFrom(option.widget);
-    buttonOption.rect = option.rect;
-    buttonOption.state = QStyle::State_Enabled;
+    painter->setRenderHint(QPainter::Antialiasing);
+    painter->setRenderHint(QPainter::SmoothPixmapTransform);
 
-    if ((option.state & QStyle::State_MouseOver) != 0) {
-        buttonOption.state |= QStyle::State_MouseOver;
+    // Colours come from the view, which takes them from the stylesheet
+    QColor cardColor = option.palette.color(QPalette::Base);
+    QColor wellColor = option.palette.color(QPalette::Window).darker(108);
+    QColor borderColor = option.palette.color(QPalette::Mid);
+    QColor accentColor = option.palette.color(QPalette::Highlight);
+    QColor mutedColor = option.palette.color(QPalette::PlaceholderText);
+    if (auto view = qobject_cast<const StartGui::FileCardView*>(option.widget)) {
+        cardColor = view->cardColor();
+        wellColor = view->wellColor();
+        borderColor = view->borderColor();
+        accentColor = view->accentColor();
+        mutedColor = view->mutedTextColor();
     }
-    if ((option.state & QStyle::State_Selected) != 0) {
-        buttonOption.state |= QStyle::State_On;
-    }
-    if ((option.state & QStyle::State_Sunken) != 0) {
-        buttonOption.state |= QStyle::State_Sunken;
-    }
-    qApp->style()->drawControl(QStyle::CE_PushButton, &buttonOption, painter, &styleButton);
+    const bool hovered = (option.state & QStyle::State_MouseOver) != 0;
 
-    // Step 2: Fetch required data
-    auto thumbnailSize = static_cast<int>(_parameterGroup->GetInt("FileThumbnailIconsSize", 128));  // NOLINT
-    auto baseName = index.data(static_cast<int>(DisplayedFilesModelRoles::baseName)).toString();
-    auto elidedName = painter->fontMetrics().elidedText(baseName, Qt::ElideRight, thumbnailSize);
-    auto size = index.data(static_cast<int>(DisplayedFilesModelRoles::size)).toString();
+    // Card
+    const QRectF card = QRectF(option.rect).adjusted(0.5, 0.5, -0.5, -0.5);
+    QPainterPath cardPath;
+    cardPath.addRoundedRect(card, cardRadius, cardRadius);
+    painter->fillPath(cardPath, cardColor);
+
+    // Thumbnail well, the top of the card
+    const int width = option.rect.width();
+    const QRectF well(card.left(), card.top(), card.width(), width * 3.0 / 4.0);
+    painter->save();
+    QPainterPath wellPath;
+    wellPath.addRect(well);
+    painter->setClipPath(cardPath.intersected(wellPath));
+    painter->fillRect(well, wellColor);
+
     auto image = index.data(static_cast<int>(DisplayedFilesModelRoles::image)).toByteArray();
     auto path = index.data(static_cast<int>(DisplayedFilesModelRoles::path)).toString();
-
     QPixmap pixmap;
     if (!image.isEmpty()) {
         pixmap.loadFromData(image);
     }
-    // Check for null in case no data is available yet or the above loadFromData() failed
-    if (pixmap.isNull()) {
+    if (!pixmap.isNull()) {
+        // A real thumbnail fills the well, cropped to it, so its own background does not
+        // sit as a pale square in the middle of the card
+        QSizeF cover = QSizeF(pixmap.size()).scaled(well.size(), Qt::KeepAspectRatioByExpanding);
+        QRectF target(QPointF(), cover);
+        target.moveCenter(well.center());
+        painter->drawPixmap(target, pixmap, QRectF(pixmap.rect()));
+    }
+    else {
+        // An icon stands for a file with no thumbnail of its own
         pixmap = generateThumbnail(path);
+        constexpr double iconShare = 0.42;
+        const QSizeF iconSize = QSizeF(pixmap.size())
+                                    .scaled(
+                                        QSizeF(well.height() * iconShare, well.height() * iconShare),
+                                        Qt::KeepAspectRatio
+                                    );
+        QRectF iconRect(QPointF(), iconSize);
+        iconRect.moveCenter(well.center());
+        painter->drawPixmap(iconRect, pixmap, QRectF(pixmap.rect()));
+    }
+    painter->restore();
+
+    // File type badge in the corner of the well
+    const QString suffix = QFileInfo(path).suffix().toUpper();
+    if (!suffix.isEmpty()) {
+        QFont badgeFont = option.font;
+        constexpr double badgeScale = 0.75;
+        badgeFont.setPointSizeF(badgeFont.pointSizeF() * badgeScale);
+        badgeFont.setWeight(QFont::DemiBold);
+        const QFontMetrics badgeMetrics(badgeFont);
+        const QRectF badge(
+            well.left() + padding * badgeScale,
+            well.top() + padding * badgeScale,
+            badgeMetrics.horizontalAdvance(suffix) + padding,
+            badgeMetrics.height() + 2
+        );
+        QPainterPath badgePath;
+        badgePath.addRoundedRect(badge, 4, 4);
+        constexpr int badgeAlpha = 190;
+        painter->fillPath(badgePath, QColor(10, 15, 22, badgeAlpha));  // NOLINT
+        painter->setFont(badgeFont);
+        painter->setPen(QColor(242, 239, 230));  // NOLINT
+        painter->drawText(badge, Qt::AlignCenter, suffix);
     }
 
-    QPixmap scaledPixmap = pixmap.scaled(
-        QSize(thumbnailSize, thumbnailSize),
-        Qt::KeepAspectRatio,
-        Qt::SmoothTransformation
+    // Name, then size and, for recent files, how long ago they were saved
+    auto baseName = index.data(static_cast<int>(DisplayedFilesModelRoles::baseName)).toString();
+    auto size = index.data(static_cast<int>(DisplayedFilesModelRoles::size)).toString();
+    QString details = size;
+    if (_showAge) {
+        auto modified = QDateTime::fromString(
+            index.data(static_cast<int>(DisplayedFilesModelRoles::modifiedTime)).toString(),
+            Qt::ISODate
+        );
+        QString age = describeAge(modified, QDateTime::currentDateTime());
+        if (!age.isEmpty()) {
+            details = size.isEmpty() ? age : size + QStringLiteral(" · ") + age;
+        }
+    }
+
+    const QFontMetrics nameMetrics(option.font);
+    const QFont detailsFont = detailsFontFor(option.font);
+    const QFontMetrics detailsMetrics(detailsFont);
+    const int textWidth = width - 2 * padding;
+    const QRectF nameRect(
+        card.left() + padding,
+        well.bottom() + padding,
+        textWidth,
+        nameMetrics.lineSpacing()
+    );
+    const QRectF detailsRect(
+        nameRect.left(),
+        nameRect.bottom() + textspacing,
+        textWidth,
+        detailsMetrics.lineSpacing()
+    );
+    painter->setFont(option.font);
+    painter->setPen(option.palette.color(QPalette::Text));
+    painter->drawText(
+        nameRect,
+        Qt::AlignLeft | Qt::AlignVCenter,
+        nameMetrics.elidedText(baseName, Qt::ElideMiddle, textWidth)
+    );
+    painter->setFont(detailsFont);
+    painter->setPen(mutedColor);
+    painter->drawText(
+        detailsRect,
+        Qt::AlignLeft | Qt::AlignVCenter,
+        detailsMetrics.elidedText(details, Qt::ElideRight, textWidth)
     );
 
-    // Step 4: Positioning
-    QRect thumbnailRect(option.rect.x() + margin, option.rect.y() + margin, thumbnailSize, thumbnailSize);
-    QRect textRect(
-        option.rect.x() + margin,
-        thumbnailRect.bottom() + margin,
-        thumbnailSize,
-        painter->fontMetrics().lineSpacing()
-    );
-
-    QRect sizeRect(
-        option.rect.x() + margin,
-        textRect.bottom() + textspacing,
-        thumbnailSize,
-        painter->fontMetrics().lineSpacing() + margin
-    );
-
-    // Step 5: Draw
-    QRect pixmapRect(thumbnailRect.topLeft(), scaledPixmap.size());
-    pixmapRect.moveCenter(thumbnailRect.center());
-    painter->drawPixmap(pixmapRect.topLeft(), scaledPixmap);
-    painter->drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, elidedName);
-    painter->drawText(sizeRect, Qt::AlignLeft | Qt::AlignTop, size);
+    // Outline, in the accent colour under the mouse
+    painter->setBrush(Qt::NoBrush);
+    constexpr double hoverPenWidth = 1.5;
+    painter->setPen(QPen(hovered ? accentColor : borderColor, hovered ? hoverPenWidth : 1.0));
+    painter->drawPath(cardPath);
     painter->restore();
 }
 
 
 QSize FileCardDelegate::sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const
 {
-    Q_UNUSED(option);
     Q_UNUSED(index);
 
-    auto thumbnailSize = _parameterGroup->GetInt("FileThumbnailIconsSize", 128);  // NOLINT
+    // FileCardView asks with a default option, so take the font from the view when there is one
+    QFont font = option.widget ? option.widget->font() : QGuiApplication::font();
+    if (auto view = qobject_cast<QWidget*>(parent())) {
+        font = view->font();
+    }
+    const int width = cardWidth();
+    const int wellHeight = width * 3 / 4;
+    const int textHeight = QFontMetrics(font).lineSpacing() + textspacing
+        + QFontMetrics(detailsFontFor(font)).lineSpacing();
+    return {width, wellHeight + padding + textHeight + padding + 2};
+}
 
-    QFontMetrics qfm(QGuiApplication::font());
-    int textHeight = textspacing + qfm.lineSpacing() * 2;  // name + size
-    int cardWidth = static_cast<int>(thumbnailSize) + 2 * margin;
-    int cardHeight = static_cast<int>(thumbnailSize) + textHeight + 3 * margin;
+QFont FileCardDelegate::detailsFontFor(const QFont& font)
+{
+    QFont details = font;
+    constexpr double detailsScale = 0.88;
+    details.setPointSizeF(details.pointSizeF() * detailsScale);
+    return details;
+}
 
-    return {cardWidth, cardHeight};
+int FileCardDelegate::cardWidth() const
+{
+    // The thumbnail well is 4:3 and a little wider than the thumbnail size preference, so a
+    // square thumbnail fills its height with room either side
+    auto thumbnailSize = static_cast<int>(_parameterGroup->GetInt("FileThumbnailIconsSize", 128));  // NOLINT
+    constexpr int numerator = 11;
+    constexpr int denominator = 8;
+    return thumbnailSize * numerator / denominator;
+}
+
+QString FileCardDelegate::describeAge(const QDateTime& modified, const QDateTime& now)
+{
+    auto translate = [](const char* text, int n = -1) {
+        return QCoreApplication::translate("StartGui::FileCardDelegate", text, nullptr, n);
+    };
+    // With no translator loaded, %n is filled in but "(s)" is left as it is, so English
+    // picks its singular and plural itself
+    auto count = [&translate](int n, const char* one, const char* many) {
+        return n == 1 ? translate(one) : translate(many, n);
+    };
+    if (!modified.isValid()) {
+        return {};
+    }
+    const qint64 seconds = modified.secsTo(now);
+    constexpr qint64 minute = 60;
+    constexpr qint64 hour = 60 * minute;
+    if (seconds < minute) {
+        return translate("just now");
+    }
+    if (seconds < hour) {
+        return count(static_cast<int>(seconds / minute), "1 minute ago", "%n minutes ago");
+    }
+    const qint64 days = modified.date().daysTo(now.date());
+    if (days == 0) {
+        return count(static_cast<int>(seconds / hour), "1 hour ago", "%n hours ago");
+    }
+    if (days == 1) {
+        return translate("yesterday");
+    }
+    constexpr qint64 week = 7;
+    if (days < week) {
+        return count(static_cast<int>(days), "1 day ago", "%n days ago");
+    }
+    return QLocale().toString(modified.date(), QLocale::ShortFormat);
 }
 
 QPixmap FileCardDelegate::generateThumbnail(const QString& path) const

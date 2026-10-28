@@ -46,7 +46,7 @@ display via the normal QSS mechanisms in Qt. There are three FreeCAD Parameters 
 widgets and the size of the icons, all in the `BaseApp/Preferences/Mod/Start/` preferences group:
 * `FileCardSpacing` (default: 20). The space between and around the individual File Cards.
 * `FileThumbnailIconsSize` (default: 128). The size of the file thumbnail on the File Cards.
-* `NewFileIconSize` (default: 48). The size of the icons on each of the "new file" buttons.
+* `NewFileIconSize` (default: 28). The size of the icons on each of the "new file" rows in the sidebar.
 
 At present none of these are directly exposed to the user, and the new Start workbench does not have a preferences
 panel. The parameters are intended to be used by Preference Pack authors to assist in customization of FreeCAD themes.

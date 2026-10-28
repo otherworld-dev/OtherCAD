@@ -23,14 +23,23 @@
 
 #pragma once
 
+#include <QColor>
 #include <QListView>
 
 namespace StartGui
 {
 
+/// A wrapping grid of file cards. The cards are painted by FileCardDelegate, so the stylesheet
+/// hands over their colours as properties, see StartGui--FileCardView in the QSS. Any colour
+/// left unset falls back to one taken from the palette.
 class FileCardView: public QListView
 {
     Q_OBJECT
+    Q_PROPERTY(QColor cardColor READ cardColor WRITE setCardColor)
+    Q_PROPERTY(QColor wellColor READ wellColor WRITE setWellColor)
+    Q_PROPERTY(QColor borderColor READ borderColor WRITE setBorderColor)
+    Q_PROPERTY(QColor accentColor READ accentColor WRITE setAccentColor)
+    Q_PROPERTY(QColor mutedTextColor READ mutedTextColor WRITE setMutedTextColor)
 
 public:
     explicit FileCardView(QWidget* parent = nullptr);
@@ -38,9 +47,26 @@ public:
     int heightForWidth(int width) const override;
 
     QSize sizeHint() const override;
+    QSize minimumSizeHint() const override;
+
+    QColor cardColor() const;
+    QColor wellColor() const;
+    QColor borderColor() const;
+    QColor accentColor() const;
+    QColor mutedTextColor() const;
+    void setCardColor(const QColor& color);
+    void setWellColor(const QColor& color);
+    void setBorderColor(const QColor& color);
+    void setAccentColor(const QColor& color);
+    void setMutedTextColor(const QColor& color);
 
 private:
     int m_cardSpacing;
+    QColor m_cardColor;
+    QColor m_wellColor;
+    QColor m_borderColor;
+    QColor m_accentColor;
+    QColor m_mutedTextColor;
 };
 
 }  // namespace StartGui

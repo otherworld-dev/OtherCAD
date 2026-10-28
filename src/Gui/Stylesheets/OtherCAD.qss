@@ -1198,10 +1198,6 @@ QAbstractButton[flat="true"] {
   border: 1px solid transparent;
 }
 
-#CreateNewRow > QPushButton {
-  border-radius: @InputFieldBorderRadius;
-}
-
 Gui--FileChooser QPushButton {
   min-width: 0;
 }
@@ -2633,20 +2629,113 @@ QMdiSubWindow:active {
 }
 
 /*==================================================================================================
-Start page
+Start page, see src/Mod/Start/Gui/StartView.cpp
+
+A sidebar of ways to start on the left, the files to open on the right. The file cards are
+painted rather than built from widgets, so their colours arrive as properties.
 ==================================================================================================*/
-QWidget#thumbnailWidget {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 @ButtonTopBackgroundColor,stop:1 @ButtonBottomBackgroundColor);
-  border-radius: 8px;
-  border: 1px solid @GeneralBorderColor;
+QWidget#StartMain {
+  background-color: @GeneralBackgroundColor;
 }
 
-QWidget#thumbnailWidget[state="hovered"] {
-  border: 1px solid @AccentColor;
+QFrame#StartSidebar {
+  background-color: @PrimaryColorDarken2;
+  border: none;
+  border-right: 1px solid @GeneralBorderColor;
 }
 
-QWidget#thumbnailWidget[state="pressed"] {
+QLabel#StartBrandVersion,
+QLabel#StartSubtitle,
+QLabel#StartSectionCount,
+QLabel#StartNoMatches,
+QLabel#newFileButtonDescription {
+  color: @RibbonCaptionColor;
+}
+
+QLabel#StartSidebarHeading {
+  color: @RibbonCaptionColor;
+  font-size: 8pt;
+  font-weight: 600;
+}
+
+QLabel#StartSectionHeading {
+  font-size: 11pt;
+  font-weight: 600;
+}
+
+QPushButton#StartPrimaryButton {
+  background-color: @AccentColor;
+  color: white;
   border: 1px solid @AccentColor;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-weight: 600;
+}
+
+QPushButton#StartPrimaryButton:hover {
+  border: 1px solid @TextForegroundColor;
+}
+
+QPushButton#StartPrimaryButton:pressed {
+  background-color: @AccentBackgroundColor;
+}
+
+QPushButton#newFileButton,
+QPushButton#StartLinkButton {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  text-align: left;
+  min-width: 0;
+}
+
+QPushButton#StartLinkButton {
+  color: @RibbonCaptionColor;
+  padding: 4px 8px;
+}
+
+QPushButton#newFileButton:hover,
+QPushButton#StartLinkButton:hover {
+  background-color: @GeneralBackgroundHoverColor;
+  color: @TextForegroundColor;
+}
+
+QPushButton#newFileButton:pressed {
+  background-color: @AccentHoverColor;
+}
+
+QLineEdit#StartFilter {
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+
+StartGui--FileCardView {
+  background: transparent;
+  border: none;
+  qproperty-cardColor: @PrimaryColorLighten1;
+  qproperty-wellColor: @PrimaryColorDarken4;
+  qproperty-borderColor: @PrimaryColorLighten2;
+  qproperty-accentColor: @AccentColor;
+  qproperty-mutedTextColor: @RibbonCaptionColor;
+}
+
+QFrame#StartShortcutChip {
+  background-color: @PrimaryColorLighten1;
+  border: 1px solid @PrimaryColorLighten2;
+  border-radius: 6px;
+}
+
+QLabel#StartShortcutKey {
+  background-color: @PrimaryColorLighten3;
+  border-bottom: 2px solid @PrimaryColorDarken4;
+  border-radius: 4px;
+  padding: 1px 6px;
+  min-width: 10px;
+  font-weight: 600;
+}
+
+QLabel#StartShortcutAction {
+  color: @RibbonCaptionColor;
 }
 
 /**

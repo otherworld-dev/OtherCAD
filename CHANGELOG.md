@@ -53,6 +53,13 @@ done in this fork.
 
 ### Changed
 
+- The Start page is redone. A sidebar holds a New design button, which starts a body
+  ready to sketch on, with Open and the other new file types listed under it. Recent
+  files and examples are cards with the thumbnail filling the top, a file type badge
+  and, for recent files, how long ago they were saved. A filter narrows every list at
+  once, and the Fusion-style shortcuts are shown as key caps.
+- The Start page checkbox reads "Show this page on startup" and stores what it shows,
+  in place of "Do not show this Start page again".
 - The version number now follows FreeCAD's. The first three numbers are the FreeCAD
   version the build is based on (26.3.0, as of the 9 September 2026 merge), and a fourth
   number counts OtherCAD releases on top of it, so this release is 26.3.0.1. 26.4.0 was

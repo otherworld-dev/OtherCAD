@@ -48,13 +48,13 @@ public:
 
 private:
     int iconSize;
-    int labelWidth;
     QHBoxLayout* mainLayout;
     QVBoxLayout* textLayout;
     QLabel* headingLabel;
     QLabel* descriptionLabel;
 
-protected:
+public:
+    QSize sizeHint() const override;
     QSize minimumSizeHint() const override;
 };
 
