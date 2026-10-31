@@ -99,6 +99,10 @@ done in this fork.
 
 ### Fixed
 
+- The Measure tool's hover values now show on Linux and macOS builds made with clang, where
+  they were always missing.
+- A click on the view cube that lands exactly on the line between two tiles now picks a
+  tile instead of nothing.
 - The New body operation of Extrude, Revolve, Sweep, Loft, Coil and the primitives now
   makes a new body. Before, the body the feature was made in lost everything that came
   before it and no new body appeared. On OK the feature moves into a body of its own,
