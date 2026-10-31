@@ -107,7 +107,8 @@ TopoDS_Shape shapeOf(const App::SubObjectT& item)
 {
     return Part::Feature::getShape(
         item.getObject(),
-        Part::ShapeOption::NeedSubElement | Part::ShapeOption::ResolveLink | Part::ShapeOption::Transform,
+        Part::ShapeOption::NeedSubElement | Part::ShapeOption::ResolveLink
+            | Part::ShapeOption::Transform,
         item.getSubName().c_str()
     );
 }
@@ -222,7 +223,8 @@ void MeasurePreview::refresh()
     }
 
     App::MeasureSelection selection;
-    for (const auto& picked : Gui::Selection().getSelection(doc->getName(), Gui::ResolveMode::NoResolve)) {
+    for (const auto& picked :
+         Gui::Selection().getSelection(doc->getName(), Gui::ResolveMode::NoResolve)) {
         App::SubObjectT sub(picked.pObject, picked.SubName);
         if (sub == hovered.Object) {
             // Its real measurement is already on screen
@@ -281,20 +283,19 @@ std::optional<MeasurePreview::Preview> MeasurePreview::compute(App::MeasureSelec
     return {};
 }
 
-std::optional<MeasurePreview::Preview> MeasurePreview::single(App::SubObjectT item, const std::string& kind)
+std::optional<MeasurePreview::Preview> MeasurePreview::single(
+    App::SubObjectT item,
+    const std::string& kind
+)
 {
     if (kind == "LENGTH") {
-        auto info = std::dynamic_pointer_cast<Part::MeasureLengthInfo>(
-            Measure::MeasureLength::getMeasureInfo(item)
-        );
+        auto info = Measure::lengthInfo(item);
         if (info && info->valid) {
             return Preview {format(info->length, Base::Unit::Length), info->placement.getPosition(), {}};
         }
     }
     else if (kind == "RADIUS" || kind == "DIAMETER") {
-        auto info = std::dynamic_pointer_cast<Part::MeasureRadiusInfo>(
-            Measure::MeasureRadius::getMeasureInfo(item)
-        );
+        auto info = Measure::radiusInfo(item);
         if (info && info->valid) {
             return Preview {
                 QStringLiteral("R ") + format(info->radius, Base::Unit::Length),
@@ -304,9 +305,7 @@ std::optional<MeasurePreview::Preview> MeasurePreview::single(App::SubObjectT it
         }
     }
     else if (kind == "AREA") {
-        auto info = std::dynamic_pointer_cast<Part::MeasureAreaInfo>(
-            Measure::MeasureArea::getMeasureInfo(item)
-        );
+        auto info = Measure::areaInfo(item);
         if (info && info->valid) {
             return Preview {format(info->area, Base::Unit::Area), info->placement.getPosition(), {}};
         }
@@ -328,12 +327,8 @@ std::optional<MeasurePreview::Preview> MeasurePreview::distance(
         to = selection[1].pickedPoint;
     }
     else {
-        auto info1 = std::dynamic_pointer_cast<Part::MeasureDistanceInfo>(
-            Measure::MeasureDistance::getMeasureInfo(selection[0].object)
-        );
-        auto info2 = std::dynamic_pointer_cast<Part::MeasureDistanceInfo>(
-            Measure::MeasureDistance::getMeasureInfo(selection[1].object)
-        );
+        auto info1 = Measure::distanceInfo(selection[0].object);
+        auto info2 = Measure::distanceInfo(selection[1].object);
         if (!info1 || !info1->valid || !info2 || !info2->valid) {
             return {};
         }
@@ -368,12 +363,8 @@ std::optional<MeasurePreview::Preview> MeasurePreview::distance(
 
 std::optional<MeasurePreview::Preview> MeasurePreview::angle(App::MeasureSelection selection)
 {
-    auto info1 = std::dynamic_pointer_cast<Part::MeasureAngleInfo>(
-        Measure::MeasureAngle::getMeasureInfo(selection[0].object)
-    );
-    auto info2 = std::dynamic_pointer_cast<Part::MeasureAngleInfo>(
-        Measure::MeasureAngle::getMeasureInfo(selection[1].object)
-    );
+    auto info1 = Measure::angleInfo(selection[0].object);
+    auto info2 = Measure::angleInfo(selection[1].object);
     if (!info1 || !info1->valid || !info2 || !info2->valid) {
         return {};
     }
@@ -444,8 +435,18 @@ void MeasurePreview::show(const Preview& preview)
     );
     if (preview.line) {
         const auto& [from, to] = *preview.line;
-        lineCoords->point.set1Value(0, static_cast<float>(from.x), static_cast<float>(from.y), static_cast<float>(from.z));
-        lineCoords->point.set1Value(1, static_cast<float>(to.x), static_cast<float>(to.y), static_cast<float>(to.z));
+        lineCoords->point.set1Value(
+            0,
+            static_cast<float>(from.x),
+            static_cast<float>(from.y),
+            static_cast<float>(from.z)
+        );
+        lineCoords->point.set1Value(
+            1,
+            static_cast<float>(to.x),
+            static_cast<float>(to.y),
+            static_cast<float>(to.z)
+        );
         lineSwitch->whichChild = 0;
     }
     else {

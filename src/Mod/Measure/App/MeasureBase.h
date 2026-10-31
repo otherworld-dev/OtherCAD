@@ -164,4 +164,14 @@ private:
 // when comparing 2 datums simply finding extrema may never converge or the result may be infinite.
 bool isDatum(const App::DocumentObject& ob);
 
+// The geometry handlers live in a static of the MeasureBaseExtendable template, so code that
+// calls getMeasureInfo from another library may read that library's own, empty copy of it:
+// clang does not merge template statics across libraries loaded with RTLD_LOCAL, as Python
+// loads modules. These run the lookup here, where the handlers are registered.
+MeasureExport std::shared_ptr<Part::MeasureLengthInfo> lengthInfo(App::SubObjectT item);
+MeasureExport std::shared_ptr<Part::MeasureRadiusInfo> radiusInfo(App::SubObjectT item);
+MeasureExport std::shared_ptr<Part::MeasureAreaInfo> areaInfo(App::SubObjectT item);
+MeasureExport std::shared_ptr<Part::MeasureDistanceInfo> distanceInfo(App::SubObjectT item);
+MeasureExport std::shared_ptr<Part::MeasureAngleInfo> angleInfo(App::SubObjectT item);
+
 }  // namespace Measure
