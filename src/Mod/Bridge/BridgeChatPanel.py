@@ -13,6 +13,7 @@ import FreeCADGui
 from PySide import QtCore, QtWidgets
 
 import BridgeChat
+import BridgeGwyn
 
 DOCK_NAME = "AIChat"
 RENDER_DELAY_MS = 40
@@ -64,6 +65,16 @@ class ChatPanel(QtWidgets.QWidget):
             "and fillet the top edges by 1 mm”."
         )
 
+        # Gwyn and a word on what the AI is doing, while a reply is on its way
+        self.gwyn = BridgeGwyn.GwynWidget()
+        self.statusLabel = QtWidgets.QLabel()
+        self.status = QtWidgets.QWidget()
+        statusRow = QtWidgets.QHBoxLayout(self.status)
+        statusRow.setContentsMargins(0, 0, 0, 0)
+        statusRow.addWidget(self.gwyn)
+        statusRow.addWidget(self.statusLabel, 1)
+        self.status.hide()
+
         self.input = ChatInput()
         self.input.setPlaceholderText("Message (Enter to send, Shift+Enter for a new line)")
         self.input.setTabChangesFocus(True)
@@ -79,6 +90,7 @@ class ChatPanel(QtWidgets.QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.addLayout(bar)
         layout.addWidget(self.transcript, 1)
+        layout.addWidget(self.status)
         layout.addLayout(row)
 
         self.renderTimer = QtCore.QTimer(self)
@@ -149,10 +161,12 @@ class ChatPanel(QtWidgets.QWidget):
         if not self.entries or self.entries[-1]["kind"] != "assistant":
             self.entries.append({"kind": "assistant", "text": ""})
         self.entries[-1]["text"] += chunk
+        self.statusLabel.setText("Writing…")
         self.scheduleRender()
 
     def _toolCall(self, name, arguments):
         self.entries.append({"kind": "tool", "name": name, "arguments": arguments, "result": None})
+        self.statusLabel.setText(f"Using {name}…")
         self.scheduleRender()
 
     def _toolResult(self, isError, summary):
@@ -160,6 +174,7 @@ class ChatPanel(QtWidgets.QWidget):
             if entry["kind"] == "tool" and entry["result"] is None:
                 entry["result"] = (isError, summary)
                 break
+        self.statusLabel.setText("Thinking…")
         self.scheduleRender()
 
     def _turnFinished(self, stopped):
@@ -175,6 +190,13 @@ class ChatPanel(QtWidgets.QWidget):
         self.sendButton.setText("Stop" if busy else "Send")
         self.sendButton.setToolTip("Stop the reply" if busy else "Send the message")
         self.modelBox.setEnabled(not busy)
+        if busy:
+            self.statusLabel.setText("Thinking…")
+            self.status.show()
+            self.gwyn.start()
+        else:
+            self.gwyn.stop()
+            self.status.hide()
 
     # -- Transcript ----------------------------------------------------------
 

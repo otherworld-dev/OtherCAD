@@ -44,6 +44,7 @@ from PySide import QtCore, QtGui, QtWidgets
 import Bridge
 import BridgeChat
 import BridgeChatPanel
+import BridgeGwyn
 from TestBridge import python_interpreter
 
 FAKE_CLAUDE = textwrap.dedent("""
@@ -301,6 +302,56 @@ class TestChatPanel(ChatCase):
         tool = [entry for entry in self.panel.entries if entry["kind"] == "tool"][0]
         self.assertTrue(tool["result"][0], "A read-only chat must not change anything")
         self.assertEqual(set(FreeCAD.listDocuments()), documents)
+
+
+class TestChatGwyn(ChatCase):
+    """Gwyn shows that a reply is on its way, and the word beside him says what is happening."""
+
+    def test_gwyn_is_hidden_until_a_message_is_sent(self):
+        self.assertFalse(self.panel.status.isVisible())
+        self.assertFalse(self.panel.gwyn.isAnimating())
+
+    def test_gwyn_moves_while_a_reply_is_written_and_goes_when_it_is_done(self):
+        self.say("slow", wait=False)
+        self.assertTrue(self.panel.status.isVisible())
+        self.assertTrue(self.panel.gwyn.isAnimating())
+        wait_until(lambda: "assistant" in self.kinds())
+        self.assertEqual(self.panel.statusLabel.text(), "Writing…")
+        frames = []
+        for _ in range(2):
+            time.sleep(0.3)
+            QtWidgets.QApplication.instance().processEvents()
+            frames.append(self.panel.gwyn.grab().toImage())
+        self.assertNotEqual(frames[0], frames[1], "Gwyn is not moving")
+        self.panel.sendOrStop()
+        wait_until(lambda: not self.provider.busy)
+        self.assertFalse(self.panel.status.isVisible())
+        self.assertFalse(self.panel.gwyn.isAnimating())
+
+    def test_the_status_names_the_tool_being_used(self):
+        self.panel._busyChanged(True)
+        self.assertEqual(self.panel.statusLabel.text(), "Thinking…")
+        self.panel._toolCall("pad", {"length": 10})
+        self.assertEqual(self.panel.statusLabel.text(), "Using pad…")
+        self.panel._toolResult(False, "ok")
+        self.assertEqual(self.panel.statusLabel.text(), "Thinking…")
+        self.panel._busyChanged(False)
+
+    def test_gwyn_climbs_out_and_takes_hold_of_the_rim(self):
+        start, settled = BridgeGwyn.pose(0), BridgeGwyn.pose(800)
+        self.assertAlmostEqual(start["rise"], 92)
+        self.assertEqual(start["handsOpacity"], 0)
+        self.assertAlmostEqual(settled["rise"], 0, places=3)
+        self.assertEqual(settled["handsOpacity"], 1)
+        glances = {round(BridgeGwyn.pose(900 + i * 100)["glance"]) for i in range(28)}
+        self.assertTrue({-7, 0, 7} <= glances, glances)
+
+    def test_gwyn_is_drawn_in_the_brand_colours(self):
+        image = BridgeGwyn.still(96)
+        teal = QtGui.QColor("#5EEAD4")
+        colours = {image.pixelColor(x, y).rgb() for x in range(96) for y in range(96)}
+        self.assertIn(teal.rgb(), colours, "No portal ring")
+        self.assertIn(QtGui.QColor("#0A1118").rgb(), colours, "No portal")
 
 
 class TestChatWithoutClaude(unittest.TestCase):

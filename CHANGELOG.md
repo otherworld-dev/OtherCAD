@@ -17,7 +17,8 @@ done in this fork.
   no shell, files or web, and none of your Claude Code settings. Replies stream in, tool
   calls are shown as they run, and a reply can be stopped. The model can be changed
   mid-conversation. The panel follows the bridge's ReadOnly and AllowPython settings
-  but does not need the bridge switched on.
+  but does not need the bridge switched on. While a reply is on its way, Gwyn climbs
+  out of his portal beside a word on what Claude is doing.
 - LLM Bridge, in the Tools menu, lets an LLM client read, look at and change the open
   model over MCP, on this computer only, at `http://127.0.0.1:7720/mcp`. It is off
   until switched on.
