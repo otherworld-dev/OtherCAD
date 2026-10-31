@@ -177,7 +177,8 @@ jobs:
       uses: ./.github/workflows/actions/runPythonTests
       with:
         testDescription: "CLI tests on build dir"
-        testCommand: ${{ env.builddir }}/bin/OtherCADCmd -t 0
+        # Quoted: on Windows the path has backslashes, which bash drops from a bare word
+        testCommand: '"${{ env.builddir }}/bin/OtherCADCmd" -t 0'
         logFile: ${{ env.logdir }}TestCLIBuild.log
         reportFile: ${{env.reportdir}}${{ env.reportfilename }}
         shellCmd: ${{ env.shellCmd }}

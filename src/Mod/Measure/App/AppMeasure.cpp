@@ -58,6 +58,31 @@ template class MeasureExport MeasureBaseExtendable<Part::MeasureLengthInfo>;
 template class MeasureExport MeasureBaseExtendable<Part::MeasurePositionInfo>;
 template class MeasureExport MeasureBaseExtendable<Part::MeasureRadiusInfo>;
 
+std::shared_ptr<Part::MeasureLengthInfo> lengthInfo(App::SubObjectT item)
+{
+    return std::dynamic_pointer_cast<Part::MeasureLengthInfo>(MeasureLength::getMeasureInfo(item));
+}
+
+std::shared_ptr<Part::MeasureRadiusInfo> radiusInfo(App::SubObjectT item)
+{
+    return std::dynamic_pointer_cast<Part::MeasureRadiusInfo>(MeasureRadius::getMeasureInfo(item));
+}
+
+std::shared_ptr<Part::MeasureAreaInfo> areaInfo(App::SubObjectT item)
+{
+    return std::dynamic_pointer_cast<Part::MeasureAreaInfo>(MeasureArea::getMeasureInfo(item));
+}
+
+std::shared_ptr<Part::MeasureDistanceInfo> distanceInfo(App::SubObjectT item)
+{
+    return std::dynamic_pointer_cast<Part::MeasureDistanceInfo>(MeasureDistance::getMeasureInfo(item));
+}
+
+std::shared_ptr<Part::MeasureAngleInfo> angleInfo(App::SubObjectT item)
+{
+    return std::dynamic_pointer_cast<Part::MeasureAngleInfo>(MeasureAngle::getMeasureInfo(item));
+}
+
 
 class Module: public Py::ExtensionModule<Module>
 {
