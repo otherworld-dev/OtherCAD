@@ -27,6 +27,7 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <numbers>
@@ -705,23 +706,49 @@ SoViewCube::PickId SoViewCube::pickAt(const SbVec2s& point) const
         }
     }
 
-    SoRayPickAction pick(SbViewportRegion(static_cast<short>(width), static_cast<short>(height)));
+    const SbViewportRegion region(static_cast<short>(width), static_cast<short>(height));
+    const auto tileAt = [&](const SoRayPickAction& pick) {
+        const SoPickedPoint* hit = pick.getPickedPoint();
+        if (!hit || !hit->getPath() || hit->getPath()->getTail() != tileFaces) {
+            return PickId::None;
+        }
+        const SoDetail* detail = hit->getDetail();
+        if (!detail || !detail->isOfType(SoFaceDetail::getClassTypeId())) {
+            return PickId::None;
+        }
+        const int tile = static_cast<const SoFaceDetail*>(detail)->getFaceIndex();
+        if (tile < 0 || tile >= Layout::tileCount) {
+            return PickId::None;
+        }
+        return Layout::tiles()[static_cast<size_t>(tile)].pickId;
+    };
+
+    SoRayPickAction pick(region);
     pick.setPoint(local);
     pick.setRadius(1.0F);
     pick.apply(pickRoot);
-    const SoPickedPoint* hit = pick.getPickedPoint();
-    if (!hit || !hit->getPath() || hit->getPath()->getTail() != tileFaces) {
-        return PickId::None;
+    PickId picked = tileAt(pick);
+
+    // Each tile is two triangles and no two tiles share vertices, so a ray can land exactly on
+    // a seam and, depending on how the Coin build rounds, miss both sides (macOS arm64 did).
+    // A quarter pixel to either side lands inside one of them.
+    static constexpr std::array<std::array<float, 2>, 4> nudges {
+        {{0.25F, 0.25F}, {-0.25F, -0.25F}, {0.25F, -0.25F}, {-0.25F, 0.25F}}
+    };
+    for (const auto& nudge : nudges) {
+        if (picked != PickId::None) {
+            break;
+        }
+        SoRayPickAction retry(region);
+        retry.setNormalizedPoint(SbVec2f(
+            (static_cast<float>(local[0]) + 0.5F + nudge[0]) / width,
+            (static_cast<float>(local[1]) + 0.5F + nudge[1]) / height
+        ));
+        retry.setRadius(1.0F);
+        retry.apply(pickRoot);
+        picked = tileAt(retry);
     }
-    const SoDetail* detail = hit->getDetail();
-    if (!detail || !detail->isOfType(SoFaceDetail::getClassTypeId())) {
-        return PickId::None;
-    }
-    const int tile = static_cast<const SoFaceDetail*>(detail)->getFaceIndex();
-    if (tile < 0 || tile >= Layout::tileCount) {
-        return PickId::None;
-    }
-    return Layout::tiles()[static_cast<size_t>(tile)].pickId;
+    return picked;
 }
 
 void SoViewCube::beginOverlayPass(SoGLRenderAction* action, int x, int y, int width, int height)

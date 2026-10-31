@@ -174,6 +174,38 @@ TEST_F(SoViewCubeTest, everyPointInsideTheCubePicksATile)
     }
 }
 
+TEST_F(SoViewCubeTest, noPixelInsideTheCubeFallsThroughASeam)
+{
+    // Each tile is two triangles and no two tiles share vertices, so a ray can land exactly
+    // on a seam. Whether it then hits either side depends on the floating-point rounding of
+    // the Coin build (macOS arm64 missed where Linux and Windows hit), so the click must not.
+    for (SbBool ortho : {TRUE, FALSE}) {
+        cube->cameraIsOrthographic = ortho;
+        for (const SbRotation& view : {isoView(), frontView()}) {
+            cube->cameraOrientation = view;
+            const float reach = view == frontView() ? 0.2F : (ortho ? 0.3F : 0.25F);
+            const auto radius = static_cast<int>(reach * viewportSize);
+            int misses = 0;
+            for (int dx = -radius; dx <= radius; ++dx) {
+                for (int dy = -radius; dy <= radius; ++dy) {
+                    if (dx * dx + dy * dy > radius * radius) {
+                        continue;
+                    }
+                    const SbVec2s pixel(
+                        static_cast<short>(viewportSize / 2 + dx),
+                        static_cast<short>(viewportSize / 2 + dy)
+                    );
+                    if (cube->pickAt(pixel) == PickId::None && misses++ < 5) {
+                        ADD_FAILURE() << "ortho " << ortho << " front " << (view == frontView())
+                                      << " pixel " << pixel[0] << ", " << pixel[1];
+                    }
+                }
+            }
+            EXPECT_EQ(misses, 0) << "ortho " << ortho << " front " << (view == frontView());
+        }
+    }
+}
+
 TEST_F(SoViewCubeTest, anIsometricViewPicksTheCornerItLooksAt)
 {
     // Looking down from front-right-top, the corner shared by FRONT, TOP and RIGHT is
