@@ -3,6 +3,9 @@
 SET(Bridge_SRCS
     Bridge.py
     BridgeActions.py
+    BridgeChat.py
+    BridgeChatPanel.py
+    BridgeGwyn.py
     BridgeServer.py
     BridgeStdio.py
     BridgeTools.py

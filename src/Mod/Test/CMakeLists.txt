@@ -75,6 +75,7 @@ SET(Test_SRCS
     TestRibbonStrings.py
     TestSketchStatusChip.py
     TestBridge.py
+    TestBridgeChat.py
     # Not a suite: pins the preferences a GUI test depends on and puts them back.
     PinnedPreferences.py
 )
