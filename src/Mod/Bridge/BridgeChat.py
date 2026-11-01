@@ -16,6 +16,8 @@ ClaudeCodeProvider runs the Claude Code CLI headless, so it uses the plan the us
 signed in to rather than an API key. It gets the bridge's tools, and nothing else, from a
 private bridge server on a free port with its own token.
 
+Other backends: BridgeChatApi (Claude with an API key).
+
 Preferences live in BaseApp/Preferences/Mod/Bridge: ClaudePath (empty to search PATH and
 ~/.local/bin) and ChatModel (empty for the CLI's default). The private server follows the
 bridge's ReadOnly and AllowPython settings.
@@ -27,6 +29,7 @@ import secrets
 import shutil
 import sys
 import tempfile
+import weakref
 
 import FreeCAD
 from PySide import QtCore
@@ -67,6 +70,8 @@ class Provider(QtCore.QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.busy = False
+        # Asked on the main thread before the AI runs Python; tests replace it
+        self.approve = askToRunPython
 
     def send(self, message):
         raise NotImplementedError
@@ -87,6 +92,63 @@ class Provider(QtCore.QObject):
         if busy != self.busy:
             self.busy = busy
             self.busyChanged.emit(busy)
+
+
+def askToRunPython(name, arguments, parent=None):
+    """Show the user the code the AI wants to run and return whether they allow it."""
+
+    from PySide import QtGui, QtWidgets
+
+    if parent is None:
+        try:
+            import FreeCADGui
+
+            parent = FreeCADGui.getMainWindow()
+        except Exception:
+            parent = None
+    dialog = QtWidgets.QDialog(parent)
+    dialog.setObjectName("AIChatRunPython")
+    dialog.setWindowTitle("Run Python?")
+    label = QtWidgets.QLabel(
+        "The AI wants to run this Python inside OtherCAD. It runs with your account's access "
+        "to your files and the network, so read it before you run it."
+    )
+    label.setWordWrap(True)
+    code = QtWidgets.QPlainTextEdit(str(arguments.get("code", "")))
+    code.setReadOnly(True)
+    code.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.FixedFont))
+    code.setMinimumSize(520, 220)
+    buttons = QtWidgets.QDialogButtonBox()
+    run = buttons.addButton("Run", QtWidgets.QDialogButtonBox.AcceptRole)
+    skip = buttons.addButton("Don't run", QtWidgets.QDialogButtonBox.RejectRole)
+    run.setAutoDefault(False)
+    skip.setDefault(True)
+    buttons.accepted.connect(dialog.accept)
+    buttons.rejected.connect(dialog.reject)
+    layout = QtWidgets.QVBoxLayout(dialog)
+    layout.addWidget(label)
+    layout.addWidget(code, 1)
+    layout.addWidget(buttons)
+    allowed = dialog.exec() == QtWidgets.QDialog.Accepted
+    dialog.deleteLater()
+    return allowed
+
+
+def _weakApprover(provider):
+    """provider.approve, without the server keeping the provider alive.
+
+    A strong reference would make a provider <-> server cycle, and Python frees cycles on
+    whichever thread happens to collect, here an HTTP thread, where deleting the provider's
+    Qt objects crashes the app.
+    """
+
+    ref = weakref.ref(provider)
+
+    def approve(name, arguments):
+        alive = ref()
+        return bool(alive is not None and alive.approve(name, arguments))
+
+    return approve
 
 
 def findClaude():
@@ -234,6 +296,7 @@ class ClaudeCodeProvider(Provider):
             token,
             params.GetBool("ReadOnly", False),
             params.GetBool("AllowPython", True),
+            approve=_weakApprover(self),
         )
         self.server.start()
         config = {
@@ -269,6 +332,14 @@ class ClaudeCodeProvider(Provider):
 
         process = QtCore.QProcess(self)
         process.setWorkingDirectory(workDir)
+        import BridgeServer
+
+        # A tool call can wait on the user's approval, so give it longer than the default
+        environment = QtCore.QProcessEnvironment.systemEnvironment()
+        environment.insert(
+            "MCP_TOOL_TIMEOUT", str(int((BridgeServer.APPROVAL_TIMEOUT + 60) * 1000))
+        )
+        process.setProcessEnvironment(environment)
         process.readyReadStandardOutput.connect(self._readOutput)
         process.readyReadStandardError.connect(self._readError)
         process.finished.connect(self._finished)
@@ -375,4 +446,9 @@ class ClaudeCodeProvider(Provider):
             self.turnFinished.emit(stopped)
 
 
-PROVIDERS = [ClaudeCodeProvider]
+def providers():
+    """Every backend the panel offers, in the order it lists them."""
+
+    import BridgeChatApi
+
+    return [ClaudeCodeProvider, BridgeChatApi.AnthropicApiProvider]

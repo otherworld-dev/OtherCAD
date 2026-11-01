@@ -36,6 +36,7 @@ import tempfile
 import textwrap
 import time
 import unittest
+import weakref
 
 import FreeCAD
 import FreeCADGui
@@ -44,15 +45,18 @@ from PySide import QtCore, QtGui, QtWidgets
 import Bridge
 import BridgeChat
 import BridgeChatPanel
+import BridgeServer
 import BridgeGwyn
 from TestBridge import python_interpreter
 
 FAKE_CLAUDE = textwrap.dedent("""
-    import json, sys, urllib.request
+    import json, os, sys, urllib.request
 
     args = sys.argv[1:]
     with open(sys.argv[0] + ".args", "a", encoding="utf-8") as log:
         log.write(json.dumps(args) + "\\n")
+    with open(sys.argv[0] + ".env", "w", encoding="utf-8") as env:
+        env.write(os.environ.get("MCP_TOOL_TIMEOUT", "0"))
     config = json.load(open(args[args.index("--mcp-config") + 1], encoding="utf-8"))
     server = config["mcpServers"]["othercad"]
 
@@ -96,10 +100,12 @@ FAKE_CLAUDE = textwrap.dedent("""
         elif text == "slow":
             delta("Thinking")
         elif text.startswith("tool "):
-            name = text.split()[1]
+            parts = text.split(" ", 2)
+            name = parts[1]
+            arguments = json.loads(parts[2]) if len(parts) > 2 else {}
             out({"type": "assistant", "message": {"content": [{"type": "tool_use",
-                 "id": "t1", "name": "mcp__othercad__" + name, "input": {}}]}})
-            answer = call(name, {})
+                 "id": "t1", "name": "mcp__othercad__" + name, "input": arguments}]}})
+            answer = call(name, arguments)
             out({"type": "user", "message": {"content": [{"type": "tool_result",
                  "tool_use_id": "t1", "is_error": answer["isError"],
                  "content": answer["content"]}]}})
@@ -395,3 +401,113 @@ class TestChatCommand(unittest.TestCase):
             self.assertIs(mainWindow.findChild(QtWidgets.QDockWidget, "AIChat"), dock)
         finally:
             dock.setVisible(wasVisible)
+
+
+class TestChatAsksBeforePython(ChatCase):
+    """Python the AI wants to run waits for the user's yes; the other tools do not ask."""
+
+    def setUp(self):
+        super().setUp()
+        # Plain containers only: an approver that refers to the test would make a
+        # test -> panel -> provider -> approver -> test cycle
+        asked = self.asked = []
+        answer = self.answer = [False]
+
+        def approve(name, arguments):
+            asked.append((name, arguments))
+            return answer[0]
+
+        self.provider.approve = approve
+
+    def test_python_the_user_declines_is_not_run(self):
+        self.say('tool run_python {"code": "FreeCAD.newDocument(\'Declined\')"}')
+        self.assertEqual([name for name, _ in self.asked], ["run_python"])
+        self.assertIn("Declined", self.asked[0][1]["code"])
+        self.assertNotIn("Declined", FreeCAD.listDocuments())
+        tool = [entry for entry in self.panel.entries if entry["kind"] == "tool"][0]
+        self.assertTrue(tool["result"][0])
+        self.assertIn("chose not to run", tool["result"][1])
+
+    def test_python_the_user_allows_runs(self):
+        self.answer[0] = True
+        self.say('tool run_python {"code": "6 * 7"}')
+        tool = [entry for entry in self.panel.entries if entry["kind"] == "tool"][0]
+        self.assertFalse(tool["result"][0], tool["result"])
+        self.assertIn("42", tool["result"][1])
+
+    def test_other_tools_do_not_ask(self):
+        self.say("tool get_document")
+        self.assertEqual(self.asked, [])
+
+    def test_the_cli_waits_long_enough_for_an_answer(self):
+        self.say("hello")
+        with open(self.script + ".env", encoding="utf-8") as stream:
+            timeout_ms = int(stream.read())
+        self.assertGreater(timeout_ms, BridgeServer.APPROVAL_TIMEOUT * 1000)
+
+
+class TestRunPythonDialog(unittest.TestCase):
+    """The question itself: the code is shown, and nothing runs unless Run is pressed."""
+
+    def tearDown(self):
+        presser = getattr(self, "presser", None)
+        if presser is not None:
+            presser.stop()
+
+    def _answer(self, button_text):
+        """Ask, and press button_text in the dialog once it is up; any dialog left after
+        5 s is refused, so a test that goes wrong cannot hang."""
+
+        seen = {}
+        deadline = time.monotonic() + 5.0
+        self.presser = QtCore.QTimer()
+        self.presser.setInterval(50)
+
+        def press():
+            dialogs = [
+                widget
+                for widget in QtWidgets.QApplication.topLevelWidgets()
+                if widget.objectName() == "AIChatRunPython" and widget.isVisible()
+            ]
+            if not dialogs:
+                if time.monotonic() > deadline:
+                    self.presser.stop()
+                return
+            dialog = dialogs[0]
+            self.presser.stop()
+            seen["code"] = dialog.findChild(QtWidgets.QPlainTextEdit).toPlainText()
+            buttons = [
+                button
+                for button in dialog.findChildren(QtWidgets.QPushButton)
+                if button.text() == button_text
+            ]
+            if buttons and time.monotonic() <= deadline:
+                buttons[0].click()
+            else:
+                dialog.reject()
+
+        self.presser.timeout.connect(press)
+        self.presser.start()
+        allowed = BridgeChat.askToRunPython("run_python", {"code": "print('hi')"})
+        return allowed, seen.get("code")
+
+    def test_run_allows_it_and_shows_the_code(self):
+        allowed, code = self._answer("Run")
+        self.assertTrue(allowed)
+        self.assertEqual(code, "print('hi')")
+
+    def test_dont_run_refuses_it(self):
+        allowed, _ = self._answer("Don't run")
+        self.assertFalse(allowed)
+
+
+class TestChatProviderLifetime(unittest.TestCase):
+    def test_the_bridge_server_does_not_keep_the_provider_alive(self):
+        # A cycle through the server would leave the provider to the cycle collector, which
+        # can run on an HTTP thread and delete Qt objects there
+        provider = BridgeChat.ClaudeCodeProvider()
+        provider._startServer()
+        ref = weakref.ref(provider)
+        provider.shutdown()
+        del provider
+        self.assertIsNone(ref(), "Something still holds the provider")

@@ -12,6 +12,7 @@ import json
 import FreeCADGui
 from PySide import QtCore, QtWidgets
 
+import Bridge
 import BridgeChat
 import BridgeGwyn
 
@@ -39,7 +40,8 @@ class ChatInput(QtWidgets.QPlainTextEdit):
 class ChatPanel(QtWidgets.QWidget):
     """The transcript, the message box and the provider's controls.
 
-    providerFactory makes the backend, for tests; it defaults to the first in PROVIDERS.
+    providerFactory makes the backend, for tests; otherwise the one chosen last
+    (BaseApp/Preferences/Mod/Bridge/ChatProvider), or the first in providers().
     """
 
     def __init__(self, parent=None, providerFactory=None):
@@ -50,12 +52,16 @@ class ChatPanel(QtWidgets.QWidget):
 
         self.providerBox = QtWidgets.QComboBox()
         self.modelBox = QtWidgets.QComboBox()
+        self.keyButton = QtWidgets.QToolButton()
+        self.keyButton.setText("Key\u2026")
+        self.keyButton.setToolTip("Set the API key this backend uses")
         self.newButton = QtWidgets.QToolButton()
         self.newButton.setText("New chat")
         self.newButton.setToolTip("Start a new conversation")
         bar = QtWidgets.QHBoxLayout()
         bar.addWidget(self.providerBox, 1)
         bar.addWidget(self.modelBox)
+        bar.addWidget(self.keyButton)
         bar.addWidget(self.newButton)
 
         self.transcript = QtWidgets.QTextBrowser()
@@ -98,12 +104,18 @@ class ChatPanel(QtWidgets.QWidget):
         self.renderTimer.setInterval(RENDER_DELAY_MS)
         self.renderTimer.timeout.connect(self.render)
 
-        for cls in BridgeChat.PROVIDERS:
+        self.providerClasses = BridgeChat.providers()
+        for cls in self.providerClasses:
             self.providerBox.addItem(cls.name)
-        self.providerBox.setEnabled(self.providerBox.count() > 1)
+        chosen = Bridge.params().GetString("ChatProvider", "")
+        names = [cls.__name__ for cls in self.providerClasses]
+        self.providerBox.setCurrentIndex(names.index(chosen) if chosen in names else 0)
+        self.providerBox.setEnabled(self.providerBox.count() > 1 and not providerFactory)
         self.input.submitted.connect(self.sendOrStop)
         self.sendButton.clicked.connect(self.sendOrStop)
         self.newButton.clicked.connect(self.newChat)
+        self.keyButton.clicked.connect(self.askForKey)
+        self.providerBox.activated.connect(self._providerChosen)
         self.modelBox.activated.connect(self._modelChosen)
         self._setProvider()
 
@@ -113,7 +125,7 @@ class ChatPanel(QtWidgets.QWidget):
         if self.providerFactory:
             provider = self.providerFactory(self)
         else:
-            provider = BridgeChat.PROVIDERS[self.providerBox.currentIndex()](self)
+            provider = self.providerClasses[self.providerBox.currentIndex()](self)
         self.provider = provider
         provider.text.connect(self._text)
         provider.toolCall.connect(self._toolCall)
@@ -128,7 +140,35 @@ class ChatPanel(QtWidgets.QWidget):
         index = self.modelBox.findData(getattr(provider, "model", ""))
         self.modelBox.setCurrentIndex(max(index, 0))
         self.modelBox.setVisible(len(provider.models) > 1)
+        self.keyButton.setVisible(getattr(provider, "needsKey", False))
         self._busyChanged(provider.busy)
+
+    def _providerChosen(self, index):
+        cls = self.providerClasses[index]
+        if isinstance(self.provider, cls):
+            return
+        Bridge.params().SetString("ChatProvider", cls.__name__)
+        self.provider.shutdown()
+        self.provider.deleteLater()
+        self._setProvider()
+        self.entries = [{"kind": "note", "text": f"Now using {cls.name}. This is a new conversation."}]
+        self.render()
+
+    def askForKey(self):
+        import BridgeChatApi
+
+        note = ""
+        if BridgeChatApi.keyFromEnvironment():
+            note = "\n\nANTHROPIC_API_KEY is set, and it is used instead of a saved key."
+        key, ok = QtWidgets.QInputDialog.getText(
+            self,
+            "Anthropic API key",
+            "Paste your Anthropic API key. It is saved in OtherCAD's preferences; leave it "
+            "empty to forget the saved key." + note,
+            QtWidgets.QLineEdit.Password,
+        )
+        if ok:
+            self.provider.setKey(key.strip())
 
     def _modelChosen(self, index):
         self.provider.setModel(self.modelBox.itemData(index))

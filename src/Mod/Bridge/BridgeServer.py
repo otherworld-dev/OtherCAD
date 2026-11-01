@@ -7,10 +7,14 @@ tool call is handed to the Qt main thread and the worker waits for its answer.
 """
 
 import base64
+import collections
 import http.server
 import json
+import sys
 import threading
+import time
 import traceback
+import weakref
 
 import FreeCAD
 from PySide import QtCore
@@ -18,7 +22,13 @@ from PySide import QtCore
 import BridgeTools
 
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
-CALL_TIMEOUT = 120.0
+# A client gives up after 60 s, so say what happened before then
+CALL_TIMEOUT = 50.0
+# How long a person has to answer an approval before the call gives up
+APPROVAL_TIMEOUT = 15 * 60.0
+# Tools a client with an approver must have approved before each call
+ASK_FIRST = {"run_python"}
+START_TIMEOUT = 20.0
 MAX_BODY = 4 * 1024 * 1024
 
 INSTRUCTIONS = (
@@ -43,6 +53,67 @@ INSTRUCTIONS = (
 )
 
 
+class Busy(Exception):
+    """A call that never started because an earlier one was still running."""
+
+
+class _Job:
+    def __init__(self, func):
+        self.func = func
+        self.started = threading.Event()
+        self.done = threading.Event()
+        self.cancelled = False
+        self.result = None
+        self.error = None
+
+
+# Calls from every runner take turns through one queue. A call that recomputes processes
+# events, and Qt hands over any call that came in meanwhile right there: run at once, it
+# would see the first call's half-done state and hold it up until it returned.
+# The same goes for the user's own recomputes.
+_pending = collections.deque()
+_running = False
+_retry_armed = False
+_start_lock = threading.Lock()
+
+
+def _recomputing():
+    return any(doc.Recomputing for doc in FreeCAD.listDocuments().values())
+
+
+def _retry():
+    global _retry_armed
+    _retry_armed = False
+    _run_pending()
+
+
+def _run_pending():
+    global _running, _retry_armed
+    if _running:
+        return  # the call already running picks it up when it is done
+    if _recomputing():
+        if not _retry_armed:
+            _retry_armed = True
+            QtCore.QTimer.singleShot(20, _retry)
+        return
+    _running = True
+    try:
+        while _pending:
+            job = _pending.popleft()
+            with _start_lock:
+                if job.cancelled:
+                    continue
+                job.started.set()
+            try:
+                job.result = job.func()
+            except BaseException as error:  # handed back to the waiting thread
+                job.error = error
+            finally:
+                job.done.set()
+    finally:
+        _running = False
+
+
 class MainThreadRunner(QtCore.QObject):
     """Runs a function on the thread this object lives on and hands back its result."""
 
@@ -53,25 +124,32 @@ class MainThreadRunner(QtCore.QObject):
         self.request.connect(self._run, QtCore.Qt.QueuedConnection)
 
     def _run(self, job):
-        func, done, outcome = job
-        try:
-            outcome["result"] = func()
-        except BaseException as error:  # handed back to the waiting thread
-            outcome["error"] = error
-        finally:
-            done.set()
+        _pending.append(job)
+        _run_pending()
 
-    def call(self, func, timeout=CALL_TIMEOUT):
+    def call(self, func, timeout=CALL_TIMEOUT, start_timeout=START_TIMEOUT):
         if QtCore.QThread.currentThread() == self.thread():
             return func()
-        done = threading.Event()
-        outcome = {}
-        self.request.emit((func, done, outcome))
-        if not done.wait(timeout):
-            raise TimeoutError(f"OtherCAD did not answer within {timeout:.0f} s")
-        if "error" in outcome:
-            raise outcome["error"]
-        return outcome["result"]
+        deadline = time.monotonic() + timeout
+        job = _Job(func)
+        self.request.emit(job)
+        if not job.started.wait(min(start_timeout, timeout)):
+            with _start_lock:
+                if not job.started.is_set():
+                    job.cancelled = True
+                    raise Busy(
+                        "OtherCAD is still busy with an earlier call, so this one did not "
+                        "run and nothing was changed. Try it again in a moment."
+                    )
+        if not job.done.wait(max(0.0, deadline - time.monotonic())):
+            raise TimeoutError(
+                f"OtherCAD did not finish within {timeout:.0f} s. The call is still running "
+                "and will finish on its own; check the model with a quick call before you "
+                "repeat it, or it may be done twice."
+            )
+        if job.error is not None:
+            raise job.error
+        return job.result
 
 
 def _rpc_error(msg_id, code, message):
@@ -96,15 +174,70 @@ def _tool_error(text):
     return {"content": [{"type": "text", "text": text}], "isError": True}
 
 
+def offers(name, read_only, allow_python):
+    """Whether a client may use this tool under these preferences."""
+
+    if name == "run_python" and not allow_python:
+        return False
+    return not (read_only and not BridgeTools.TOOLS[name].readonly)
+
+
+def call_tool(runner, name, arguments, approve=None):
+    """Run a tool on the main thread through runner: its MCP result, errors included.
+
+    approve(name, arguments), if given, is asked on the main thread before a tool in
+    ASK_FIRST runs, and the call is refused unless it returns True. The question waits for
+    the person rather than for CALL_TIMEOUT, and nothing else runs while it is open.
+    """
+
+    FreeCAD.Console.PrintLog(f"Bridge: {name} {json.dumps(arguments)}\n")
+    if approve is not None and name in ASK_FIRST:
+        try:
+            allowed = runner.call(lambda: approve(name, arguments), timeout=APPROVAL_TIMEOUT)
+        except (Busy, TimeoutError) as error:
+            return _tool_error(f"Not run: {error}")
+        if not allowed:
+            return _tool_error("The user chose not to run this, so nothing was changed.")
+    try:
+        return _tool_result(runner.call(lambda: BridgeTools.call(name, arguments)))
+    except BridgeTools.ActionFailed as error:
+        return _tool_error(f"{error}\n{json.dumps(error.details, indent=1)}")
+    except (BridgeTools.ToolError, Busy, TimeoutError) as error:
+        return _tool_error(str(error))
+    except Exception as error:
+        text = "".join(traceback.format_exception_only(type(error), error)).strip()
+        FreeCAD.Console.PrintWarning(f"Bridge: {name} failed: {text}\n")
+        return _tool_error(text)
+
+
+class _HTTPServer(http.server.ThreadingHTTPServer):
+    daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        # A client that goes away mid-request, such as the chat panel's CLI when it is
+        # stopped, is routine; anything else still gets its traceback
+        if isinstance(sys.exc_info()[1], ConnectionError):
+            return
+        super().handle_error(request, client_address)
+
+
 class Server:
-    def __init__(self, host="127.0.0.1", port=7720, token="", read_only=False, allow_python=True):
+    def __init__(
+        self,
+        host="127.0.0.1",
+        port=7720,
+        token="",
+        read_only=False,
+        allow_python=True,
+        approve=None,
+    ):
         self.host = host
+        self.approve = approve
         self.token = token
         self.read_only = read_only
         self.allow_python = allow_python
         self.runner = MainThreadRunner()
-        self.httpd = http.server.ThreadingHTTPServer((host, port), self._handler_class())
-        self.httpd.daemon_threads = True
+        self.httpd = _HTTPServer((host, port), self._handler_class())
         self.port = self.httpd.server_address[1]
         self.thread = None
 
@@ -123,6 +256,9 @@ class Server:
         self.httpd.server_close()
         if self.thread:
             self.thread.join(5)
+        # The runner is a Qt object of the main thread: delete it there, whichever thread
+        # Python later frees this server on
+        self.runner.deleteLater()
 
     # -- MCP -----------------------------------------------------------------
 
@@ -143,7 +279,9 @@ class Server:
                 "jsonrpc": "2.0",
                 "id": msg_id,
                 "result": {
-                    "protocolVersion": asked if asked in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0],
+                    "protocolVersion": (
+                        asked if asked in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0]
+                    ),
                     "capabilities": {"tools": {"listChanged": False}},
                     "serverInfo": {"name": "othercad", "version": _app_version()},
                     "instructions": INSTRUCTIONS,
@@ -165,22 +303,10 @@ class Server:
     def offers(self, name):
         """Whether the preferences let clients use this tool."""
 
-        if name == "run_python" and not self.allow_python:
-            return False
-        return not (self.read_only and not BridgeTools.TOOLS[name].readonly)
+        return offers(name, self.read_only, self.allow_python)
 
     def call_tool(self, name, arguments):
-        FreeCAD.Console.PrintLog(f"Bridge: {name} {json.dumps(arguments)}\n")
-        try:
-            return _tool_result(self.runner.call(lambda: BridgeTools.call(name, arguments)))
-        except BridgeTools.ActionFailed as error:
-            return _tool_error(f"{error}\n{json.dumps(error.details, indent=1)}")
-        except BridgeTools.ToolError as error:
-            return _tool_error(str(error))
-        except Exception as error:
-            text = "".join(traceback.format_exception_only(type(error), error)).strip()
-            FreeCAD.Console.PrintWarning(f"Bridge: {name} failed: {text}\n")
-            return _tool_error(text)
+        return call_tool(self.runner, name, arguments, self.approve)
 
     # -- HTTP ----------------------------------------------------------------
 
@@ -198,7 +324,9 @@ class Server:
         return True
 
     def _handler_class(self):
-        server = self
+        # Weak, so the server is not in a cycle with its own handler class: Python would
+        # free such a cycle on whichever thread collects, and the runner is a Qt object
+        server_ref = weakref.ref(self)
 
         class Handler(http.server.BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
@@ -216,6 +344,9 @@ class Server:
                 self.wfile.write(data)
 
             def do_POST(self):
+                server = server_ref()
+                if server is None:
+                    return self._reply(503)
                 if self.path.split("?")[0] != "/mcp":
                     return self._reply(404)
                 if not server.allowed(self.headers):

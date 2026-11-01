@@ -145,4 +145,5 @@ FreeCAD.__unit_test__ += [
     "TestGridUnits",
     "TestBridge",
     "TestBridgeChat",
+    "TestBridgeChatApi",
 ]

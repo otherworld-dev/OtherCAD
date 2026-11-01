@@ -19,6 +19,12 @@ done in this fork.
   mid-conversation. The panel follows the bridge's ReadOnly and AllowPython settings
   but does not need the bridge switched on. While a reply is on its way, Gwyn climbs
   out of his portal beside a word on what Claude is doing.
+  - It can also use Claude through the Anthropic API with an API key: pick
+    "Claude (API key)" and paste a key with Key…, or set ANTHROPIC_API_KEY. The
+    model's tools run inside OtherCAD, and a request Claude declines is retried
+    on another model. Opus 5.5, Sonnet 5.5 and Haiku 4.5 are offered.
+  - Before the AI runs Python, a dialog shows the code and waits for Run or Don't run.
+  - Stopping a reply no longer prints a ConnectionResetError traceback.
 - LLM Bridge, in the Tools menu, lets an LLM client read, look at and change the open
   model over MCP, on this computer only, at `http://127.0.0.1:7720/mcp`. It is off
   until switched on.
@@ -43,6 +49,10 @@ done in this fork.
     in error is undone and the errors are reported back. So is a pad or pocket that adds
     or removes no material, with a hint to reverse it.
   - Changes wait while a task panel is open.
+  - Calls take turns. A call that comes in while another one is still running, or while
+    the model is recomputing, now waits for it to finish rather than running in the middle
+    of it. A call that can't start within 20 s is turned away with nothing changed, and one
+    that runs past 50 s is reported as still running so the client knows not to repeat it.
   - The ReadOnly and AllowPython preferences limit what clients may do.
 - Features can be suppressed from the timeline's right-click menu. A suppressed feature
   is drawn greyed out and struck through, and its tooltip says so.
