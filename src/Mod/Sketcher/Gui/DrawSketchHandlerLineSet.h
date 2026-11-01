@@ -940,6 +940,58 @@ public:
         openCommand(QT_TRANSLATE_NOOP("Command", "Add sketch polyline"));
     }
 
+    // Fusion's Line tool: a press on the last point that is dragged draws an arc tangent to
+    // the previous segment, placed on release, after which the chain carries on with lines.
+    void mouseMove(SnapManager::SnapHandle snapHandle) override
+    {
+        // Redraws the handler asks for itself carry no snap manager and no real pointer.
+        if (snapHandle.mgr) {
+            lastPointer = snapHandle.cursorPos;
+            hasLastPointer = true;
+
+            if (arcDrag == ArcDrag::Armed && isPastDragDistance(snapHandle.cursorPos)) {
+                arcDrag = ArcDrag::Dragging;
+                setConstructionMethod(ConstructionMethod::Arc);
+                // The switch has drawn the arc already. Drawing again before the event loop
+                // has settled the new on-view parameters locks the radius one at the value
+                // it shows, which then becomes a Radius constraint, as the M key never does.
+                return;
+            }
+        }
+
+        DrawSketchHandlerPolyLineBase::mouseMove(snapHandle);
+    }
+
+    bool pressButton(Base::Vector2d onSketchPos) override
+    {
+        if (arcDrag == ArcDrag::None && isOnLastPoint(onSketchPos)) {
+            // Nothing happens until the pointer moves or the button comes back up.
+            arcDrag = ArcDrag::Armed;
+            arcDragPress = onSketchPos;
+            arcDragPointer = hasLastPointer ? lastPointer : onSketchPos;
+            return true;
+        }
+
+        return DrawSketchHandlerPolyLineBase::pressButton(onSketchPos);
+    }
+
+    bool releaseButton(Base::Vector2d onSketchPos) override
+    {
+        // Either way the press that was held back is made now, and making it may close the
+        // polyline and end the tool, which deletes this handler: nothing may touch it after.
+        // canGoToNextMode() turns a dragged arc back into lines.
+        switch (arcDrag) {
+            case ArcDrag::Armed:
+                // It never became a drag, so it was a click on the last point.
+                arcDrag = ArcDrag::None;
+                return DrawSketchHandlerPolyLineBase::pressButton(arcDragPress);
+            case ArcDrag::Dragging:
+                return DrawSketchHandlerPolyLineBase::pressButton(onSketchPos);
+            default:
+                return DrawSketchHandlerPolyLineBase::releaseButton(onSketchPos);
+        }
+    }
+
 private:
     void updateDataAndDrawToPosition(Base::Vector2d onSketchPos) override
     {
@@ -1015,6 +1067,10 @@ private:
         };
         const Gui::InputHint filletHint {tr("%1 toggle fillet"), {KeyF}};
         const Gui::InputHint undoHint {tr("%1 undo last point"), {KeyR}};
+        const Gui::InputHint arcDragHint {
+            tr("%1 from the last point for a tangent arc"),
+            {MouseMoveLeft}
+        };
 
         return Gui::lookupHints<SelectMode>(
             state(),
@@ -1029,6 +1085,7 @@ private:
                      {
                          {tr("%1 pick next point"), {MouseLeft}},
                          {tr("%1 finish"), {MouseRight}},
+                         arcDragHint,
                          switchModeHint,
                          filletHint,
                          undoHint,
@@ -1066,6 +1123,11 @@ private:
             createShape(false);
 
             if (ShapeGeometry.empty()) {
+                if (arcDrag == ArcDrag::Dragging) {
+                    // Let go where no arc fits: nothing is placed and the tool draws lines again.
+                    arcDrag = ArcDrag::None;
+                    setConstructionMethod(ConstructionMethod::Line);
+                }
                 return false;
             }
 
@@ -1126,7 +1188,8 @@ private:
             auto obj = sketchgui->getSketchObject();
             obj->solve();
 
-            if (fillet && geoEltIds.size() > 1) {
+            // A dragged arc is tangent at the joint, so it leaves no corner to round.
+            if (fillet && geoEltIds.size() > 1 && arcDrag != ArcDrag::Dragging) {
                 int geoId1 = geoEltIds.back().GeoId;
                 int geoId2 = geoEltIds[geoEltIds.size() - 2].GeoId;
 
@@ -1159,6 +1222,13 @@ private:
             Base::Vector3d p3d = obj->getPoint(geoEltIds.back().GeoId, geoEltIds.back().Pos);
             points.push_back(toVector2d(p3d));
             calculatePreviousDirectionAngle();
+
+            if (arcDrag == ArcDrag::Dragging) {
+                arcDrag = ArcDrag::None;
+                if (!isClosed) {
+                    setConstructionMethod(ConstructionMethod::Line);
+                }
+            }
 
             if (!isClosed) {
                 setAngleSnapping(true, getLastPoint());
@@ -1279,6 +1349,7 @@ private:
         pos = PointPos::end;
 
         capturedDirection = Base::Vector2d(0.0, 0.0);
+        arcDrag = ArcDrag::None;
 
         toolWidgetManager.resetControls();
 
@@ -1418,9 +1489,62 @@ private:
     // Direction tracking to check once OVP is locked
     Base::Vector2d capturedDirection;
 
+    // A press on the last point is Armed until the pointer travels the drag distance, when
+    // it becomes a Dragging tangent arc.
+    enum class ArcDrag
+    {
+        None,
+        Armed,
+        Dragging
+    };
+    ArcDrag arcDrag = ArcDrag::None;
+    Base::Vector2d arcDragPress;    // where the held-back press snapped to
+    Base::Vector2d arcDragPointer;  // the pointer itself at the press, for the drag distance
+    Base::Vector2d lastPointer;
+    bool hasLastPointer = false;
+
     Base::Vector2d getLastPoint()
     {
         return points.empty() ? Base::Vector2d() : points.back();
+    }
+
+    bool isOnLastPoint(Base::Vector2d onSketchPos)
+    {
+        if (state() != SelectMode::SeekSecond || constructionMethod() != ConstructionMethod::Line
+            || geoEltIds.empty()) {
+            return false;
+        }
+
+        // The press snaps onto the point or, with snapping off, the point is preselected.
+        Base::Vector2d lastPoint = getLastPoint();
+        if ((onSketchPos - lastPoint).Length() < Precision::Confusion()) {
+            return true;
+        }
+
+        int vertex = getPreselectPoint();
+        if (vertex < 0) {
+            return false;
+        }
+        auto* obj = sketchgui->getSketchObject();
+        int geoId = GeoEnum::GeoUndef;
+        PointPos posId = PointPos::none;
+        obj->getGeoVertexIndex(vertex, geoId, posId);
+        if (geoId == GeoEnum::GeoUndef) {
+            return false;
+        }
+        return (toVector2d(obj->getPoint(geoId, posId)) - lastPoint).Length()
+            < Precision::Confusion();
+    }
+
+    bool isPastDragDistance(Base::Vector2d pointer) const
+    {
+        // The usual drag distance, so a click from a shaky hand stays a click.
+        double unitsPerPixel = getSketchUnitsPerPixel();
+        if (unitsPerPixel <= 0.0) {
+            return false;
+        }
+        double pixels = QApplication::startDragDistance() * qApp->devicePixelRatio();
+        return (pointer - arcDragPointer).Length() > pixels * unitsPerPixel;
     }
 
     double getArcCenter(Base::Vector2d& center, Base::Vector2d pos)
@@ -1560,7 +1684,12 @@ private:
             );
         }
         else {
-            if (resetEdge) {
+            if (resetEdge && arcDrag == ArcDrag::Dragging) {
+                // A dragged arc carries straight on from the previous segment.
+                resetEdge = false;
+                angleToPrevious = 0.0;
+            }
+            else if (resetEdge) {
                 resetEdge = false;
 
                 // We check the direction of the first mouse move to determine tangent or
@@ -1624,7 +1753,7 @@ private:
             }
         }
 
-        if (onlyeditoutline && !geoEltIds.empty() && fillet) {
+        if (onlyeditoutline && !geoEltIds.empty() && fillet && arcDrag != ArcDrag::Dragging) {
             auto* obj = sketchgui->getSketchObject();
             const Part::Geometry* prevGeo = obj->getGeometry(geoEltIds.back().GeoId);
 

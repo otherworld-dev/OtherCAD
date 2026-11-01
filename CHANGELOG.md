@@ -98,6 +98,8 @@ done in this fork.
 - L and the Line button in a sketch draw lines one after another from the end of the
   last, as Fusion's Line does, until Esc. M switches the next segment to an arc. The
   single line is still in the Create menu as Single Line (G, L).
+  - Pressing on the end of the last segment and dragging draws an arc tangent to it, as
+    in Fusion. Letting go places the arc, and the lines carry on from its end.
 - The editor for stored preferences is called Edit Stored Preferences instead of Edit
   Parameters, so searching the commands for parameters no longer leads to it.
 - The model tree now groups a body's contents into Sketches, Construction and History

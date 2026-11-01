@@ -146,6 +146,7 @@ private:
     static inline int getPreselectCross(const ViewProviderSketch& vp);
     static inline const std::set<int>& getPreselectConstraints(const ViewProviderSketch& vp);
     static inline std::optional<SnapManager::SnapResult> getLastSnap(const ViewProviderSketch& vp);
+    static inline float getSketchUnitsPerPixel(const ViewProviderSketch& vp);
 
     static inline void moveConstraint(
         ViewProviderSketch& vp,
@@ -338,6 +339,8 @@ protected:
     int getPreselectCross() const;
     /// The existing dimension whose value is under the cursor, or -1
     int getPreselectDimension() const;
+    /// Sketch units covered by one screen pixel at the current zoom, 0 if it is not known
+    float getSketchUnitsPerPixel() const;
     /// Whether constraints can be hovered and picked while the tool runs; off unless a tool
     /// turns it on in activated()
     void setConstraintSelectability(bool enabled);

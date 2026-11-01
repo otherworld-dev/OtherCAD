@@ -221,6 +221,13 @@ inline std::optional<SnapManager::SnapResult> ViewProviderSketchDrawSketchHandle
     return vp.snapManager->lastSnap();
 }
 
+inline float ViewProviderSketchDrawSketchHandlerAttorney::getSketchUnitsPerPixel(
+    const ViewProviderSketch& vp
+)
+{
+    return vp.getSketchUnitsPerPixel();
+}
+
 inline const std::set<int>& ViewProviderSketchDrawSketchHandlerAttorney::getPreselectConstraints(
     const ViewProviderSketch& vp
 )
@@ -2383,6 +2390,11 @@ int DrawSketchHandler::getPreselectCurve() const
 int DrawSketchHandler::getPreselectCross() const
 {
     return ViewProviderSketchDrawSketchHandlerAttorney::getPreselectCross(*sketchgui);
+}
+
+float DrawSketchHandler::getSketchUnitsPerPixel() const
+{
+    return ViewProviderSketchDrawSketchHandlerAttorney::getSketchUnitsPerPixel(*sketchgui);
 }
 
 int DrawSketchHandler::getPreselectDimension() const
