@@ -935,3 +935,112 @@ class TestBridgeServerErrors(unittest.TestCase):
     def test_any_other_error_still_prints_its_traceback(self):
         printed = self._printed_by_handle_error(ValueError("something real"))
         self.assertIn("ValueError: something real", printed)
+
+
+class TestBridgeRunner(unittest.TestCase):
+    """Tool calls from client threads take turns on the main thread.
+
+    A long call that recomputes processes events, and Qt hands any call that arrived in
+    the meantime to the main thread there and then. Run inside the first one, the new
+    call saw its half-done state and held it up until it returned.
+    """
+
+    def _slow(self, progress, steps=20):
+        def func():
+            for i in range(steps):
+                progress.append(i)
+                QtWidgets.QApplication.instance().processEvents()
+                time.sleep(0.02)
+            return len(progress)
+
+        return func
+
+    def _in_thread(self, runner, func, outcome, key, after=None, **kwargs):
+        def call():
+            # Sent from the client thread once the call it must overlap has started
+            while after is not None and not after:
+                time.sleep(0.002)
+            try:
+                outcome[key] = runner.call(func, **kwargs)
+            except Exception as error:
+                outcome[key] = error
+
+        thread = threading.Thread(target=call, daemon=True)
+        thread.start()
+        return thread
+
+    def _pump(self, *threads, timeout=10.0):
+        deadline = time.monotonic() + timeout
+        while any(t.is_alive() for t in threads) and time.monotonic() < deadline:
+            QtWidgets.QApplication.instance().processEvents()
+            time.sleep(0.005)
+        self.assertFalse(any(t.is_alive() for t in threads), "A call never came back")
+
+    def _wait_for(self, condition, timeout=5.0):
+        deadline = time.monotonic() + timeout
+        while not condition() and time.monotonic() < deadline:
+            QtWidgets.QApplication.instance().processEvents()
+            time.sleep(0.005)
+        self.assertTrue(condition())
+
+    def test_a_call_that_arrives_mid_call_waits_for_it_to_finish(self):
+        # Two runners, as the HTTP server and the chat panel each have their own
+        progress, outcome = [], {}
+        first = self._in_thread(BridgeServer.MainThreadRunner(), self._slow(progress), outcome, "a")
+        second = self._in_thread(
+            BridgeServer.MainThreadRunner(), lambda: len(progress), outcome, "b", after=progress
+        )
+        self._pump(first, second)
+        self.assertEqual(outcome["a"], 20)
+        self.assertEqual(outcome["b"], 20, "The second call ran inside the first one")
+
+    def test_a_call_waits_for_the_users_own_recompute(self):
+        doc = FreeCAD.newDocument("TestBridgeRunner")
+        self.addCleanup(FreeCAD.closeDocument, doc.Name)
+        progress, outcome = [], {}
+
+        class Slow:
+            def __init__(self, obj):
+                obj.Proxy = self
+
+            def execute(self, obj):
+                for i in range(20):
+                    progress.append(i)
+                    QtWidgets.QApplication.instance().processEvents()
+                    time.sleep(0.02)
+
+        Slow(doc.addObject("App::FeaturePython", "Slow"))
+        reader = self._in_thread(
+            BridgeServer.MainThreadRunner(), lambda: len(progress), outcome, "b", after=progress
+        )
+        doc.recompute()
+        self._pump(reader)
+        self.assertEqual(outcome["b"], 20, "The call ran inside the recompute")
+
+    def test_a_call_that_cannot_start_in_time_never_runs(self):
+        progress, outcome, ran = [], {}, []
+        runner = BridgeServer.MainThreadRunner()
+        first = self._in_thread(runner, self._slow(progress, steps=40), outcome, "a")
+        second = self._in_thread(
+            runner,
+            lambda: ran.append(True),
+            outcome,
+            "b",
+            after=progress,
+            timeout=5.0,
+            start_timeout=0.2,
+        )
+        self._pump(first, second)
+        self.assertIsInstance(outcome["b"], BridgeServer.Busy)
+        self.assertIn("nothing was changed", str(outcome["b"]))
+        process_events(300)  # give a wrongly queued call the chance to run
+        self.assertEqual(ran, [], "A call the client was told had not run ran later")
+
+    def test_a_call_that_outlives_its_timeout_says_it_is_still_running(self):
+        progress, outcome = [], {}
+        runner = BridgeServer.MainThreadRunner()
+        thread = self._in_thread(runner, self._slow(progress, steps=30), outcome, "a", timeout=0.2)
+        self._pump(thread)
+        self.assertIsInstance(outcome["a"], TimeoutError)
+        self.assertIn("still running", str(outcome["a"]))
+        self._wait_for(lambda: len(progress) == 30)

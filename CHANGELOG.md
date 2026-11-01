@@ -48,6 +48,10 @@ done in this fork.
     in error is undone and the errors are reported back. So is a pad or pocket that adds
     or removes no material, with a hint to reverse it.
   - Changes wait while a task panel is open.
+  - Calls take turns. A call that comes in while another one is still running, or while
+    the model is recomputing, now waits for it to finish rather than running in the middle
+    of it. A call that can't start within 20 s is turned away with nothing changed, and one
+    that runs past 50 s is reported as still running so the client knows not to repeat it.
   - The ReadOnly and AllowPython preferences limit what clients may do.
 - Features can be suppressed from the timeline's right-click menu. A suppressed feature
   is drawn greyed out and struck through, and its tooltip says so.
