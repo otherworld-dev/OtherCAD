@@ -9,6 +9,7 @@ tool call is handed to the Qt main thread and the worker waits for its answer.
 import base64
 import http.server
 import json
+import sys
 import threading
 import traceback
 
@@ -96,6 +97,17 @@ def _tool_error(text):
     return {"content": [{"type": "text", "text": text}], "isError": True}
 
 
+class _HTTPServer(http.server.ThreadingHTTPServer):
+    daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        # A client that goes away mid-request, such as the chat panel's CLI when it is
+        # stopped, is routine; anything else still gets its traceback
+        if isinstance(sys.exc_info()[1], ConnectionError):
+            return
+        super().handle_error(request, client_address)
+
+
 class Server:
     def __init__(self, host="127.0.0.1", port=7720, token="", read_only=False, allow_python=True):
         self.host = host
@@ -103,8 +115,7 @@ class Server:
         self.read_only = read_only
         self.allow_python = allow_python
         self.runner = MainThreadRunner()
-        self.httpd = http.server.ThreadingHTTPServer((host, port), self._handler_class())
-        self.httpd.daemon_threads = True
+        self.httpd = _HTTPServer((host, port), self._handler_class())
         self.port = self.httpd.server_address[1]
         self.thread = None
 

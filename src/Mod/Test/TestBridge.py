@@ -30,6 +30,8 @@ To run tests:
 """
 
 import base64
+import contextlib
+import io
 import json
 import math
 import os
@@ -908,3 +910,28 @@ class TestBridgeServer(BridgeCase):
             headers={"Origin": "https://evil.example"},
         )
         self.assertEqual(status, 403)
+
+
+class TestBridgeServerErrors(unittest.TestCase):
+    """What the HTTP server prints when a request goes wrong."""
+
+    def setUp(self):
+        self.server = BridgeServer.Server("127.0.0.1", 0)
+        self.addCleanup(self.server.httpd.server_close)
+
+    def _printed_by_handle_error(self, error):
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            try:
+                raise error
+            except Exception:
+                self.server.httpd.handle_error(None, ("127.0.0.1", 50000))
+        return stderr.getvalue()
+
+    def test_a_client_that_drops_its_connection_prints_nothing(self):
+        for error in (ConnectionResetError(), BrokenPipeError(), ConnectionAbortedError()):
+            self.assertEqual(self._printed_by_handle_error(error), "", type(error).__name__)
+
+    def test_any_other_error_still_prints_its_traceback(self):
+        printed = self._printed_by_handle_error(ValueError("something real"))
+        self.assertIn("ValueError: something real", printed)
