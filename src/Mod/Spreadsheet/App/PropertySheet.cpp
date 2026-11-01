@@ -914,7 +914,11 @@ void PropertySheet::clearAlias(CellAddress address)
     // Remove alias if it exists
     std::map<CellAddress, std::string>::iterator j = aliasProp.find(address);
     if (j != aliasProp.end()) {
-        revAliasProp.erase(j->second);
+        // Another cell may hold the alias by now, as when an undo puts moved cells back
+        auto k = revAliasProp.find(j->second);
+        if (k != revAliasProp.end() && k->second == address) {
+            revAliasProp.erase(k);
+        }
         aliasProp.erase(j);
     }
 }

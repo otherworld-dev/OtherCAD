@@ -109,6 +109,12 @@ done in this fork.
 
 ### Fixed
 
+- An object bound to a spreadsheet alias now follows the alias after rows or columns are
+  inserted above or before its cell. Before, changing the moved cell left the object alone
+  and changing whatever cell took its old place updated it instead. The same happened
+  when the object was bound before the sheet had first recomputed.
+- Undoing rows inserted above aliased cells no longer breaks those aliases. Objects bound
+  to them failed with "Property not found" until the file was closed and opened again.
 - The Measure tool's hover values now show on Linux and macOS builds made with clang, where
   they were always missing.
 - A click on the view cube that lands exactly on the line between two tiles now picks a

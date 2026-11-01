@@ -1619,6 +1619,65 @@ class SpreadsheetCases(unittest.TestCase):
         self.doc.recompute()
         sheet.setAlias("C3", "test")
 
+    def _boxOnAlias(self, recomputeFirst):
+        sheet = self.doc.addObject("Spreadsheet::Sheet", "Spreadsheet")
+        for row, (name, value) in enumerate([("a", 10), ("b", 20), ("c", 30)], start=1):
+            sheet.set(f"A{row}", str(value))
+            sheet.setAlias(f"A{row}", name)
+        if recomputeFirst:
+            self.doc.recompute()
+        box = self.doc.addObject("Part::Box", "Box")
+        box.setExpression("Length", "Spreadsheet.c")
+        self.doc.recompute()
+        return sheet, box
+
+    def testAliasBoundBeforeTheSheetIsComputedFollowsIt(self):
+        """An object bound to an alias the sheet hasn't computed yet still follows it"""
+        sheet, box = self._boxOnAlias(recomputeFirst=False)
+        sheet.set("A3", "44")
+        self.doc.recompute()
+        self.assertEqual(box.Length.Value, 44)
+
+    def testAliasFollowedAfterRowsAreInsertedAboveIt(self):
+        """An object bound to an alias follows it after rows are inserted above the cell"""
+        sheet, box = self._boxOnAlias(recomputeFirst=True)
+        sheet.insertRows("2", 2)
+        self.doc.recompute()
+        self.assertEqual(sheet.getCellFromAlias("c"), "A5")
+        sheet.set("A5", "44")
+        self.doc.recompute()
+        self.assertEqual(box.Length.Value, 44)
+
+    def testAbortInsertRowsKeepsAliases(self):
+        """Undoing rows inserted above aliased cells keeps the aliases working
+
+        The undo puts each cell back in turn, then clears the cells left over from the
+        insert, and clearing those used to drop the alias their old cell had just taken back.
+        """
+        self.doc.UndoMode = 1
+        sheet = self.doc.addObject("Spreadsheet::Sheet", "Spreadsheet")
+        for row, (name, value) in enumerate([("a", 10), ("b", 20), ("c", 30)], start=1):
+            sheet.set(f"A{row}", str(value))
+            sheet.setAlias(f"A{row}", name)
+        box = self.doc.addObject("Part::Box", "Box")
+        box.setExpression("Length", "Spreadsheet.c")
+        self.doc.recompute()
+
+        self.doc.openTransaction("insert rows")
+        sheet.insertRows("2", 2)
+        sheet.set("A2", "99")
+        sheet.setAlias("A2", "inserted")
+        self.doc.recompute()
+        self.doc.abortTransaction()
+
+        self.assertEqual([sheet.getCellFromAlias(n) for n in "abc"], ["A1", "A2", "A3"])
+        self.assertIsNone(sheet.getCellFromAlias("inserted"))
+        self.doc.recompute()
+        self.assertTrue(box.isValid())
+        sheet.set("A3", "33")
+        self.doc.recompute()
+        self.assertEqual(box.Length.Value, 33)
+
     def test_cross_link_empty_property_name(self):
         # https://forum.freecad.org/viewtopic.php?f=3&t=58603
         base = FreeCAD.newDocument("base")
