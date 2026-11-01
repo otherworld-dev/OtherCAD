@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 import traceback
+import weakref
 
 import FreeCAD
 from PySide import QtCore
@@ -255,6 +256,9 @@ class Server:
         self.httpd.server_close()
         if self.thread:
             self.thread.join(5)
+        # The runner is a Qt object of the main thread: delete it there, whichever thread
+        # Python later frees this server on
+        self.runner.deleteLater()
 
     # -- MCP -----------------------------------------------------------------
 
@@ -320,7 +324,9 @@ class Server:
         return True
 
     def _handler_class(self):
-        server = self
+        # Weak, so the server is not in a cycle with its own handler class: Python would
+        # free such a cycle on whichever thread collects, and the runner is a Qt object
+        server_ref = weakref.ref(self)
 
         class Handler(http.server.BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
@@ -338,6 +344,9 @@ class Server:
                 self.wfile.write(data)
 
             def do_POST(self):
+                server = server_ref()
+                if server is None:
+                    return self._reply(503)
                 if self.path.split("?")[0] != "/mcp":
                     return self._reply(404)
                 if not server.allowed(self.headers):

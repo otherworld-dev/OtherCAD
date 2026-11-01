@@ -437,12 +437,13 @@ class TestChatProviderChoice(unittest.TestCase):
 class TestChatApiAsksBeforePython(ApiCase):
     def setUp(self):
         super().setUp()
-        self.asked = []
-        self.answer = False
+        # Plain containers only, so the approver does not refer back to the test
+        asked = self.asked = []
+        answer = self.answer = [False]
 
         def approve(name, arguments):
-            self.asked.append(name)
-            return self.answer
+            asked.append(name)
+            return answer[0]
 
         self.provider.approve = approve
 
@@ -459,7 +460,7 @@ class TestChatApiAsksBeforePython(ApiCase):
         self.assertIn("chose not to run", json.dumps(result["content"]))
 
     def test_python_the_user_allows_runs(self):
-        self.answer = True
+        self.answer[0] = True
         self.api.replies = [tool_reply("run_python", {"code": "6 * 7"}), text_reply("42.")]
         self.say("what is 6 times 7?")
         result = self.api.requests[1]["body"]["messages"][2]["content"][0]

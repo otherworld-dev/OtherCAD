@@ -29,6 +29,7 @@ import secrets
 import shutil
 import sys
 import tempfile
+import weakref
 
 import FreeCAD
 from PySide import QtCore
@@ -131,6 +132,23 @@ def askToRunPython(name, arguments, parent=None):
     allowed = dialog.exec() == QtWidgets.QDialog.Accepted
     dialog.deleteLater()
     return allowed
+
+
+def _weakApprover(provider):
+    """provider.approve, without the server keeping the provider alive.
+
+    A strong reference would make a provider <-> server cycle, and Python frees cycles on
+    whichever thread happens to collect, here an HTTP thread, where deleting the provider's
+    Qt objects crashes the app.
+    """
+
+    ref = weakref.ref(provider)
+
+    def approve(name, arguments):
+        alive = ref()
+        return bool(alive is not None and alive.approve(name, arguments))
+
+    return approve
 
 
 def findClaude():
@@ -278,7 +296,7 @@ class ClaudeCodeProvider(Provider):
             token,
             params.GetBool("ReadOnly", False),
             params.GetBool("AllowPython", True),
-            approve=lambda name, arguments: self.approve(name, arguments),
+            approve=_weakApprover(self),
         )
         self.server.start()
         config = {

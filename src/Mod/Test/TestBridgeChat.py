@@ -36,6 +36,7 @@ import tempfile
 import textwrap
 import time
 import unittest
+import weakref
 
 import FreeCAD
 import FreeCADGui
@@ -407,12 +408,14 @@ class TestChatAsksBeforePython(ChatCase):
 
     def setUp(self):
         super().setUp()
-        self.asked = []
-        self.answer = False
+        # Plain containers only: an approver that refers to the test would make a
+        # test -> panel -> provider -> approver -> test cycle
+        asked = self.asked = []
+        answer = self.answer = [False]
 
         def approve(name, arguments):
-            self.asked.append((name, arguments))
-            return self.answer
+            asked.append((name, arguments))
+            return answer[0]
 
         self.provider.approve = approve
 
@@ -426,7 +429,7 @@ class TestChatAsksBeforePython(ChatCase):
         self.assertIn("chose not to run", tool["result"][1])
 
     def test_python_the_user_allows_runs(self):
-        self.answer = True
+        self.answer[0] = True
         self.say('tool run_python {"code": "6 * 7"}')
         tool = [entry for entry in self.panel.entries if entry["kind"] == "tool"][0]
         self.assertFalse(tool["result"][0], tool["result"])
@@ -496,3 +499,15 @@ class TestRunPythonDialog(unittest.TestCase):
     def test_dont_run_refuses_it(self):
         allowed, _ = self._answer("Don't run")
         self.assertFalse(allowed)
+
+
+class TestChatProviderLifetime(unittest.TestCase):
+    def test_the_bridge_server_does_not_keep_the_provider_alive(self):
+        # A cycle through the server would leave the provider to the cycle collector, which
+        # can run on an HTTP thread and delete Qt objects there
+        provider = BridgeChat.ClaudeCodeProvider()
+        provider._startServer()
+        ref = weakref.ref(provider)
+        provider.shutdown()
+        del provider
+        self.assertIsNone(ref(), "Something still holds the provider")

@@ -46,6 +46,7 @@ import time
 import unittest
 import urllib.error
 import urllib.request
+import weakref
 
 import FreeCAD
 import FreeCADGui
@@ -1044,3 +1045,15 @@ class TestBridgeRunner(unittest.TestCase):
         self.assertIsInstance(outcome["a"], TimeoutError)
         self.assertIn("still running", str(outcome["a"]))
         self._wait_for(lambda: len(progress) == 30)
+
+
+class TestBridgeServerLifetime(unittest.TestCase):
+    def test_a_stopped_server_is_freed_at_once(self):
+        # Not left to the cycle collector, which may run on an HTTP thread and would then
+        # free the server's Qt runner there
+        server = BridgeServer.Server("127.0.0.1", 0)
+        server.start()
+        ref = weakref.ref(server)
+        server.stop()
+        del server
+        self.assertIsNone(ref(), "Something still holds the stopped server")
