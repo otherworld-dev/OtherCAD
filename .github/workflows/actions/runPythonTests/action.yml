@@ -58,34 +58,37 @@ runs:
       shell: ${{ inputs.shellCmd }}
       if: always()
       run: |
-        mkdir -p "$(dirname "${{ inputs.logFile }}")"
-        touch "${{ inputs.logFile }}"
-        sed -ne "/^\(FAILED\|ERROR\):/,/^[[:blank:]]*$/bF; /^Traceback/,/^[^[:blank:]]/{/^Traceback/bT; /^[^[:blank:]]/G; bT}; b; :T w ${{ inputs.logFile }}_tracebacks" -e "b; :F w ${{ inputs.logFile }}_failedtests" ${{ inputs.logFile }}
+        # Single-quoted so a Windows path keeps its backslashes, and quoted at every use
+        logFile='${{ inputs.logFile }}'
+        reportFile='${{ inputs.reportFile }}'
+        mkdir -p "$(dirname "$logFile")"
+        touch "$logFile"
+        sed -ne "/^\(FAILED\|ERROR\):/,/^[[:blank:]]*$/bF; /^Traceback/,/^[^[:blank:]]/{/^Traceback/bT; /^[^[:blank:]]/G; bT}; b; :T w ${logFile}_tracebacks" -e "b; :F w ${logFile}_failedtests" "$logFile"
         icon=""
-        if [ $( cat ${{ inputs.logFile }}_tracebacks | wc -l ) -gt 0 ]
+        if [ $( cat "${logFile}_tracebacks" | wc -l ) -gt 0 ]
         then
           icon=" :fire:"
         fi
         if [ ${{ steps.runTests.outcome }} == 'success' ]
         then
-          echo "<details><summary>:heavy_check_mark: ${{ inputs.testDescription }} succeeded$icon</summary>" >> ${{ inputs.reportFile }}
+          echo "<details><summary>:heavy_check_mark: ${{ inputs.testDescription }} succeeded$icon</summary>" >> "$reportFile"
         else
-          echo "<details><summary>:fire: ${{ inputs.testDescription }} failed$icon</summary>" >> ${{ inputs.reportFile }}
-          echo "" >> ${{ inputs.reportFile }}
-          echo "Failed tests" >> ${{ inputs.reportFile }}
-          echo "" >> ${{ inputs.reportFile }}
-          echo '```' >> ${{ inputs.reportFile }}
-          cat ${{ inputs.logFile }}_failedtests >> ${{ inputs.reportFile }}
-          echo '```' >> ${{ inputs.reportFile }}
+          echo "<details><summary>:fire: ${{ inputs.testDescription }} failed$icon</summary>" >> "$reportFile"
+          echo "" >> "$reportFile"
+          echo "Failed tests" >> "$reportFile"
+          echo "" >> "$reportFile"
+          echo '```' >> "$reportFile"
+          cat "${logFile}_failedtests" >> "$reportFile"
+          echo '```' >> "$reportFile"
         fi
-        echo "" >> ${{ inputs.reportFile }}
-        if [ $( cat ${{ inputs.logFile }}_tracebacks | wc -l ) -gt 0 ]
+        echo "" >> "$reportFile"
+        if [ $( cat "${logFile}_tracebacks" | wc -l ) -gt 0 ]
         then
-          echo "Uncaught tracebacks -- these tracebacks appeared during test but didn't fail a test --" >> ${{ inputs.reportFile }}
-          echo "" >> ${{ inputs.reportFile }}
-          echo '```' >> ${{ inputs.reportFile }}
-          cat ${{ inputs.logFile }}_tracebacks >> ${{ inputs.reportFile }}
-          echo '```' >> ${{ inputs.reportFile }}
+          echo "Uncaught tracebacks -- these tracebacks appeared during test but didn't fail a test --" >> "$reportFile"
+          echo "" >> "$reportFile"
+          echo '```' >> "$reportFile"
+          cat "${logFile}_tracebacks" >> "$reportFile"
+          echo '```' >> "$reportFile"
         fi
-        echo "</details>">> ${{ inputs.reportFile }}
-        echo "" >> ${{ inputs.reportFile }}
+        echo "</details>">> "$reportFile"
+        echo "" >> "$reportFile"
