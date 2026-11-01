@@ -149,6 +149,10 @@ public:
     {
         Sketcher::SnapGeometry::SnapKind kind = Sketcher::SnapGeometry::SnapKind::None;
         Base::Vector2d position;
+        /// The curve a midpoint, quadrant, crossing or on-curve snap was taken from.
+        int geoId = Sketcher::GeoEnum::GeoUndef;
+        /// The other curve of a crossing.
+        int otherGeoId = Sketcher::GeoEnum::GeoUndef;
     };
 
     /// The snap the most recent snap() produced, if it snapped at all.

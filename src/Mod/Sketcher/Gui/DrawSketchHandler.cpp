@@ -211,6 +211,16 @@ inline int ViewProviderSketchDrawSketchHandlerAttorney::getPreselectCross(const 
     return vp.getPreselectCross();
 }
 
+inline std::optional<SnapManager::SnapResult> ViewProviderSketchDrawSketchHandlerAttorney::getLastSnap(
+    const ViewProviderSketch& vp
+)
+{
+    if (!vp.snapManager) {
+        return std::nullopt;
+    }
+    return vp.snapManager->lastSnap();
+}
+
 inline const std::set<int>& ViewProviderSketchDrawSketchHandlerAttorney::getPreselectConstraints(
     const ViewProviderSketch& vp
 )
@@ -601,6 +611,50 @@ bool DrawSketchHandler::isLineCenterAutoConstraint(int GeoId, const Base::Vector
     return false;
 }
 
+bool DrawSketchHandler::seekSnapAutoConstraint(
+    std::vector<AutoConstraint>& suggestedConstraints,
+    int curveGeoId,
+    const Base::Vector2d& Pos
+)
+{
+    using Sketcher::SnapGeometry::SnapKind;
+
+    // Only a snap that put the point exactly here counts: a tool may have moved it on since
+    // (a typed value, a tangent or line-extension hint), and then the curve alone applies.
+    const auto snap = ViewProviderSketchDrawSketchHandlerAttorney::getLastSnap(*sketchgui);
+    if (!snap || snap->geoId != curveGeoId
+        || (snap->position - Pos).Length() > Precision::Confusion()) {
+        return false;
+    }
+
+    switch (snap->kind) {
+        case SnapKind::Midpoint:
+            // Symmetric about the ends of a line; generateOneAutoConstraintFromSuggestion
+            // builds the arc equivalent.
+            suggestedConstraints.push_back({Sketcher::Symmetric, curveGeoId, PointPos::none});
+            return true;
+        case SnapKind::Quadrant: {
+            // On the circle, and level with or plumb over its centre.
+            const Base::Vector3d centre = getSketchObject()->getPoint(curveGeoId, PointPos::mid);
+            const bool besideCentre = std::abs(Pos.y - centre.y) < std::abs(Pos.x - centre.x);
+            suggestedConstraints.push_back({Sketcher::PointOnObject, curveGeoId, PointPos::none});
+            suggestedConstraints.push_back(
+                {besideCentre ? Sketcher::Horizontal : Sketcher::Vertical, curveGeoId, PointPos::mid}
+            );
+            return true;
+        }
+        case SnapKind::Intersection:
+            if (snap->otherGeoId == GeoEnum::GeoUndef) {
+                return false;
+            }
+            suggestedConstraints.push_back({Sketcher::PointOnObject, curveGeoId, PointPos::none});
+            suggestedConstraints.push_back({Sketcher::PointOnObject, snap->otherGeoId, PointPos::none});
+            return true;
+        default:
+            return false;
+    }
+}
+
 void DrawSketchHandler::seekPreselectionAutoConstraint(
     std::vector<AutoConstraint>& suggestedConstraints,
     const Base::Vector2d& Pos,
@@ -617,6 +671,10 @@ void DrawSketchHandler::seekPreselectionAutoConstraint(
         constr.GeoId = preSel.geoId;
         constr.PosId = preSel.posId;
         if (type == AutoConstraint::VERTEX || type == AutoConstraint::VERTEX_NO_TANGENCY) {
+            if (preSel.posId == PointPos::none
+                && seekSnapAutoConstraint(suggestedConstraints, preSel.geoId, Pos)) {
+                return;
+            }
             if (preSel.posId == PointPos::none) {
                 bool lineCenter = isLineCenterAutoConstraint(preSel.geoId, Pos);
                 constr.Type = lineCenter ? Sketcher::Symmetric : Sketcher::PointOnObject;
@@ -1381,6 +1439,24 @@ bool DrawSketchHandler::generateOneAutoConstraintFromSuggestion(
             }
         } break;
         case Sketcher::Symmetric: {
+            const Part::Geometry* target = getSketchObject()->getGeometry(geoId2);
+            if (target && target->is<Part::GeomArcOfCircle>()) {
+                // The sketcher has no midpoint constraint for an arc. The point goes on the
+                // arc here, and addGeneratedAutoConstraints adds a construction radius
+                // through it about which the arc's ends are symmetric.
+                if (posId1 == Sketcher::PointPos::none) {
+                    break;
+                }
+                generateOneAutoConstraintFromSuggestion(
+                    {Sketcher::PointOnObject, geoId2, Sketcher::PointPos::none},
+                    geoId1,
+                    posId1,
+                    autoConstraints
+                );
+                pendingArcMidpointHelpers.push_back({geoId1, posId1, geoId2});
+                break;
+            }
+
             auto c = std::make_unique<Sketcher::Constraint>();
             c->Type = Sketcher::Symmetric;
             c->First = geoId2;
@@ -1396,11 +1472,24 @@ bool DrawSketchHandler::generateOneAutoConstraintFromSuggestion(
         // way to require the function to apply these constraints on another
         // geometry In this case the caller as to set geoId2, then it will be used
         // as target instead of geoId2
+        // A suggestion that names a point (a quadrant snap's circle centre) aligns that point
+        // with the new one instead.
         case Sketcher::Horizontal:
         case Sketcher::Vertical: {
             auto c = std::make_unique<Sketcher::Constraint>();
             c->Type = ac.Type;
-            c->First = (geoId2 != Sketcher::GeoEnum::GeoUndef ? geoId2 : geoId1);
+            if (posId2 != Sketcher::PointPos::none) {
+                if (posId1 == Sketcher::PointPos::none) {
+                    break;
+                }
+                c->First = geoId1;
+                c->FirstPos = posId1;
+                c->Second = geoId2;
+                c->SecondPos = posId2;
+            }
+            else {
+                c->First = (geoId2 != Sketcher::GeoEnum::GeoUndef ? geoId2 : geoId1);
+            }
             autoConstraints.push_back(std::move(c));
         } break;
         case Sketcher::Perpendicular: {
@@ -1598,6 +1687,72 @@ void DrawSketchHandler::addGeneratedAutoConstraints(
         Sketcher::PythonConverter::convert(Gui::Command::getObjectCmd(sketchgui->getObject()), constraints)
             .c_str()
     );
+
+    addArcMidpointHelpers();
+}
+
+void DrawSketchHandler::addArcMidpointHelpers()
+{
+    const auto helpers = std::exchange(pendingArcMidpointHelpers, {});
+    SketchObject* obj = getSketchObject();
+
+    for (const auto& helper : helpers) {
+        const Part::Geometry* arc = obj->getGeometry(helper.arcGeoId);
+        if (!arc || !arc->is<Part::GeomArcOfCircle>()) {
+            continue;
+        }
+
+        const Base::Vector3d centre = obj->getPoint(helper.arcGeoId, PointPos::mid);
+        const Base::Vector3d point = obj->getPoint(helper.geoId, helper.posId);
+        if ((point - centre).Length() < Precision::Confusion()) {
+            continue;
+        }
+
+        // A sketch already in trouble gains nothing from more constraints.
+        obj->solve();
+        if (obj->getLastHasConflicts() || obj->getLastHasRedundancies()
+            || obj->getLastHasPartialRedundancies()) {
+            continue;
+        }
+
+        // The arc's ends are symmetric about a line through its centre and the point, which
+        // holds the point at the arc's angular middle. With the line pinned to the centre the
+        // solver keeps only the midpoint-on-line half of the symmetry (see
+        // Sketch::addSymmetricConstraint), so nothing is redundant.
+        const int radiusGeoId = getHighestCurveIndex() + 1;
+        Gui::cmdAppObjectArgs(
+            sketchgui->getObject(),
+            "addGeometry(Part.LineSegment(App.Vector(%.17g,%.17g,0),App.Vector(%.17g,%.17g,0)),"
+            "True)",
+            centre.x,
+            centre.y,
+            point.x,
+            point.y
+        );
+        Gui::cmdAppObjectArgs(
+            sketchgui->getObject(),
+            "addConstraint([Sketcher.Constraint('Coincident',%d,1,%d,3),"
+            "Sketcher.Constraint('Coincident',%d,2,%d,%d),"
+            "Sketcher.Constraint('Symmetric',%d,1,%d,2,%d)])",
+            radiusGeoId,
+            helper.arcGeoId,
+            radiusGeoId,
+            helper.geoId,
+            static_cast<int>(helper.posId),
+            helper.arcGeoId,
+            helper.arcGeoId,
+            radiusGeoId
+        );
+
+        // Should the rest of the sketch make it clash after all, the point is left on the arc
+        // alone, as it was before snaps picked their constraints.
+        obj->solve();
+        if (obj->getLastHasConflicts() || obj->getLastHasRedundancies()
+            || obj->getLastHasPartialRedundancies()) {
+            Gui::cmdAppObjectArgs(sketchgui->getObject(), "delGeometry(%d)", radiusGeoId);
+            obj->solve();
+        }
+    }
 }
 
 void DrawSketchHandler::createAutoConstraints(
@@ -1623,6 +1778,25 @@ void DrawSketchHandler::createAutoConstraints(
     // Iterate through constraints
     for (auto& cstr : autoConstrs) {
         int geoId2 = cstr.GeoId;
+
+        // An arc's midpoint and a quadrant's alignment with the centre have no single
+        // command below; they are built the way the newer tools build them.
+        const auto isArc = [this](int geoId) {
+            const Part::Geometry* geo = sketchgui->getSketchObject()->getGeometry(geoId);
+            return geo && geo->is<Part::GeomArcOfCircle>();
+        };
+        const bool arcMidpoint = cstr.Type == Sketcher::Symmetric && isArc(geoId2);
+        const bool alignedWithPoint = (cstr.Type == Sketcher::Horizontal
+                                       || cstr.Type == Sketcher::Vertical)
+            && cstr.PosId != Sketcher::PointPos::none;
+        if (arcMidpoint || alignedWithPoint) {
+            std::vector<std::unique_ptr<Sketcher::Constraint>> generated;
+            generateOneAutoConstraintFromSuggestion(cstr, geoId1, posId1, generated);
+            if (!generated.empty()) {
+                addGeneratedAutoConstraints(generated);
+            }
+            continue;
+        }
 
         switch (cstr.Type) {
             case Sketcher::Coincident: {
@@ -1786,11 +1960,14 @@ void DrawSketchHandler::createAutoConstraints(
                 break;
         }
 
-        if (createowncommand) {
-            commitCommand();
-        }
         // Gui::Command::updateActive(); // There is already an recompute in each command
         // creation, this is redundant.
+    }
+
+    // Committed once, after the loop, so the suggestions handed on above are committed too
+    // and a snap's two constraints for one point are one undo step.
+    if (createowncommand) {
+        commitCommand();
     }
 }
 
@@ -2212,7 +2389,8 @@ int DrawSketchHandler::getPreselectDimension() const
 {
     const std::vector<Sketcher::Constraint*>& constraints
         = sketchgui->getSketchObject()->Constraints.getValues();
-    for (int index : ViewProviderSketchDrawSketchHandlerAttorney::getPreselectConstraints(*sketchgui)) {
+    for (int index :
+         ViewProviderSketchDrawSketchHandlerAttorney::getPreselectConstraints(*sketchgui)) {
         if (index >= 0 && index < static_cast<int>(constraints.size())
             && constraints[index]->isDimensional()) {
             return index;

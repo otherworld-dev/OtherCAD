@@ -109,6 +109,11 @@ done in this fork.
 
 ### Fixed
 
+- A sketch point snapped to an arc's midpoint, a circle or arc quadrant, or a crossing
+  now stays there. Before, all of these got a plain point-on-curve constraint and slid
+  along the curve. An arc midpoint now adds a construction radius that the arc's ends are
+  symmetric about, a quadrant puts the point on the circle and lines it up with the
+  centre horizontally or vertically, and a crossing puts the point on both curves.
 - An object bound to a spreadsheet alias now follows the alias after rows or columns are
   inserted above or before its cell. Before, changing the moved cell left the object alone
   and changing whatever cell took its old place updated it instead. The same happened

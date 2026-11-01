@@ -317,27 +317,28 @@ std::vector<Sketcher::SnapGeometry::SnapCandidate> SnapManager::curveSnapCandida
     // Crossings with every other curve that passes near the cursor. The sketch stores its axes as
     // unit segments, so they are stood in for by infinite lines.
     const Base::Vector3d cursor3d(cursor.x, cursor.y, 0.0);
-    auto addCrossingsWith = [&](const Part::Geometry* other) {
+    auto addCrossingsWith = [&](const Part::Geometry* other, int otherGeoId) {
         const auto* otherCurve = dynamic_cast<const Part::GeomCurve*>(other);
         if (!otherCurve || other == geo || distanceToCurve(*otherCurve, cursor3d) > radius) {
             return;
         }
         for (const Base::Vector2d& crossing : intersections(geo, other)) {
-            candidates.push_back({SnapKind::Intersection, crossing});
+            candidates.push_back({SnapKind::Intersection, crossing, otherGeoId});
         }
     };
 
     static const Part::GeomLine horizontalAxis(Base::Vector3d(0, 0, 0), Base::Vector3d(1, 0, 0));
     static const Part::GeomLine verticalAxis(Base::Vector3d(0, 0, 0), Base::Vector3d(0, 1, 0));
-    addCrossingsWith(&horizontalAxis);
-    addCrossingsWith(&verticalAxis);
+    addCrossingsWith(&horizontalAxis, Sketcher::GeoEnum::HAxis);
+    addCrossingsWith(&verticalAxis, Sketcher::GeoEnum::VAxis);
 
-    for (const Part::Geometry* other : obj->getInternalGeometry()) {
-        addCrossingsWith(other);
+    const auto& internals = obj->getInternalGeometry();
+    for (std::size_t i = 0; i < internals.size(); ++i) {
+        addCrossingsWith(internals[i], static_cast<int>(i));
     }
     const auto& externals = obj->getExternalGeometry();
     for (std::size_t i = 2; i < externals.size(); ++i) {  // 0 and 1 are the axes
-        addCrossingsWith(externals[i]);
+        addCrossingsWith(externals[i], -static_cast<int>(i) - 1);
     }
 
     return candidates;
@@ -400,7 +401,7 @@ bool SnapManager::snapToObject(Base::Vector2d inputPos, Base::Vector2d& snapPos,
             );
             if (picked) {
                 snapPos = picked->point;
-                lastSnapResult = SnapResult {picked->kind, snapPos};
+                lastSnapResult = SnapResult {picked->kind, snapPos, CrvId, picked->otherGeoId};
                 return true;
             }
 
@@ -418,7 +419,7 @@ bool SnapManager::snapToObject(Base::Vector2d inputPos, Base::Vector2d& snapPos,
 
             snapPos.x = pointToOverride.x;
             snapPos.y = pointToOverride.y;
-            lastSnapResult = SnapResult {SnapKind::OnCurve, snapPos};
+            lastSnapResult = SnapResult {SnapKind::OnCurve, snapPos, CrvId};
 
             return true;
         }

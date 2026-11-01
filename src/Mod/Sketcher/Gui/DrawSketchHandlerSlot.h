@@ -204,8 +204,13 @@ private:
         // alignment constraints needs to apply to the line not the arc.
         bool alignmentCstr = false;
         for (auto& ac : sugConstraints[1]) {
-            if (ac.Type == Sketcher::Horizontal || ac.Type == Sketcher::Vertical
-                || ac.Type == Sketcher::Perpendicular || ac.Type == Sketcher::Parallel) {
+            // A horizontal or vertical that names a point aligns the second centre with it (a
+            // quadrant snap), so it is not moved onto the line.
+            const bool alignsPoint = (ac.Type == Sketcher::Horizontal || ac.Type == Sketcher::Vertical)
+                && ac.PosId != Sketcher::PointPos::none;
+            if (!alignsPoint
+                && (ac.Type == Sketcher::Horizontal || ac.Type == Sketcher::Vertical
+                    || ac.Type == Sketcher::Perpendicular || ac.Type == Sketcher::Parallel)) {
                 ac.GeoId = firstCurve + 2;
                 alignmentCstr = true;
             }

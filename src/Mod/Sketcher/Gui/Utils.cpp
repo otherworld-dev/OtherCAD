@@ -748,7 +748,10 @@ void SketcherGui::removeRedundantHorizontalVertical(
     if (rmvhorvert) {
         for (std::vector<AutoConstraint>::reverse_iterator it = sug2.rbegin(); it != sug2.rend();
              ++it) {
-            if ((*it).Type == Sketcher::Horizontal || (*it).Type == Sketcher::Vertical) {
+            // Only the line's own alignment; one naming a point aligns that point (a quadrant
+            // snap) and is not made redundant by the line's ends.
+            if (((*it).Type == Sketcher::Horizontal || (*it).Type == Sketcher::Vertical)
+                && (*it).PosId == Sketcher::PointPos::none) {
                 sug2.erase(std::next(it).base());
                 it = sug2.rbegin();  // erase invalidates the iterator
             }

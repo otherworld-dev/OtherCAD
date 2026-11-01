@@ -444,6 +444,7 @@ void DrawSketchHandlerDragAutoConstraint::create(const std::vector<GeoElementId>
     }
 
     std::vector<std::unique_ptr<Constraint>> autoConstraints;
+    clearArcMidpointHelpers();
 
     for (const AutoConstraint& suggestion : suggestedConstraints) {
         if (!generateOneAutoConstraintFromSuggestion(
