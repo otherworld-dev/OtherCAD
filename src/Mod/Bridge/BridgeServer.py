@@ -97,6 +97,30 @@ def _tool_error(text):
     return {"content": [{"type": "text", "text": text}], "isError": True}
 
 
+def offers(name, read_only, allow_python):
+    """Whether a client may use this tool under these preferences."""
+
+    if name == "run_python" and not allow_python:
+        return False
+    return not (read_only and not BridgeTools.TOOLS[name].readonly)
+
+
+def call_tool(runner, name, arguments):
+    """Run a tool on the main thread through runner: its MCP result, errors included."""
+
+    FreeCAD.Console.PrintLog(f"Bridge: {name} {json.dumps(arguments)}\n")
+    try:
+        return _tool_result(runner.call(lambda: BridgeTools.call(name, arguments)))
+    except BridgeTools.ActionFailed as error:
+        return _tool_error(f"{error}\n{json.dumps(error.details, indent=1)}")
+    except BridgeTools.ToolError as error:
+        return _tool_error(str(error))
+    except Exception as error:
+        text = "".join(traceback.format_exception_only(type(error), error)).strip()
+        FreeCAD.Console.PrintWarning(f"Bridge: {name} failed: {text}\n")
+        return _tool_error(text)
+
+
 class _HTTPServer(http.server.ThreadingHTTPServer):
     daemon_threads = True
 
@@ -176,22 +200,10 @@ class Server:
     def offers(self, name):
         """Whether the preferences let clients use this tool."""
 
-        if name == "run_python" and not self.allow_python:
-            return False
-        return not (self.read_only and not BridgeTools.TOOLS[name].readonly)
+        return offers(name, self.read_only, self.allow_python)
 
     def call_tool(self, name, arguments):
-        FreeCAD.Console.PrintLog(f"Bridge: {name} {json.dumps(arguments)}\n")
-        try:
-            return _tool_result(self.runner.call(lambda: BridgeTools.call(name, arguments)))
-        except BridgeTools.ActionFailed as error:
-            return _tool_error(f"{error}\n{json.dumps(error.details, indent=1)}")
-        except BridgeTools.ToolError as error:
-            return _tool_error(str(error))
-        except Exception as error:
-            text = "".join(traceback.format_exception_only(type(error), error)).strip()
-            FreeCAD.Console.PrintWarning(f"Bridge: {name} failed: {text}\n")
-            return _tool_error(text)
+        return call_tool(self.runner, name, arguments)
 
     # -- HTTP ----------------------------------------------------------------
 

@@ -16,6 +16,8 @@ ClaudeCodeProvider runs the Claude Code CLI headless, so it uses the plan the us
 signed in to rather than an API key. It gets the bridge's tools, and nothing else, from a
 private bridge server on a free port with its own token.
 
+Other backends: BridgeChatApi (Claude with an API key).
+
 Preferences live in BaseApp/Preferences/Mod/Bridge: ClaudePath (empty to search PATH and
 ~/.local/bin) and ChatModel (empty for the CLI's default). The private server follows the
 bridge's ReadOnly and AllowPython settings.
@@ -375,4 +377,9 @@ class ClaudeCodeProvider(Provider):
             self.turnFinished.emit(stopped)
 
 
-PROVIDERS = [ClaudeCodeProvider]
+def providers():
+    """Every backend the panel offers, in the order it lists them."""
+
+    import BridgeChatApi
+
+    return [ClaudeCodeProvider, BridgeChatApi.AnthropicApiProvider]

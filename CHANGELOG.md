@@ -19,6 +19,11 @@ done in this fork.
   mid-conversation. The panel follows the bridge's ReadOnly and AllowPython settings
   but does not need the bridge switched on. While a reply is on its way, Gwyn climbs
   out of his portal beside a word on what Claude is doing.
+  - It can also use Claude through the Anthropic API with an API key: pick
+    "Claude (API key)" and paste a key with Key…, or set ANTHROPIC_API_KEY. The
+    model's tools run inside OtherCAD, and a request Claude declines is retried
+    on another model. Opus 5.5, Sonnet 5.5 and Haiku 4.5 are offered.
+  - Stopping a reply no longer prints a ConnectionResetError traceback.
 - LLM Bridge, in the Tools menu, lets an LLM client read, look at and change the open
   model over MCP, on this computer only, at `http://127.0.0.1:7720/mcp`. It is off
   until switched on.
