@@ -353,7 +353,9 @@ class AnthropicApiProvider(BridgeChat.Provider):
             self.toolResult.emit(True, BridgeChat.summarize(text))
             return {"type": "tool_result", "tool_use_id": call.id, "is_error": True, "content": text}
 
-        result = BridgeServer.call_tool(self.runner, call.name, call.input)
+        result = BridgeServer.call_tool(
+            self.runner, call.name, call.input, lambda name, args: self.approve(name, args)
+        )
         isError = bool(result.get("isError"))
         self.toolResult.emit(isError, BridgeChat.summarize(result.get("content")))
         return {

@@ -432,3 +432,41 @@ class TestChatProviderChoice(unittest.TestCase):
         finally:
             reopened.shutdown()
             reopened.deleteLater()
+
+
+class TestChatApiAsksBeforePython(ApiCase):
+    def setUp(self):
+        super().setUp()
+        self.asked = []
+        self.answer = False
+
+        def approve(name, arguments):
+            self.asked.append(name)
+            return self.answer
+
+        self.provider.approve = approve
+
+    def test_python_the_user_declines_is_not_run(self):
+        self.api.replies = [
+            tool_reply("run_python", {"code": "FreeCAD.newDocument('Declined')"}),
+            text_reply("Fine."),
+        ]
+        self.say("make a document with python")
+        self.assertEqual(self.asked, ["run_python"])
+        self.assertNotIn("Declined", FreeCAD.listDocuments())
+        result = self.api.requests[1]["body"]["messages"][2]["content"][0]
+        self.assertTrue(result["is_error"])
+        self.assertIn("chose not to run", json.dumps(result["content"]))
+
+    def test_python_the_user_allows_runs(self):
+        self.answer = True
+        self.api.replies = [tool_reply("run_python", {"code": "6 * 7"}), text_reply("42.")]
+        self.say("what is 6 times 7?")
+        result = self.api.requests[1]["body"]["messages"][2]["content"][0]
+        self.assertFalse(result["is_error"])
+        self.assertIn("42", json.dumps(result["content"]))
+
+    def test_other_tools_do_not_ask(self):
+        self.api.replies = [tool_reply("get_document", {}), text_reply("Done.")]
+        self.say("what is open?")
+        self.assertEqual(self.asked, [])

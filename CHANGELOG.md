@@ -23,6 +23,7 @@ done in this fork.
     "Claude (API key)" and paste a key with Key…, or set ANTHROPIC_API_KEY. The
     model's tools run inside OtherCAD, and a request Claude declines is retried
     on another model. Opus 5.5, Sonnet 5.5 and Haiku 4.5 are offered.
+  - Before the AI runs Python, a dialog shows the code and waits for Run or Don't run.
   - Stopping a reply no longer prints a ConnectionResetError traceback.
 - LLM Bridge, in the Tools menu, lets an LLM client read, look at and change the open
   model over MCP, on this computer only, at `http://127.0.0.1:7720/mcp`. It is off

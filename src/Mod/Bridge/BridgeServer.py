@@ -23,6 +23,10 @@ import BridgeTools
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 # A client gives up after 60 s, so say what happened before then
 CALL_TIMEOUT = 50.0
+# How long a person has to answer an approval before the call gives up
+APPROVAL_TIMEOUT = 15 * 60.0
+# Tools a client with an approver must have approved before each call
+ASK_FIRST = {"run_python"}
 START_TIMEOUT = 20.0
 MAX_BODY = 4 * 1024 * 1024
 
@@ -177,10 +181,22 @@ def offers(name, read_only, allow_python):
     return not (read_only and not BridgeTools.TOOLS[name].readonly)
 
 
-def call_tool(runner, name, arguments):
-    """Run a tool on the main thread through runner: its MCP result, errors included."""
+def call_tool(runner, name, arguments, approve=None):
+    """Run a tool on the main thread through runner: its MCP result, errors included.
+
+    approve(name, arguments), if given, is asked on the main thread before a tool in
+    ASK_FIRST runs, and the call is refused unless it returns True. The question waits for
+    the person rather than for CALL_TIMEOUT, and nothing else runs while it is open.
+    """
 
     FreeCAD.Console.PrintLog(f"Bridge: {name} {json.dumps(arguments)}\n")
+    if approve is not None and name in ASK_FIRST:
+        try:
+            allowed = runner.call(lambda: approve(name, arguments), timeout=APPROVAL_TIMEOUT)
+        except (Busy, TimeoutError) as error:
+            return _tool_error(f"Not run: {error}")
+        if not allowed:
+            return _tool_error("The user chose not to run this, so nothing was changed.")
     try:
         return _tool_result(runner.call(lambda: BridgeTools.call(name, arguments)))
     except BridgeTools.ActionFailed as error:
@@ -205,8 +221,17 @@ class _HTTPServer(http.server.ThreadingHTTPServer):
 
 
 class Server:
-    def __init__(self, host="127.0.0.1", port=7720, token="", read_only=False, allow_python=True):
+    def __init__(
+        self,
+        host="127.0.0.1",
+        port=7720,
+        token="",
+        read_only=False,
+        allow_python=True,
+        approve=None,
+    ):
         self.host = host
+        self.approve = approve
         self.token = token
         self.read_only = read_only
         self.allow_python = allow_python
@@ -277,7 +302,7 @@ class Server:
         return offers(name, self.read_only, self.allow_python)
 
     def call_tool(self, name, arguments):
-        return call_tool(self.runner, name, arguments)
+        return call_tool(self.runner, name, arguments, self.approve)
 
     # -- HTTP ----------------------------------------------------------------
 
