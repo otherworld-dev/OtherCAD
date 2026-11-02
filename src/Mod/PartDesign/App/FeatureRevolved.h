@@ -137,7 +137,7 @@ private:
         const TopLoc_Location& invObjLoc,
         Part::RevolMode revolMode
     );
-    void setResult(const TopoShape& base, const TopoShape& revolved, bool combineWithBase);
+    void setResult(const TopoShape& base, const TopoShape& revolved);
 
     /// Applies the boolean selected by the Operation property against the base
     TopoShape combineShapes(const TopoShape& base, const TopoShape& revolved) const;

@@ -111,7 +111,10 @@ def _bodyOf(obj):
 
 
 def _isOrigin(obj):
-    return obj.isDerivedFrom("App::DatumElement") and obj.isOriginFeature()
+    # DatumElement::isOriginFeature() has no Python binding, so look for its Origin instead
+    return obj.isDerivedFrom("App::DatumElement") and any(
+        user.isDerivedFrom("App::Origin") for user in obj.InList
+    )
 
 
 def _isDatum(obj):

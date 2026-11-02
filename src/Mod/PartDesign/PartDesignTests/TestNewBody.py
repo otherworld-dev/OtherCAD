@@ -265,6 +265,23 @@ class TestNewBody(unittest.TestCase):
         self.assertAlmostEqual(newBody.Shape.Volume, expected, places=3)
         self._assertValid()
 
+    def testRevolveAboutAnOriginAxisMoves(self):
+        sketch = self._sketch("Other", [(20, 0, 30, 10)])
+        yAxis = [f for f in self.Body.Origin.OriginFeatures if f.Role == "Y_Axis"][0]
+        revolve = self.Body.newObject("PartDesign::Revolution", "NewRevolve")
+        revolve.Profile = sketch
+        revolve.ReferenceAxis = (yAxis, [""])
+        revolve.Angle = 90
+        revolve.Operation = "NewBody"
+        self.Doc.recompute()
+        expected = revolve.AddSubShape.Volume
+
+        newBody = PartDesignNewBody.moveToNewBody(revolve)
+
+        self.assertIsNotNone(newBody)
+        self.assertAlmostEqual(newBody.Shape.Volume, expected, places=3)
+        self._assertValid()
+
     # -- undo ------------------------------------------------------------
 
     def testOneUndoPutsItAllBack(self):

@@ -219,6 +219,15 @@ done in this fork.
 - The Tasks panel on the right-hand overlay is no longer cut off at the edge of the
   screen when a sketch's panels need more width than the overlay had. The overlay grows
   while they need it and goes back to its own width afterwards.
+- Revolve can intersect or make a new body when it goes up to a face, the first face or
+  the last face. These only worked with an angle before, and the up-to types gave an
+  error. Up to a face also works with nothing before it in the body, which is where a
+  new body ends up.
+- Revolve with Cut up to a face, like the old Groove, left only the material it should
+  have taken away.
+- Revolve up to a face with more than one profile failed with "Could not revolve the
+  sketch!".
+- A New body Revolve about an origin axis did not move into a body of its own on OK.
 
 ## [26.4.0] - 2026-09-25
 

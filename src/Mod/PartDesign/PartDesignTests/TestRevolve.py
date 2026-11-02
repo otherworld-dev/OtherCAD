@@ -202,6 +202,157 @@ class TestRevolve(unittest.TestCase):
         self.assertFalse(revolution.isValid())
         self.assertIn("revolve axis", revolution.getStatusString())
 
+    # -- every operation in the up-to types (#750) ------------------------
+    #
+    # A square at x 10..20, z 0..10 on the XZ plane revolves about Z towards +Y. Up to x = -5
+    # it fills the quarter annulus with y >= 0 and x >= -5.
+
+    WALL = 10 * 25 * 20  # x -5..5: the revolution runs through it
+    BLOCK = 30 * 30 * 20  # x -5..25, y -5..25: the profile starts inside it
+
+    def _upTo(self, kind, method, operation, solid="Wall"):
+        body = self.Doc.addObject("PartDesign::Body", "Body")
+        box = body.newObject("PartDesign::AdditiveBox", solid)
+        box.Height = 20
+        if solid == "Wall":
+            box.Length = 10
+            box.Width = 25
+            box.Placement.Base = FreeCAD.Vector(-5, 0, -5)
+        else:
+            box.Length = 30
+            box.Width = 30
+            box.Placement.Base = FreeCAD.Vector(-5, -5, -5)
+        profile = self._squareSketch(body, "Profile", "XZ_Plane", 10, 0, 10)
+        self.Doc.recompute()
+
+        feature = body.newObject("PartDesign::" + kind, kind)
+        feature.Profile = profile
+        feature.ReferenceAxis = (self._zAxis(body), [""])
+        feature.Type = method
+        if method == "UpToFace":
+            feature.UpToFace = (box, [self._faceAtXMinus5(box)])
+        feature.Operation = operation
+        self.Doc.recompute()
+        return feature
+
+    def _faceAtXMinus5(self, obj):
+        for i, face in enumerate(obj.Shape.Faces, 1):
+            if abs(face.CenterOfMass.x + 5) < 1e-6:
+                return f"Face{i}"
+        self.fail("no face at x = -5")
+
+    def _volumes(self):
+        """The revolution up to x = -5, and the part of it inside the wall."""
+        annulus = Part.makeCylinder(20, 10).cut(Part.makeCylinder(10, 10))
+        whole = annulus.common(Part.makeBox(30, 25, 10, FreeCAD.Vector(-5, 0, 0))).Volume
+        inWall = annulus.common(Part.makeBox(10, 25, 10, FreeCAD.Vector(-5, 0, 0))).Volume
+        return whole, inWall
+
+    def _assertSolid(self, feature, volume):
+        self.assertTrue(feature.isValid(), feature.getStatusString())
+        self.assertTrue(feature.Shape.isValid())
+        self.assertEqual(len(feature.Shape.Solids), 1)
+        self.assertAlmostEqual(feature.Shape.Volume, volume, places=3)
+
+    def testRevolveUpToFaceJoinsTheWall(self):
+        whole, inWall = self._volumes()
+        feature = self._upTo("Revolution", "UpToFace", "Join")
+        self._assertSolid(feature, self.WALL + whole - inWall)
+
+    def testRevolveUpToFaceCutsTheWall(self):
+        _, inWall = self._volumes()
+        for kind in ("Revolution", "Groove"):
+            with self.subTest(kind=kind):
+                feature = self._upTo(kind, "UpToFace", "Cut")
+                self._assertSolid(feature, self.WALL - inWall)
+
+    def testRevolveUpToFaceIntersectsTheWall(self):
+        _, inWall = self._volumes()
+        for kind in ("Revolution", "Groove"):
+            with self.subTest(kind=kind):
+                feature = self._upTo(kind, "UpToFace", "Intersect")
+                self._assertSolid(feature, inWall)
+
+    def testRevolveUpToFaceNewBodyIsTheWholeRevolution(self):
+        whole, _ = self._volumes()
+        feature = self._upTo("Revolution", "UpToFace", "NewBody")
+        # The body keeps its wall until the feature moves into a body of its own
+        self._assertSolid(feature, self.WALL)
+        self.assertAlmostEqual(feature.AddSubShape.Volume, whole, places=3)
+
+    def testRevolveUpToFaceNewBodyInABodyOfItsOwn(self):
+        import PartDesignNewBody
+
+        whole, _ = self._volumes()
+        feature = self._upTo("Revolution", "UpToFace", "NewBody")
+        newBody = PartDesignNewBody.moveToNewBody(feature)
+
+        self.assertIsNotNone(newBody)
+        self.assertIsNone(feature.BaseFeature)
+        self._assertSolid(feature, whole)
+        self.assertAlmostEqual(newBody.Shape.Volume, whole, places=3)
+
+    def testRevolveUpToFaceWithoutABase(self):
+        whole, _ = self._volumes()
+        wall = self.Doc.addObject("Part::Box", "Wall")
+        wall.Length = 10
+        wall.Width = 25
+        wall.Height = 20
+        wall.Placement.Base = FreeCAD.Vector(-5, 0, -5)
+        self.Doc.recompute()
+        body = self.Doc.addObject("PartDesign::Body", "Body")
+        binder = body.newObject("PartDesign::SubShapeBinder", "WallFace")
+        binder.Support = [(wall, [self._faceAtXMinus5(wall)])]
+        profile = self._squareSketch(body, "Profile", "XZ_Plane", 10, 0, 10)
+        self.Doc.recompute()
+
+        feature = body.newObject("PartDesign::Revolution", "Revolution")
+        feature.Profile = profile
+        feature.ReferenceAxis = (self._zAxis(body), [""])
+        feature.Type = "UpToFace"
+        feature.UpToFace = (binder, ["Face1"])
+        self.Doc.recompute()
+
+        self._assertSolid(feature, whole)
+
+    def testRevolveUpToFirstStopsAtTheNearSideOfTheWall(self):
+        whole, inWall = self._volumes()
+        feature = self._upTo("Revolution", "UpToFirst", "NewBody")
+        self.assertTrue(feature.isValid(), feature.getStatusString())
+        self.assertAlmostEqual(feature.AddSubShape.Volume, whole - inWall, places=3)
+
+    def testRevolveUpToFirstCutsTheBlock(self):
+        whole, _ = self._volumes()
+        feature = self._upTo("Revolution", "UpToFirst", "Cut", solid="Block")
+        self._assertSolid(feature, self.BLOCK - whole)
+
+    def testRevolveUpToFirstIntersectsTheBlock(self):
+        whole, _ = self._volumes()
+        feature = self._upTo("Revolution", "UpToFirst", "Intersect", solid="Block")
+        self._assertSolid(feature, whole)
+
+    def testRevolveUpToFirstNewBodyIsTheWholeRevolution(self):
+        whole, _ = self._volumes()
+        feature = self._upTo("Revolution", "UpToFirst", "NewBody", solid="Block")
+        self._assertSolid(feature, self.BLOCK)
+        self.assertAlmostEqual(feature.AddSubShape.Volume, whole, places=3)
+
+    def testRevolveUpToFaceIntersectsWithExtraProfiles(self):
+        feature = self._upTo("Revolution", "UpToFace", "Intersect")
+        body = feature.getParentGeoFeatureGroup()
+        extra = self._squareSketch(body, "Extra", "XZ_Plane", 10, 11, 3)
+        feature.ExtraProfiles = [(extra, "")]
+        self.Doc.recompute()
+
+        _, inWall = self._volumes()
+        annulus = Part.makeCylinder(13, 3, FreeCAD.Vector(0, 0, 11)).cut(
+            Part.makeCylinder(10, 3, FreeCAD.Vector(0, 0, 11))
+        )
+        extraInWall = annulus.common(Part.makeBox(10, 25, 20, FreeCAD.Vector(-5, 0, -5))).Volume
+        self.assertTrue(feature.isValid(), feature.getStatusString())
+        self.assertTrue(feature.Shape.isValid())
+        self.assertAlmostEqual(feature.Shape.Volume, inWall + extraInWall, places=3)
+
     def tearDown(self):
         # closing doc
         FreeCAD.closeDocument("PartDesignTestRevolve")
