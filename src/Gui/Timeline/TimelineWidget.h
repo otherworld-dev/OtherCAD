@@ -23,10 +23,13 @@
 #pragma once
 
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <QList>
 #include <QPoint>
+#include <QPointer>
 #include <QString>
 #include <QWidget>
 
@@ -74,6 +77,10 @@ class TimelineMarker;
  * keeps the timeline out of the module dependency graph. Outside a body the
  * strip falls back to the Part features of the document in dependency order,
  * which has no tip and therefore no playhead.
+ *
+ * A marker can be dragged along the strip to move its feature earlier or later in
+ * the body, which is refused when it would put a feature before something it is
+ * built on, or after something built on it.
  *
  * One step of the playhead is one undo entry: the tip and the visibility of the
  * sketches and datums the step rolls past are written inside a single
@@ -147,7 +154,37 @@ private:
     void collectDocumentFeatures(App::Document* doc, std::vector<App::DocumentObject*>& features) const;
 
     int markerIndexAt(const QPoint& stripPos) const;
+    /// The strip item a widget is, or -1 when it is none of them
+    int itemIndexOf(const QObject* widget) const;
     int indexOfFeature(const std::string& name) const;
+
+    /// What dropping the features in [first, last] in front of the feature at boundary
+    /// (the end of the strip when it is the feature count) would do to the body's Group
+    struct MovePlan
+    {
+        /// Nothing would change, so the drop is quietly ignored
+        bool unchanged {false};
+        /// Why the drop is refused, empty when it is allowed
+        QString refusal;
+        /// The Group members that move, in their order: the features and the steps of
+        /// any MultiTransform among them
+        std::vector<App::DocumentObject*> moving;
+        /// The Group member they go in front of, or nullptr for the end of the Group
+        App::DocumentObject* before {nullptr};
+    };
+    MovePlan planMove(int first, int last, int boundary);
+    /// Moves the features in [first, last] to the boundary in one undo step, or says on
+    /// the status bar why it cannot
+    void moveFeatures(int first, int last, int boundary);
+    /// Where between the markers a drop at stripPos lands, as the index of the feature it
+    /// goes in front of. The items of the features being dragged do not count.
+    int dropBoundaryAt(const QPoint& stripPos) const;
+    void updateMarkerDrag(const QPoint& globalPos);
+    void finishMarkerDrag(const QPoint& globalPos);
+    void endMarkerDrag();
+    /// Whether a drag of the playhead or a marker is under way, which holds off rebuilds:
+    /// a rebuild would delete the marker the mouse is dragging.
+    bool dragInProgress() const;
     int solidAtOrBefore(int index) const;
     bool isSolidIndex(int index) const;
     /// Hide the sketches and datums the playhead has not reached yet, and put back the
@@ -192,8 +229,32 @@ private:
     QToolButton* stepBackButton {nullptr};
     QToolButton* stepForwardButton {nullptr};
     QTimer* updateTimer {nullptr};
+    /// The line that shows where a dragged marker would land, red when it cannot
+    QWidget* dropIndicator {nullptr};
 
     QList<TimelineMarker*> markers;
+    /// One widget of the strip, in layout order, and the features it stands for
+    struct StripItem
+    {
+        int first {0};
+        int last {0};
+        QWidget* widget {nullptr};
+    };
+    std::vector<StripItem> stripItems;
+    /// Whether the first marker is the body's base feature, which is not in its Group
+    bool hasBaseFeature {false};
+
+    /// The item the left button went down on, until it comes up again
+    QPointer<QWidget> pressedItem;
+    QPoint pressPos;
+    bool draggingMarker {false};
+    /// The features being dragged, as strip indices
+    int dragFirst {-1};
+    int dragLast {-1};
+    int dropBoundary {-1};
+    /// What each Group member is built on, worked out once per drag
+    std::unordered_map<const App::DocumentObject*, std::unordered_set<const App::DocumentObject*>>
+        dragDependencies;
     std::vector<std::string> featureNames;
     /// Indices into featureNames of the features that may become the tip.
     std::vector<int> solidIndices;

@@ -95,6 +95,10 @@ done in this fork.
   the extra ones must lie in planes parallel to the first. Revolve turns them all about
   the same axis. Profiles that overlap are merged. A feature with one profile is saved
   exactly as before.
+- Features can be dragged along the timeline to move them earlier or later in their body,
+  as in Fusion. A line shows where the feature will land, red when it cannot go there: a
+  feature cannot move in front of something it is built on, nor past something built on
+  it, and the status bar says which. A move is one undo step.
 
 ### Changed
 

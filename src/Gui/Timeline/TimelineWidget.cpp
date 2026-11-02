@@ -27,6 +27,7 @@
 #include <unordered_set>
 
 #include <QAction>
+#include <QApplication>
 #include <QCursor>
 #include <QEvent>
 #include <QFrame>
@@ -38,6 +39,7 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMouseEvent>
+#include <QPalette>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSize>
@@ -63,6 +65,7 @@
 #include <Gui/Application.h>
 #include <Gui/Command.h>
 #include <Gui/Document.h>
+#include <Gui/MainWindow.h>
 #include <Gui/MDIView.h>
 #include <Gui/ViewProvider.h>
 #include <Gui/ViewProviderDocumentObject.h>
@@ -85,9 +88,63 @@ constexpr int scrollBarThickness = 8;
 // a single update, short enough to feel immediate.
 constexpr int updateDelay = 120;
 
+constexpr int dropIndicatorWidth = 3;
+// Long enough to read why a drop was refused
+constexpr int refusalMessageTimeout = 6000;
+
 const char* const bodyTypeName = "PartDesign::Body";
 const char* const solidTypeName = "PartDesign::Feature";
 const char* const partFeatureTypeName = "Part::Feature";
+
+/// A feature and the steps of its own a MultiTransform keeps in the body's Group, which
+/// are not on the strip and go wherever the MultiTransform goes
+std::vector<App::DocumentObject*> withSteps(App::DocumentObject* obj)
+{
+    std::vector<App::DocumentObject*> result {obj};
+    auto* steps = freecad_cast<App::PropertyLinkList*>(obj->getPropertyByName("Transformations"));
+    if (steps) {
+        for (App::DocumentObject* step : steps->getValues()) {
+            if (step) {
+                result.push_back(step);
+            }
+        }
+    }
+    return result;
+}
+
+/// Everything obj is built on, through every link but the two the body keeps up itself:
+/// BaseFeature, which the body rewires whenever its order changes, and _Body, which leads
+/// back to the body and from there to every feature in it.
+void collectDependencies(
+    const App::DocumentObject* obj,
+    const App::DocumentObject* body,
+    std::unordered_set<const App::DocumentObject*>& result
+)
+{
+    std::vector<const App::DocumentObject*> pending {obj};
+    while (!pending.empty()) {
+        const App::DocumentObject* current = pending.back();
+        pending.pop_back();
+
+        std::vector<App::Property*> props;
+        current->getPropertyList(props);
+        for (App::Property* prop : props) {
+            const char* name = prop->getName();
+            auto* link = freecad_cast<App::PropertyLinkBase*>(prop);
+            if (!link || !name || std::strcmp(name, "BaseFeature") == 0
+                || std::strcmp(name, "_Body") == 0) {
+                continue;
+            }
+            std::vector<App::DocumentObject*> linked;
+            link->getLinks(linked);
+            for (App::DocumentObject* target : linked) {
+                if (target && target != body && target != obj && result.insert(target).second) {
+                    pending.push_back(target);
+                }
+            }
+        }
+    }
+}
 }  // namespace
 
 
@@ -188,6 +245,13 @@ void TimelineWidget::setupUi()
     playhead->setToolTip(tr("Drag to roll the model history back and forward"));
     playhead->installEventFilter(this);
     playhead->hide();
+
+    // Laid over the strip rather than in its layout, so showing it moves no marker
+    dropIndicator = new QWidget(strip);
+    dropIndicator->setObjectName(QStringLiteral("TimelineDropIndicator"));
+    dropIndicator->setAttribute(Qt::WA_StyledBackground, true);
+    dropIndicator->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    dropIndicator->hide();
 
     emptyLabel = new QLabel(tr("No feature history"), strip);
     emptyLabel->setObjectName(QStringLiteral("TimelineEmptyLabel"));
@@ -317,6 +381,12 @@ void TimelineWidget::scheduleRefresh()
 
 void TimelineWidget::onTimeout()
 {
+    // Rebuilding deletes the markers, the one being dragged among them, so it waits
+    if (dragInProgress()) {
+        updateTimer->start();
+        return;
+    }
+
     if (pendingRebuild) {
         pendingRebuild = false;
         rebuild();
@@ -344,8 +414,10 @@ void TimelineWidget::rebuild()
         marker->deleteLater();
     }
     markers.clear();
+    stripItems.clear();
     featureNames.clear();
     solidIndices.clear();
+    hasBaseFeature = false;
     documentName.clear();
     bodyName.clear();
     tipIndex = -1;
@@ -415,6 +487,9 @@ void TimelineWidget::rebuild()
         if (obj == tip) {
             tipIndex = static_cast<int>(i);
         }
+        if (i == 0 && obj == baseFeature) {
+            hasBaseFeature = true;
+        }
     }
 
     // Outside a body there is no tip to roll to, so the whole strip counts as applied.
@@ -434,6 +509,7 @@ void TimelineWidget::rebuild()
     for (int i = 0; i < count; ++i) {
         stripLayout->addWidget(markers[i]);
         markers[i]->show();
+        stripItems.push_back({i, i, markers[i]});
     }
 
     if (count == 0) {
@@ -473,10 +549,14 @@ void TimelineWidget::positionPlayhead()
         return;
     }
 
-    // The markers occupy the first positions of the layout and the stretch trails them, so
-    // the slot in front of the marker after the playhead is the playhead's own.
+    // The items occupy the first positions of the layout and the stretch trails them, so
+    // the slot in front of the first item the playhead has not reached is its own.
+    const auto reached
+        = std::count_if(stripItems.cbegin(), stripItems.cend(), [this](const StripItem& item) {
+              return item.first <= playheadIndex;
+          });
     stripLayout->removeWidget(playhead);
-    stripLayout->insertWidget(playheadIndex + 1, playhead);
+    stripLayout->insertWidget(static_cast<int>(reached), playhead);
     playhead->show();
 }
 
@@ -748,14 +828,25 @@ void TimelineWidget::collectDocumentFeatures(
 int TimelineWidget::markerIndexAt(const QPoint& stripPos) const
 {
     int index = -1;
-    const int count = static_cast<int>(markers.size());
-    for (int i = 0; i < count; ++i) {
-        if (markers[i]->geometry().center().x() <= stripPos.x()) {
-            index = i;
+    for (const StripItem& item : stripItems) {
+        if (item.widget->geometry().center().x() <= stripPos.x()) {
+            index = item.last;
         }
     }
 
     return index;
+}
+
+int TimelineWidget::itemIndexOf(const QObject* widget) const
+{
+    const int count = static_cast<int>(stripItems.size());
+    for (int i = 0; i < count; ++i) {
+        if (stripItems[static_cast<std::size_t>(i)].widget == widget) {
+            return i;
+        }
+    }
+
+    return -1;
 }
 
 int TimelineWidget::indexOfFeature(const std::string& name) const
@@ -947,6 +1038,56 @@ bool TimelineWidget::eventFilter(QObject* watched, QEvent* event)
 
     if (event->type() == QEvent::KeyPress && handleKey(static_cast<QKeyEvent*>(event))) {
         return true;
+    }
+
+    // A marker dragged along the strip moves its feature. The press is still the marker's
+    // own, which selects the feature; only a move past the drag distance starts a drag.
+    if (watched != playhead && !bodyName.empty() && itemIndexOf(watched) >= 0) {
+        switch (event->type()) {
+            case QEvent::MouseButtonPress: {
+                auto* mouse = static_cast<QMouseEvent*>(event);
+                if (mouse->button() == Qt::LeftButton) {
+                    endMarkerDrag();
+                    pressedItem = static_cast<QWidget*>(watched);
+                    pressPos = mouse->globalPosition().toPoint();
+                }
+                break;
+            }
+            case QEvent::MouseMove: {
+                auto* mouse = static_cast<QMouseEvent*>(event);
+                if (pressedItem.data() != watched || !(mouse->buttons() & Qt::LeftButton)) {
+                    break;
+                }
+                const QPoint globalPos = mouse->globalPosition().toPoint();
+                if (!draggingMarker
+                    && (globalPos - pressPos).manhattanLength() >= QApplication::startDragDistance()) {
+                    const StripItem& item = stripItems[static_cast<std::size_t>(itemIndexOf(watched))];
+                    draggingMarker = true;
+                    dragFirst = item.first;
+                    dragLast = item.last;
+                    dragDependencies.clear();
+                }
+                if (draggingMarker) {
+                    updateMarkerDrag(globalPos);
+                    return true;
+                }
+                break;
+            }
+            case QEvent::MouseButtonRelease: {
+                auto* mouse = static_cast<QMouseEvent*>(event);
+                if (mouse->button() != Qt::LeftButton || pressedItem.data() != watched) {
+                    break;
+                }
+                if (draggingMarker) {
+                    finishMarkerDrag(mouse->globalPosition().toPoint());
+                    return true;
+                }
+                endMarkerDrag();
+                break;
+            }
+            default:
+                break;
+        }
     }
 
     if (watched != playhead) {
@@ -1308,6 +1449,292 @@ void TimelineWidget::rollToStart()
 void TimelineWidget::rollToEnd()
 {
     moveTo(static_cast<int>(markers.size()) - 1);
+}
+
+bool TimelineWidget::dragInProgress() const
+{
+    return draggingPlayhead || !pressedItem.isNull();
+}
+
+int TimelineWidget::dropBoundaryAt(const QPoint& stripPos) const
+{
+    for (const StripItem& item : stripItems) {
+        if (item.first >= dragFirst && item.last <= dragLast) {
+            continue;
+        }
+        if (item.widget->geometry().center().x() > stripPos.x()) {
+            return item.first;
+        }
+    }
+
+    return static_cast<int>(featureNames.size());
+}
+
+TimelineWidget::MovePlan TimelineWidget::planMove(int first, int last, int boundary)
+{
+    MovePlan plan;
+    const int count = static_cast<int>(featureNames.size());
+    if (first < 0 || last < first || last >= count || boundary < 0 || boundary > count
+        || (boundary >= first && boundary <= last + 1)) {
+        plan.unchanged = true;
+        return plan;
+    }
+
+    App::DocumentObject* body = currentBody();
+    auto* groupProp = body ? freecad_cast<App::PropertyLinkList*>(body->getPropertyByName("Group"))
+                           : nullptr;
+    if (!groupProp) {
+        plan.unchanged = true;
+        return plan;
+    }
+
+    // The base feature is what the body starts from, and it is not part of the Group at all
+    if (hasBaseFeature && first == 0) {
+        plan.refusal = tr("The base feature of a body cannot be moved");
+        return plan;
+    }
+    if (hasBaseFeature && boundary == 0) {
+        plan.refusal = tr("Nothing can move in front of the base feature of a body");
+        return plan;
+    }
+
+    std::unordered_set<const App::DocumentObject*> moving;
+    for (int i = first; i <= last; ++i) {
+        App::DocumentObject* obj = resolve(featureNames[static_cast<std::size_t>(i)]);
+        if (!obj) {
+            plan.unchanged = true;
+            return plan;
+        }
+        for (App::DocumentObject* member : withSteps(obj)) {
+            moving.insert(member);
+        }
+    }
+
+    const std::vector<App::DocumentObject*> group = groupProp->getValues();
+    std::vector<App::DocumentObject*> remaining;
+    for (App::DocumentObject* obj : group) {
+        if (moving.count(obj) > 0) {
+            plan.moving.push_back(obj);
+        }
+        else {
+            remaining.push_back(obj);
+        }
+    }
+    if (plan.moving.size() != moving.size()) {
+        plan.unchanged = true;
+        return plan;
+    }
+
+    // In front of the feature after the drop, and in front of any steps of its own the
+    // Group holds before it, so a MultiTransform keeps its steps together
+    std::size_t insertAt = remaining.size();
+    if (boundary < count) {
+        App::DocumentObject* next = resolve(featureNames[static_cast<std::size_t>(boundary)]);
+        if (!next) {
+            plan.unchanged = true;
+            return plan;
+        }
+        for (App::DocumentObject* member : withSteps(next)) {
+            const auto found = std::find(remaining.begin(), remaining.end(), member);
+            if (found != remaining.end()) {
+                insertAt = std::min(insertAt, static_cast<std::size_t>(found - remaining.begin()));
+            }
+        }
+        if (insertAt == remaining.size()) {
+            plan.unchanged = true;
+            return plan;
+        }
+        plan.before = remaining[insertAt];
+    }
+
+    std::vector<App::DocumentObject*> order = remaining;
+    order.insert(
+        order.begin() + static_cast<std::ptrdiff_t>(insertAt),
+        plan.moving.begin(),
+        plan.moving.end()
+    );
+
+    if (dragDependencies.empty()) {
+        for (App::DocumentObject* obj : group) {
+            collectDependencies(obj, body, dragDependencies[obj]);
+        }
+    }
+
+    std::unordered_map<const App::DocumentObject*, std::size_t> position;
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        position[order[i]] = i;
+    }
+
+    // Only a pair the move turns round can break, so pairs on the same side are skipped
+    const auto label = [](const App::DocumentObject* obj) {
+        return QString::fromUtf8(obj->Label.getValue());
+    };
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        const App::DocumentObject* obj = order[i];
+        const auto found = dragDependencies.find(obj);
+        if (found == dragDependencies.end()) {
+            continue;
+        }
+        const bool objMoves = moving.count(obj) > 0;
+        for (const App::DocumentObject* dependency : found->second) {
+            const auto at = position.find(dependency);
+            if (at == position.end() || (moving.count(dependency) > 0) == objMoves || at->second < i) {
+                continue;
+            }
+            plan.refusal = objMoves
+                ? tr("%1 cannot move in front of %2, which it is built on")
+                      .arg(label(obj), label(dependency))
+                : tr("%1 cannot move past %2, which is built on it").arg(label(dependency), label(obj));
+            return plan;
+        }
+    }
+
+    return plan;
+}
+
+void TimelineWidget::moveFeatures(int first, int last, int boundary)
+{
+    const MovePlan plan = planMove(first, last, boundary);
+    if (plan.unchanged) {
+        return;
+    }
+    if (!plan.refusal.isEmpty()) {
+        if (Gui::MainWindow* window = Gui::getMainWindow()) {
+            window->showMessage(plan.refusal, refusalMessageTimeout);
+        }
+        return;
+    }
+
+    if (!activateShownBody()) {
+        return;
+    }
+    App::DocumentObject* body = currentBody();
+    if (!body) {
+        return;
+    }
+
+    // The playhead stays behind the feature it was behind, so what was rolled back stays
+    // rolled back. One at the end stays at the end, taking the moved features in with it.
+    const int count = static_cast<int>(featureNames.size());
+    const bool atEnd = playheadIndex >= count - 1;
+    std::string anchor;
+    for (int i = playheadIndex; i >= 0; --i) {
+        if (i < first || i > last) {
+            anchor = featureNames[static_cast<std::size_t>(i)];
+            break;
+        }
+    }
+
+    // What PartDesign_MoveFeatureInTree does: out of the Group and back in at the new
+    // place, which has the body rewire the BaseFeature of every solid on the way
+    const int transaction = Gui::Command::openActiveDocumentCommand(
+        std::string(QT_TRANSLATE_NOOP("Command", "Move feature in timeline"))
+    );
+    try {
+        for (App::DocumentObject* obj : plan.moving) {
+            FCMD_OBJ_CMD(body, "removeObject(" << Gui::Command::getObjectCmd(obj) << ")");
+        }
+        App::DocumentObject* previous = nullptr;
+        for (App::DocumentObject* obj : plan.moving) {
+            const std::string moved = Gui::Command::getObjectCmd(obj);
+            const std::string after = previous ? Gui::Command::getObjectCmd(previous) : std::string();
+            const std::string before = plan.before ? Gui::Command::getObjectCmd(plan.before)
+                                                   : std::string("None");
+            if (previous) {
+                FCMD_OBJ_CMD(body, "insertObject(" << moved << ", " << after << ", True)");
+            }
+            else {
+                FCMD_OBJ_CMD(body, "insertObject(" << moved << ", " << before << ", False)");
+            }
+            previous = obj;
+        }
+
+        // Read back now, inside the step, so the tip can be put where the playhead goes
+        rebuild();
+        const int target = atEnd ? static_cast<int>(featureNames.size()) - 1
+                                 : (anchor.empty() ? -1 : indexOfFeature(anchor));
+        const bool tipMoves = solidAtOrBefore(target) != tipIndex;
+        playheadIndex = target;
+        requestedPlayhead = target;
+        if (!tipMoves || !rollTo(target)) {
+            FCMD_DOC_CMD(body->getDocument(), "recompute()");
+        }
+        tipIndex = solidAtOrBefore(target);
+
+        positionPlayhead();
+        applyRollbackVisibility();
+        applyStates();
+        Gui::Command::commitCommand(transaction);
+    }
+    catch (const Base::Exception& e) {
+        Gui::Command::abortCommand(transaction);
+        e.reportException();
+    }
+
+    scheduleRebuild();
+}
+
+void TimelineWidget::updateMarkerDrag(const QPoint& globalPos)
+{
+    dropBoundary = dropBoundaryAt(strip->mapFromGlobal(globalPos));
+    const MovePlan plan = planMove(dragFirst, dragLast, dropBoundary);
+    if (plan.unchanged || stripItems.empty()) {
+        dropIndicator->hide();
+        if (pressedItem) {
+            pressedItem->setCursor(Qt::ClosedHandCursor);
+        }
+        return;
+    }
+
+    // In front of the item the drop lands before, or after the last one
+    int x = 0;
+    for (const StripItem& item : stripItems) {
+        if (item.first >= dragFirst && item.last <= dragLast) {
+            continue;
+        }
+        if (item.first >= dropBoundary) {
+            x = item.widget->geometry().left() - markerSpacing;
+            break;
+        }
+        x = item.widget->geometry().right() + markerSpacing;
+    }
+
+    const bool valid = plan.refusal.isEmpty();
+    dropIndicator->setProperty("dropValid", valid);
+    dropIndicator->setToolTip(plan.refusal);
+    dropIndicator->setStyleSheet(
+        QStringLiteral("background-color: %1;")
+            .arg(valid ? palette().color(QPalette::Highlight).name() : QStringLiteral("#d93025"))
+    );
+    dropIndicator->setGeometry(x - dropIndicatorWidth / 2, 0, dropIndicatorWidth, strip->height());
+    dropIndicator->show();
+    dropIndicator->raise();
+    if (pressedItem) {
+        pressedItem->setCursor(valid ? Qt::ClosedHandCursor : Qt::ForbiddenCursor);
+    }
+}
+
+void TimelineWidget::finishMarkerDrag(const QPoint& globalPos)
+{
+    const int first = dragFirst;
+    const int last = dragLast;
+    const int boundary = dropBoundaryAt(strip->mapFromGlobal(globalPos));
+    endMarkerDrag();
+    moveFeatures(first, last, boundary);
+    dragDependencies.clear();
+}
+
+void TimelineWidget::endMarkerDrag()
+{
+    if (pressedItem) {
+        pressedItem->unsetCursor();
+    }
+    pressedItem = nullptr;
+    draggingMarker = false;
+    dragFirst = -1;
+    dragLast = -1;
+    dropBoundary = -1;
+    dropIndicator->hide();
 }
 
 int TimelineWidget::defaultPlayhead() const

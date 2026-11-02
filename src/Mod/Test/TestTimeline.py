@@ -296,6 +296,68 @@ class TimelineTestBase(unittest.TestCase):
                 return marker
         return None
 
+    def _markers_in_order(self):
+        found = self.widget.findChildren(QtWidgets.QWidget, MARKER_NAME)
+        return sorted((m for m in found if not m.isHidden()), key=lambda m: m.pos().x())
+
+    @staticmethod
+    def _in_front_of(widget):
+        """A point just inside the left edge of a marker, which a drop puts in front of it."""
+
+        return widget.mapToGlobal(QtCore.QPoint(2, widget.height() // 2))
+
+    @staticmethod
+    def _after(widget):
+        """A point just inside the right edge of a marker, which a drop puts after it."""
+
+        return widget.mapToGlobal(QtCore.QPoint(widget.width() - 3, widget.height() // 2))
+
+    def _drag(self, source, target):
+        """Press on source, move to the global point target and let go there.
+
+        Every event goes to the source, the way the mouse grab of a real press sends
+        them. What the drop indicator showed just before the release is handed back.
+        """
+
+        self.assertIsNotNone(source, "Expected a widget to drag")
+        app = QtWidgets.QApplication.instance()
+        start_local = source.rect().center()
+        start = source.mapToGlobal(start_local)
+
+        def send(kind, globally, buttons):
+            local = source.mapFromGlobal(globally)
+            moving = kind == QtCore.QEvent.MouseMove
+            app.sendEvent(
+                source,
+                QtGui.QMouseEvent(
+                    kind,
+                    QtCore.QPointF(local),
+                    QtCore.QPointF(globally),
+                    QtCore.Qt.NoButton if moving else QtCore.Qt.LeftButton,
+                    buttons,
+                    QtCore.Qt.NoModifier,
+                ),
+            )
+
+        send(QtCore.QEvent.MouseButtonPress, start, QtCore.Qt.LeftButton)
+        steps = 4
+        for step in range(1, steps + 1):
+            point = QtCore.QPoint(
+                start.x() + (target.x() - start.x()) * step // steps,
+                start.y() + (target.y() - start.y()) * step // steps,
+            )
+            send(QtCore.QEvent.MouseMove, point, QtCore.Qt.LeftButton)
+        app.processEvents()
+
+        indicator = self.widget.findChild(QtWidgets.QWidget, "TimelineDropIndicator")
+        shown = {
+            "shown": indicator is not None and indicator.isVisible(),
+            "valid": indicator is not None and bool(indicator.property("dropValid")),
+        }
+        send(QtCore.QEvent.MouseButtonRelease, target, QtCore.Qt.NoButton)
+        self._settle()
+        return shown
+
     @staticmethod
     def _draw_rectangle(sketch, width, height):
         """A closed rectangle, the smallest profile a Pad will accept."""
@@ -718,6 +780,91 @@ class TestTimeline(TimelineTestBase):
 
         selected = [obj.Name for obj in FreeCADGui.Selection.getSelection()]
         self.assertEqual(selected, [self.pad.Name])
+
+
+class TestTimelineReorder(TimelineTestBase):
+    """Dragging a marker along the strip moves its feature, unless that breaks the model.
+
+    Sketch001 sits on the XY plane, so it can move in front of Pad; Pad001 is built
+    from Sketch001 and Pad from Sketch, so neither pad can move in front of its sketch,
+    nor either sketch past its pad.
+    """
+
+    def _order(self):
+        names = {"Sketch", "Pad", "Sketch001", "Pad001"}
+        return [obj.Name for obj in self.body.Group if obj.Name in names]
+
+    def _drop_indicator(self):
+        return self.widget.findChild(QtWidgets.QWidget, "TimelineDropIndicator")
+
+    def _status_text(self):
+        labels = self.window.statusBar().findChildren(QtWidgets.QLabel)
+        return " ".join(label.text() for label in labels)
+
+    def test_dragging_a_sketch_earlier_moves_it_in_one_undo_step(self):
+        before = self.doc.UndoCount
+
+        indicator = self._drag(
+            self._marker_for("Sketch001"), self._in_front_of(self._marker_for("Pad"))
+        )
+
+        self.assertTrue(indicator["shown"], "A drag shows where the marker would land")
+        self.assertTrue(indicator["valid"])
+        self.assertFalse(self._drop_indicator().isVisible(), "The drop takes the indicator away")
+        self.assertEqual(self._order(), ["Sketch", "Sketch001", "Pad", "Pad001"])
+        self.assertEqual(self.doc.UndoCount, before + 1)
+        self.assertIs(self.body.Tip, self.pad2)
+        self.assertTrue(self._wait_for_markers(FEATURE_COUNT))
+        self.assertEqual(
+            [m.toolTip().split("\n")[0] for m in self._markers_in_order()],
+            ["Sketch", "Sketch001", "Pad", "Pad001"],
+        )
+
+        self.doc.undo()
+        self._settle()
+        self.assertEqual(self._order(), ["Sketch", "Pad", "Sketch001", "Pad001"])
+
+    def test_dragging_a_pad_to_the_end_takes_the_tip_with_it(self):
+        volume = self.body.Shape.Volume
+
+        self._drag(self._marker_for("Pad"), self._after(self._marker_for("Pad001")))
+
+        self.assertEqual(self._order(), ["Sketch", "Sketch001", "Pad001", "Pad"])
+        self.assertIs(self.body.Tip, self.pad)
+        self.assertIs(self.pad.BaseFeature, self.pad2)
+        self.assertIsNone(self.pad2.BaseFeature)
+        self.assertAlmostEqual(self.body.Shape.Volume, volume, places=3)
+
+    def test_a_feature_cannot_move_in_front_of_what_it_is_built_on(self):
+        before = self.doc.UndoCount
+
+        indicator = self._drag(
+            self._marker_for("Pad001"), self._in_front_of(self._marker_for("Pad"))
+        )
+
+        self.assertTrue(indicator["shown"])
+        self.assertFalse(indicator["valid"], "The indicator says the drop is refused")
+        self.assertEqual(self._order(), ["Sketch", "Pad", "Sketch001", "Pad001"])
+        self.assertEqual(self.doc.UndoCount, before)
+        self.assertIn("Sketch001", self._status_text())
+
+    def test_a_feature_cannot_move_past_what_is_built_on_it(self):
+        before = self.doc.UndoCount
+
+        self._drag(self._marker_for("Sketch"), self._after(self._marker_for("Pad001")))
+
+        self.assertEqual(self._order(), ["Sketch", "Pad", "Sketch001", "Pad001"])
+        self.assertEqual(self.doc.UndoCount, before)
+        self.assertIn("Pad", self._status_text())
+
+    def test_a_drag_in_place_changes_nothing(self):
+        before = self.doc.UndoCount
+
+        marker = self._marker_for("Sketch001")
+        self._drag(marker, self._after(marker))
+
+        self.assertEqual(self._order(), ["Sketch", "Pad", "Sketch001", "Pad001"])
+        self.assertEqual(self.doc.UndoCount, before)
 
 
 class TestTimelineDock(unittest.TestCase):
