@@ -300,6 +300,74 @@ class TimelineTestBase(unittest.TestCase):
         found = self.widget.findChildren(QtWidgets.QWidget, MARKER_NAME)
         return sorted((m for m in found if not m.isHidden()), key=lambda m: m.pos().x())
 
+    def _choose_from_marker_menu(self, label, text):
+        """Right-click a marker and pick an entry of its menu.
+
+        The menu runs an event loop of its own, so the pick is made from a timer that
+        keeps looking until it is open. Returns whether the entry was checked.
+        """
+
+        # A popup of an application in the background can close as soon as it opens
+        self.window.raise_()
+        self.window.activateWindow()
+        # A menu that is still closing would take the right-click for itself
+        deadline = time.monotonic() + 2.0
+        while QtWidgets.QApplication.activePopupWidget() and time.monotonic() < deadline:
+            self._process_events(50)
+
+        # A label names a feature's marker; anything else is the widget itself
+        marker = self._marker_for(label) if isinstance(label, str) else label
+        self.assertIsNotNone(marker, f"Expected a marker for {label}")
+        chosen = []
+        offered = []
+        timer = QtCore.QTimer()
+        timer.setInterval(50)
+        deadline = time.monotonic() + 5.0
+
+        def pick():
+            menu = QtWidgets.QApplication.activePopupWidget()
+            if menu is not None:
+                timer.stop()
+                offered.extend(action.text() for action in menu.actions())
+                for action in menu.actions():
+                    if action.text() == text:
+                        chosen.append(action.isChecked())
+                        self.last_menu_entry_enabled = action.isEnabled()
+                        if not action.isEnabled():
+                            # Enter would leave the menu open, and its event loop with it
+                            menu.close()
+                            break
+                        # Enter on the highlighted entry, as trigger() alone is not
+                        # what exec() hands back
+                        menu.setActiveAction(action)
+                        for kind in (QtCore.QEvent.KeyPress, QtCore.QEvent.KeyRelease):
+                            QtWidgets.QApplication.sendEvent(
+                                menu,
+                                QtGui.QKeyEvent(kind, QtCore.Qt.Key_Return, QtCore.Qt.NoModifier),
+                            )
+                        break
+                else:
+                    menu.close()
+            elif time.monotonic() > deadline:
+                timer.stop()
+
+        timer.timeout.connect(pick)
+        timer.start()
+        centre = marker.rect().center()
+        event = QtGui.QContextMenuEvent(
+            QtGui.QContextMenuEvent.Mouse, centre, marker.mapToGlobal(centre)
+        )
+        QtWidgets.QApplication.instance().sendEvent(marker, event)
+        self._process_events(600)
+        timer.stop()
+        if not offered and QtWidgets.QApplication.activeWindow() is None:
+            self.skipTest(
+                "This machine did not hand the application the foreground, "
+                "so the menu closed as soon as it opened"
+            )
+        self.assertEqual(len(chosen), 1, f"the menu of {label} had no {text} entry: {offered}")
+        return chosen[0]
+
     @staticmethod
     def _in_front_of(widget):
         """A point just inside the left edge of a marker, which a drop puts in front of it."""
@@ -716,68 +784,6 @@ class TestTimeline(TimelineTestBase):
         for button in buttons:
             self.assertEqual(button.focusPolicy(), QtCore.Qt.TabFocus)
 
-    def _choose_from_marker_menu(self, label, text):
-        """Right-click a marker and pick an entry of its menu.
-
-        The menu runs an event loop of its own, so the pick is made from a timer that
-        keeps looking until it is open. Returns whether the entry was checked.
-        """
-
-        # A popup of an application in the background can close as soon as it opens
-        self.window.raise_()
-        self.window.activateWindow()
-        # A menu that is still closing would take the right-click for itself
-        deadline = time.monotonic() + 2.0
-        while QtWidgets.QApplication.activePopupWidget() and time.monotonic() < deadline:
-            self._process_events(50)
-
-        marker = self._marker_for(label)
-        self.assertIsNotNone(marker, f"Expected a marker for {label}")
-        chosen = []
-        offered = []
-        timer = QtCore.QTimer()
-        timer.setInterval(50)
-        deadline = time.monotonic() + 5.0
-
-        def pick():
-            menu = QtWidgets.QApplication.activePopupWidget()
-            if menu is not None:
-                timer.stop()
-                offered.extend(action.text() for action in menu.actions())
-                for action in menu.actions():
-                    if action.text() == text:
-                        chosen.append(action.isChecked())
-                        # Enter on the highlighted entry, as trigger() alone is not
-                        # what exec() hands back
-                        menu.setActiveAction(action)
-                        for kind in (QtCore.QEvent.KeyPress, QtCore.QEvent.KeyRelease):
-                            QtWidgets.QApplication.sendEvent(
-                                menu,
-                                QtGui.QKeyEvent(kind, QtCore.Qt.Key_Return, QtCore.Qt.NoModifier),
-                            )
-                        break
-                else:
-                    menu.close()
-            elif time.monotonic() > deadline:
-                timer.stop()
-
-        timer.timeout.connect(pick)
-        timer.start()
-        centre = marker.rect().center()
-        event = QtGui.QContextMenuEvent(
-            QtGui.QContextMenuEvent.Mouse, centre, marker.mapToGlobal(centre)
-        )
-        QtWidgets.QApplication.instance().sendEvent(marker, event)
-        self._process_events(600)
-        timer.stop()
-        if not offered and QtWidgets.QApplication.activeWindow() is None:
-            self.skipTest(
-                "This machine did not hand the application the foreground, "
-                "so the menu closed as soon as it opened"
-            )
-        self.assertEqual(len(chosen), 1, f"the menu of {label} had no {text} entry: {offered}")
-        return chosen[0]
-
     def test_suppress_from_the_marker_menu(self):
         full = self.body.Shape.Volume
 
@@ -915,6 +921,208 @@ class TestTimelineReorder(TimelineTestBase):
 
         self.assertEqual(self._order(), ["Sketch", "Pad", "Sketch001", "Pad001"])
         self.assertEqual(self.doc.UndoCount, before)
+
+
+class TestTimelineGroups(TimelineTestBase):
+    """Adjacent markers can be grouped into one that folds and unfolds, as in Fusion.
+
+    Groups live on the body's view provider as key, name and member IDs, so they are
+    saved with the document and undone like any other change.
+    """
+
+    def _group_markers(self):
+        found = self.widget.findChildren(QtWidgets.QWidget, "TimelineGroupMarker")
+        return [marker for marker in found if not marker.isHidden()]
+
+    def _wait_for_group_markers(self, count, timeout_ms=3000):
+        deadline = time.monotonic() + (timeout_ms / 1000.0)
+        while len(self._group_markers()) != count and time.monotonic() < deadline:
+            self._process_events(50)
+        return self._group_markers()
+
+    def _stored(self):
+        """The stored groups as (name, member names) pairs."""
+
+        groups = []
+        for entry in self.body.ViewObject.TimelineGroups:
+            fields = entry.split("\t")
+            ids = {int(field) for field in fields[2:]}
+            names = sorted(obj.Name for obj in self.doc.Objects if obj.ID in ids)
+            groups.append((fields[1], names))
+        return groups
+
+    def _store(self, *members):
+        """Group features directly, for tests about what a group does rather than its menu."""
+
+        ids = "\t".join(str(obj.ID) for obj in members)
+        self.body.ViewObject.TimelineGroups = ["1\tGroup 1\t" + ids]
+        self._settle()
+
+    def _order(self):
+        names = {"Sketch", "Pad", "Sketch001", "Pad001"}
+        return [obj.Name for obj in self.body.Group if obj.Name in names]
+
+    def _double_click(self, widget):
+        centre = widget.rect().center()
+        QtWidgets.QApplication.instance().sendEvent(
+            widget,
+            QtGui.QMouseEvent(
+                QtCore.QEvent.MouseButtonDblClick,
+                QtCore.QPointF(centre),
+                QtCore.QPointF(widget.mapToGlobal(centre)),
+                QtCore.Qt.LeftButton,
+                QtCore.Qt.LeftButton,
+                QtCore.Qt.NoModifier,
+            ),
+        )
+        self._settle()
+
+    def test_grouping_adjacent_markers_folds_them_into_one_undo_step(self):
+        FreeCADGui.Selection.clearSelection()
+        FreeCADGui.Selection.addSelection(self.doc.Name, self.sketch2.Name)
+        FreeCADGui.Selection.addSelection(self.doc.Name, self.pad2.Name)
+        self._process_events()
+        before = self.doc.UndoCount
+
+        self._choose_from_marker_menu("Pad001", "Group")
+        self._settle()
+
+        self.assertEqual(self._stored(), [("Group 1", ["Pad001", "Sketch001"])])
+        self.assertEqual(self.doc.UndoCount, before + 1)
+        self.assertEqual(len(self._wait_for_group_markers(1)), 1)
+        self.assertIsNone(self._marker_for("Sketch001"), "A folded group hides its members")
+        self.assertIsNone(self._marker_for("Pad001"))
+        self.assertTrue(self._wait_for_markers(2))
+
+        self.doc.undo()
+        self._settle()
+        self.assertEqual(self._stored(), [])
+        self.assertEqual(len(self._wait_for_group_markers(0)), 0)
+        self.assertTrue(self._wait_for_markers(FEATURE_COUNT))
+
+    def test_markers_that_are_not_side_by_side_cannot_be_grouped(self):
+        FreeCADGui.Selection.clearSelection()
+        FreeCADGui.Selection.addSelection(self.doc.Name, self.sketch.Name)
+        FreeCADGui.Selection.addSelection(self.doc.Name, self.sketch2.Name)
+        self._process_events()
+
+        self._choose_from_marker_menu("Sketch001", "Group")
+        self._settle()
+
+        self.assertFalse(self.last_menu_entry_enabled)
+        self.assertEqual(self._stored(), [])
+
+    def test_groups_survive_a_save_and_a_reload(self):
+        self._store(self.sketch2, self.pad2)
+        self.assertEqual(len(self._wait_for_group_markers(1)), 1)
+
+        self._reopen()
+        self._activate_body()
+
+        self.assertEqual(self._stored(), [("Group 1", ["Pad001", "Sketch001"])])
+        self.assertEqual(len(self._wait_for_group_markers(1)), 1)
+        self.assertIsNone(self._marker_for("Pad001"))
+
+    def test_a_double_click_unfolds_and_folds_a_group(self):
+        self._store(self.sketch2, self.pad2)
+        group = self._wait_for_group_markers(1)[0]
+
+        self._double_click(group)
+        self.assertIsNotNone(self._marker_for("Sketch001"), "Unfolded, the members show")
+        self.assertIsNotNone(self._marker_for("Pad001"))
+        self.assertEqual(len(self._group_markers()), 1, "and the group heads them")
+
+        self._double_click(self._group_markers()[0])
+        self.assertIsNone(self._marker_for("Pad001"))
+
+    def test_rename_and_ungroup_from_the_group_menu(self):
+        self._store(self.sketch2, self.pad2)
+        group = self._wait_for_group_markers(1)[0]
+
+        def answer():
+            dialog = QtWidgets.QApplication.activeModalWidget()
+            if isinstance(dialog, QtWidgets.QInputDialog):
+                timer.stop()
+                dialog.setTextValue("Holes")
+                dialog.accept()
+
+        timer = QtCore.QTimer()
+        timer.setInterval(50)
+        timer.timeout.connect(answer)
+        timer.start()
+        self._choose_from_marker_menu(group, "Rename Group")
+        self._settle()
+        timer.stop()
+
+        self.assertEqual(self._stored(), [("Holes", ["Pad001", "Sketch001"])])
+        self.assertIn("Holes", self._wait_for_group_markers(1)[0].toolTip())
+
+        self._choose_from_marker_menu(self._group_markers()[0], "Ungroup")
+        self._settle()
+
+        self.assertEqual(self._stored(), [])
+        self.assertTrue(self._wait_for_markers(FEATURE_COUNT))
+
+    def test_a_deleted_member_drops_out_and_an_empty_group_goes(self):
+        self._store(self.sketch2, self.pad2)
+        self.assertEqual(len(self._wait_for_group_markers(1)), 1)
+
+        self.body.removeObject(self.pad2)
+        self.doc.removeObject("Pad001")
+        self.doc.recompute()
+        self._settle()
+
+        groups = self._wait_for_group_markers(1)
+        self.assertEqual(len(groups), 1)
+        self.assertIn("1 feature", groups[0].toolTip())
+
+        self.body.removeObject(self.sketch2)
+        self.doc.removeObject("Sketch001")
+        self.doc.recompute()
+        self._settle()
+
+        self.assertEqual(len(self._wait_for_group_markers(0)), 0)
+
+    def test_a_folded_group_is_dragged_as_one(self):
+        self._store(self.sketch2, self.pad2)
+        group = self._wait_for_group_markers(1)[0]
+
+        self._drag(group, self._in_front_of(self._marker_for("Pad")))
+
+        self.assertEqual(self._order(), ["Sketch", "Sketch001", "Pad001", "Pad"])
+        self.assertIs(self.body.Tip, self.pad)
+        self.assertEqual(self._stored(), [("Group 1", ["Pad001", "Sketch001"])])
+
+    def test_a_member_dragged_out_of_an_unfolded_group_leaves_it(self):
+        self._store(self.sketch2, self.pad2)
+        self._double_click(self._wait_for_group_markers(1)[0])
+
+        self._drag(self._marker_for("Sketch001"), self._in_front_of(self._marker_for("Pad")))
+
+        self.assertEqual(self._order(), ["Sketch", "Sketch001", "Pad", "Pad001"])
+        self.assertEqual(self._stored(), [("Group 1", ["Pad001"])])
+
+    def test_a_feature_dropped_inside_an_unfolded_group_joins_it(self):
+        self._store(self.sketch, self.pad)
+        self._double_click(self._wait_for_group_markers(1)[0])
+
+        self._drag(self._marker_for("Sketch001"), self._in_front_of(self._marker_for("Pad")))
+
+        self.assertEqual(self._order(), ["Sketch", "Sketch001", "Pad", "Pad001"])
+        self.assertEqual(self._stored(), [("Group 1", ["Pad", "Sketch", "Sketch001"])])
+
+    def test_stepping_back_skips_over_a_folded_group(self):
+        self._store(self.sketch2, self.pad2)
+        self.assertEqual(len(self._wait_for_group_markers(1)), 1)
+
+        self._invoke("stepBack")
+
+        self.assertIs(self.body.Tip, self.pad)
+        self.assertFalse(self.sketch2.Visibility, "The whole group is rolled back")
+        groups = self._wait_for_group_markers(1)
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0].property("timelineState"), "rolledBack")
+        self.assertIsNone(self._marker_for("Pad001"), "and it stays folded")
 
 
 class TestTimelineDock(unittest.TestCase):

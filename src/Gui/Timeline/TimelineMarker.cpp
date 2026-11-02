@@ -254,4 +254,119 @@ void TimelineMarker::contextMenuEvent(QContextMenuEvent* event)
     Q_EMIT menuRequested(QString::fromUtf8(internalName.c_str()), event->globalPos());
 }
 
+
+TimelineGroupMarker::TimelineGroupMarker(const QString& key, QWidget* parent)
+    : QWidget(parent)
+    , groupKey(key)
+{
+    setObjectName(QStringLiteral("TimelineGroupMarker"));
+    setAttribute(Qt::WA_StyledBackground, true);
+    setFixedSize(TimelineMarker::tileSize());
+    setFocusPolicy(Qt::TabFocus);
+    restyle();
+}
+
+void TimelineGroupMarker::setGroup(
+    const QString& label,
+    int count,
+    bool isExpanded,
+    bool hasError,
+    bool hasWarning
+)
+{
+    expanded = isExpanded;
+    error = hasError;
+    warning = hasWarning;
+    const QString members = count == 1 ? tr("1 feature") : tr("%1 features").arg(count);
+    setToolTip(QStringLiteral("%1\n%2").arg(label, members));
+    restyle();
+}
+
+void TimelineGroupMarker::setState(TimelineMarker::State state)
+{
+    if (markerState == state) {
+        return;
+    }
+
+    markerState = state;
+    restyle();
+}
+
+void TimelineGroupMarker::setTip(bool value)
+{
+    if (tip == value) {
+        return;
+    }
+
+    tip = value;
+    restyle();
+}
+
+void TimelineGroupMarker::restyle()
+{
+    setProperty("timelineState", stateName(markerState));
+    setProperty("timelineTip", tip);
+    setProperty("timelineError", error);
+    setProperty("timelineWarning", warning);
+    setProperty("timelineExpanded", expanded);
+
+    style()->unpolish(this);
+    style()->polish(this);
+    update();
+}
+
+void TimelineGroupMarker::paintEvent(QPaintEvent* event)
+{
+    Q_UNUSED(event)
+
+    QStyleOption opt;
+    opt.initFrom(this);
+
+    QPainter painter(this);
+    style()->drawPrimitive(QStyle::PE_Widget, &opt, &painter, this);
+
+    const QRect content = rect().adjusted(markerPadding, markerPadding, -markerPadding, -markerPadding);
+    QRect iconRect(0, 0, iconExtent, iconExtent);
+    iconRect.moveCenter(content.center());
+
+    // An open folder heads its members, a closed one stands in for them
+    const QIcon icon = style()->standardIcon(
+        expanded ? QStyle::SP_DirOpenIcon : QStyle::SP_DirClosedIcon
+    );
+    const QIcon::Mode mode = markerState == TimelineMarker::State::RolledBack ? QIcon::Disabled
+                                                                              : QIcon::Normal;
+    icon.paint(&painter, iconRect, Qt::AlignCenter, mode, QIcon::Off);
+
+    if (error || warning) {
+        const QPixmap& badge = error ? errorBadge() : warningBadge();
+        if (!badge.isNull()) {
+            painter.drawPixmap(iconRect.right() - badgeExtent / 2, iconRect.top(), badge);
+        }
+    }
+}
+
+void TimelineGroupMarker::mousePressEvent(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton) {
+        Q_EMIT selectRequested(groupKey);
+    }
+
+    QWidget::mousePressEvent(event);
+}
+
+void TimelineGroupMarker::mouseDoubleClickEvent(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton) {
+        Q_EMIT toggleRequested(groupKey);
+    }
+
+    QWidget::mouseDoubleClickEvent(event);
+}
+
+void TimelineGroupMarker::contextMenuEvent(QContextMenuEvent* event)
+{
+    event->accept();
+    Q_EMIT menuRequested(groupKey, event->globalPos());
+}
+
 #include "moc_TimelineMarker.cpp"

@@ -89,6 +89,8 @@ constexpr int scrollBarThickness = 8;
 constexpr int updateDelay = 120;
 
 constexpr int dropIndicatorWidth = 3;
+// Between the fields of a stored group, which never occurs in a name or a number
+constexpr char groupFieldSeparator = '\t';
 // Long enough to read why a drop was refused
 constexpr int refusalMessageTimeout = 6000;
 
@@ -297,6 +299,11 @@ void TimelineWidget::connectDocumentSignals()
             followedBodyName.clear();
             followedDocumentName.clear();
         }
+        // Nor the groups that were unfolded in it
+        const std::string prefix = std::string(doc.getDocument()->getName()) + "/";
+        std::erase_if(expandedGroups, [&prefix](const std::string& key) {
+            return key.starts_with(prefix);
+        });
         scheduleRebuild();
     });
     connNewObject = app->signalNewObject.connect([this](const Gui::ViewProvider&) {
@@ -310,6 +317,7 @@ void TimelineWidget::connectDocumentSignals()
             const char* name = prop.getName();
             const bool structural = name != nullptr
                 && (std::strcmp(name, "Group") == 0 || std::strcmp(name, "Tip") == 0
+                    || std::strcmp(name, "TimelineGroups") == 0
                     || std::strcmp(name, "BaseFeature") == 0
                     || std::strcmp(name, "Transformations") == 0);
             if (structural) {
@@ -414,6 +422,11 @@ void TimelineWidget::rebuild()
         marker->deleteLater();
     }
     markers.clear();
+    for (const ShownGroup& group : shownGroups) {
+        group.marker->deleteLater();
+    }
+    shownGroups.clear();
+    featureGroup.clear();
     stripItems.clear();
     featureNames.clear();
     solidIndices.clear();
@@ -506,7 +519,90 @@ void TimelineWidget::rebuild()
     }
     requestedPlayhead = noPlayheadRequest;
 
+    // Each group is shown as the run of members side by side from its first one. Members
+    // something else has since been moved in between (by the tree, say) show on their own.
+    featureGroup.assign(static_cast<std::size_t>(count), -1);
+    std::vector<long> ids(static_cast<std::size_t>(count), -1);
     for (int i = 0; i < count; ++i) {
+        if (App::DocumentObject* obj = markers[i]->object()) {
+            ids[static_cast<std::size_t>(i)] = obj->getID();
+        }
+    }
+    for (const FeatureGroup& group : readGroups()) {
+        const auto isMember = [&](int i) {
+            return featureGroup[static_cast<std::size_t>(i)] < 0
+                && std::find(
+                       group.members.begin(),
+                       group.members.end(),
+                       ids[static_cast<std::size_t>(i)]
+                   )
+                != group.members.end();
+        };
+        int first = 0;
+        while (first < count && !isMember(first)) {
+            ++first;
+        }
+        if (first == count) {
+            continue;
+        }
+        int last = first;
+        while (last + 1 < count && isMember(last + 1)) {
+            ++last;
+        }
+
+        ShownGroup shown;
+        shown.key = group.key;
+        shown.first = first;
+        shown.last = last;
+        // A playhead between two members has to be seen there, so that group stays open
+        shown.expanded = expandedGroups.count(groupStateKey(group.key)) > 0
+            || (playheadIndex >= first && playheadIndex < last);
+        shown.marker = new TimelineGroupMarker(QString::fromStdString(group.key), strip);
+        connect(shown.marker, &TimelineGroupMarker::selectRequested, this, &TimelineWidget::onGroupSelect);
+        connect(shown.marker, &TimelineGroupMarker::toggleRequested, this, &TimelineWidget::onGroupToggle);
+        connect(
+            shown.marker,
+            &TimelineGroupMarker::menuRequested,
+            this,
+            &TimelineWidget::onGroupMenu,
+            Qt::QueuedConnection
+        );
+        shown.marker->installEventFilter(this);
+
+        bool error = false;
+        bool warning = false;
+        for (int i = first; i <= last; ++i) {
+            featureGroup[static_cast<std::size_t>(i)] = static_cast<int>(shownGroups.size());
+            App::DocumentObject* obj = markers[i]->object();
+            error = error || (obj && obj->isError());
+            warning = warning || markers[i]->hasWarning();
+        }
+        shown.marker->setGroup(
+            QString::fromUtf8(group.label.c_str()),
+            last - first + 1,
+            shown.expanded,
+            error,
+            warning
+        );
+        shownGroups.push_back(shown);
+    }
+
+    for (int i = 0; i < count; ++i) {
+        const int group = featureGroup[static_cast<std::size_t>(i)];
+        if (group >= 0 && shownGroups[static_cast<std::size_t>(group)].first == i) {
+            const ShownGroup& shown = shownGroups[static_cast<std::size_t>(group)];
+            stripLayout->addWidget(shown.marker);
+            shown.marker->show();
+            stripItems.push_back({shown.first, shown.last, shown.marker, shown.expanded});
+            if (!shown.expanded) {
+                // Folded: the group's marker stands in for every member
+                for (int member = shown.first; member <= shown.last; ++member) {
+                    markers[member]->hide();
+                }
+                i = shown.last;
+                continue;
+            }
+        }
         stripLayout->addWidget(markers[i]);
         markers[i]->show();
         stripItems.push_back({i, i, markers[i]});
@@ -590,6 +686,24 @@ void TimelineWidget::applyStates()
         }
 
         marker->setTip(i == tipIndex);
+    }
+
+    for (const ShownGroup& group : shownGroups) {
+        bool selected = false;
+        for (int i = group.first; i <= group.last && !selected; ++i) {
+            App::DocumentObject* obj = markers[i]->object();
+            selected = obj != nullptr && Gui::Selection().isSelected(obj);
+        }
+        if (selected) {
+            group.marker->setState(TimelineMarker::State::Selected);
+        }
+        else if (group.first > playheadIndex) {
+            group.marker->setState(TimelineMarker::State::RolledBack);
+        }
+        else {
+            group.marker->setState(TimelineMarker::State::Normal);
+        }
+        group.marker->setTip(!group.expanded && tipIndex >= group.first && tipIndex <= group.last);
     }
 
     const bool hasBody = !bodyName.empty();
@@ -830,7 +944,7 @@ int TimelineWidget::markerIndexAt(const QPoint& stripPos) const
     int index = -1;
     for (const StripItem& item : stripItems) {
         if (item.widget->geometry().center().x() <= stripPos.x()) {
-            index = item.last;
+            index = item.header ? item.first - 1 : item.last;
         }
     }
 
@@ -1065,6 +1179,7 @@ bool TimelineWidget::eventFilter(QObject* watched, QEvent* event)
                     draggingMarker = true;
                     dragFirst = item.first;
                     dragLast = item.last;
+                    dragWholeGroup = qobject_cast<TimelineGroupMarker*>(item.widget) != nullptr;
                     dragDependencies.clear();
                 }
                 if (draggingMarker) {
@@ -1165,6 +1280,20 @@ void TimelineWidget::onMarkerMenu(const QString& feature, const QPoint& globalPo
         suppressAction->setCheckable(true);
         suppressAction->setChecked(suppressible->Suppressed.getValue());
     }
+    // Names rather than indices: the menu's event loop may rebuild the strip
+    QAction* groupAction = nullptr;
+    std::string groupFirst;
+    std::string groupLast;
+    if (!bodyName.empty() && index >= 0) {
+        int first = -1;
+        int last = -1;
+        groupAction = menu.addAction(tr("Group"));
+        groupAction->setEnabled(groupCandidates(index, first, last));
+        if (groupAction->isEnabled()) {
+            groupFirst = featureNames[static_cast<std::size_t>(first)];
+            groupLast = featureNames[static_cast<std::size_t>(last)];
+        }
+    }
     QAction* rollAction = nullptr;
     if (!bodyName.empty() && index >= 0) {
         menu.addSeparator();
@@ -1193,6 +1322,323 @@ void TimelineWidget::onMarkerMenu(const QString& feature, const QPoint& globalPo
     else if (chosen == rollAction) {
         moveTo(index);
     }
+    else if (chosen == groupAction) {
+        const int first = indexOfFeature(groupFirst);
+        const int last = indexOfFeature(groupLast);
+        if (first >= 0 && last >= first) {
+            createGroup(first, last);
+        }
+    }
+}
+
+void TimelineWidget::onGroupSelect(const QString& key)
+{
+    const int index = shownGroupIndex(key.toStdString());
+    if (index < 0) {
+        return;
+    }
+
+    // Picking the group picks what is in it, as a click on a folder row would
+    const ShownGroup& group = shownGroups[static_cast<std::size_t>(index)];
+    std::vector<App::DocumentObject*> members;
+    for (int i = group.first; i <= group.last; ++i) {
+        if (App::DocumentObject* obj = markers[i]->object()) {
+            members.push_back(obj);
+        }
+    }
+    Gui::Selection().clearSelection();
+    for (App::DocumentObject* obj : members) {
+        Gui::Selection().addSelection(obj->getDocument()->getName(), obj->getNameInDocument());
+    }
+}
+
+void TimelineWidget::onGroupToggle(const QString& key)
+{
+    const int index = shownGroupIndex(key.toStdString());
+    if (index < 0) {
+        return;
+    }
+
+    const std::string state = groupStateKey(key.toStdString());
+    if (shownGroups[static_cast<std::size_t>(index)].expanded) {
+        expandedGroups.erase(state);
+    }
+    else {
+        expandedGroups.insert(state);
+    }
+    scheduleRebuild();
+}
+
+void TimelineWidget::onGroupMenu(const QString& key, const QPoint& globalPos)
+{
+    const int index = shownGroupIndex(key.toStdString());
+    if (index < 0) {
+        return;
+    }
+
+    const ShownGroup group = shownGroups[static_cast<std::size_t>(index)];
+    const std::string lastMember = featureNames[static_cast<std::size_t>(group.last)];
+
+    QMenu menu(this);
+    QAction* toggleAction = menu.addAction(group.expanded ? tr("Collapse") : tr("Expand"));
+    QAction* renameAction = menu.addAction(tr("Rename Group"));
+    QAction* ungroupAction = menu.addAction(tr("Ungroup"));
+    QAction* rollAction = nullptr;
+    if (!bodyName.empty()) {
+        menu.addSeparator();
+        rollAction = menu.addAction(tr("Roll History Here"));
+    }
+
+    QAction* chosen = menu.exec(globalPos);
+    if (!chosen) {
+        return;
+    }
+
+    if (chosen == toggleAction) {
+        onGroupToggle(key);
+    }
+    else if (chosen == renameAction) {
+        renameGroup(group.key);
+    }
+    else if (chosen == ungroupAction) {
+        ungroup(group.key);
+    }
+    else if (chosen == rollAction) {
+        const int last = indexOfFeature(lastMember);
+        if (last >= 0) {
+            moveTo(last);
+        }
+    }
+}
+
+App::PropertyStringList* TimelineWidget::groupsProperty() const
+{
+    App::DocumentObject* body = currentBody();
+    Gui::Application* app = Gui::Application::Instance;
+    Gui::ViewProvider* provider = body && app ? app->getViewProvider(body) : nullptr;
+    return provider
+        ? freecad_cast<App::PropertyStringList*>(provider->getPropertyByName("TimelineGroups"))
+        : nullptr;
+}
+
+std::vector<TimelineWidget::FeatureGroup> TimelineWidget::readGroups() const
+{
+    std::vector<FeatureGroup> groups;
+    const App::PropertyStringList* prop = groupsProperty();
+    if (!prop) {
+        return groups;
+    }
+
+    for (const std::string& entry : prop->getValues()) {
+        const QStringList fields
+            = QString::fromUtf8(entry.c_str()).split(QLatin1Char(groupFieldSeparator));
+        if (fields.size() < 2) {
+            continue;
+        }
+        FeatureGroup group;
+        group.key = fields[0].toStdString();
+        group.label = fields[1].toStdString();
+        for (qsizetype i = 2; i < fields.size(); ++i) {
+            bool ok = false;
+            const long id = fields[i].toLong(&ok);
+            if (ok) {
+                group.members.push_back(id);
+            }
+        }
+        groups.push_back(std::move(group));
+    }
+
+    return groups;
+}
+
+void TimelineWidget::writeGroups(std::vector<FeatureGroup> groups)
+{
+    App::PropertyStringList* prop = groupsProperty();
+    App::Document* doc = currentDocument();
+    if (!prop || !doc) {
+        return;
+    }
+
+    std::vector<std::string> values;
+    for (FeatureGroup& group : groups) {
+        std::erase_if(group.members, [doc](long id) { return doc->getObjectByID(id) == nullptr; });
+        if (group.members.empty()) {
+            continue;
+        }
+        std::string entry = group.key + groupFieldSeparator + group.label;
+        for (long id : group.members) {
+            entry += groupFieldSeparator + std::to_string(id);
+        }
+        values.push_back(std::move(entry));
+    }
+
+    if (values != prop->getValues()) {
+        prop->setValues(values);
+    }
+}
+
+std::string TimelineWidget::groupStateKey(const std::string& key) const
+{
+    return documentName + "/" + bodyName + "/" + key;
+}
+
+int TimelineWidget::shownGroupIndex(const std::string& key) const
+{
+    const int count = static_cast<int>(shownGroups.size());
+    for (int i = 0; i < count; ++i) {
+        if (shownGroups[static_cast<std::size_t>(i)].key == key) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+bool TimelineWidget::groupCandidates(int clicked, int& first, int& last) const
+{
+    const int count = static_cast<int>(markers.size());
+    if (clicked < 0 || clicked >= count) {
+        return false;
+    }
+
+    const auto selected = [this](int i) {
+        App::DocumentObject* obj = markers[i]->object();
+        return obj != nullptr && Gui::Selection().isSelected(obj);
+    };
+    std::vector<int> chosen;
+    if (selected(clicked)) {
+        for (int i = 0; i < count; ++i) {
+            if (selected(i)) {
+                chosen.push_back(i);
+            }
+        }
+    }
+    else {
+        chosen.push_back(clicked);
+    }
+
+    first = chosen.front();
+    last = chosen.back();
+    if (last - first + 1 != static_cast<int>(chosen.size())) {
+        return false;
+    }
+    return std::none_of(chosen.begin(), chosen.end(), [this](int i) {
+        return featureGroup[static_cast<std::size_t>(i)] >= 0;
+    });
+}
+
+void TimelineWidget::createGroup(int first, int last)
+{
+    if (!groupsProperty()) {
+        return;
+    }
+
+    std::vector<FeatureGroup> groups = readGroups();
+    const auto keyTaken = [&groups](const std::string& key) {
+        return std::any_of(groups.begin(), groups.end(), [&key](const FeatureGroup& group) {
+            return group.key == key;
+        });
+    };
+    const auto labelTaken = [&groups](const std::string& label) {
+        return std::any_of(groups.begin(), groups.end(), [&label](const FeatureGroup& group) {
+            return group.label == label;
+        });
+    };
+
+    FeatureGroup group;
+    int number = 1;
+    while (keyTaken(std::to_string(number))) {
+        ++number;
+    }
+    group.key = std::to_string(number);
+    number = 1;
+    while (labelTaken(tr("Group %1").arg(number).toStdString())) {
+        ++number;
+    }
+    group.label = tr("Group %1").arg(number).toStdString();
+    for (int i = first; i <= last; ++i) {
+        if (App::DocumentObject* obj = markers[i]->object()) {
+            group.members.push_back(obj->getID());
+        }
+    }
+    groups.push_back(std::move(group));
+
+    // Groups are a view of the history rather than part of the model, but they are
+    // undone like any other change
+    const int transaction = Gui::Command::openActiveDocumentCommand(
+        std::string(QT_TRANSLATE_NOOP("Command", "Group timeline features"))
+    );
+    writeGroups(std::move(groups));
+    Gui::Command::commitCommand(transaction);
+    scheduleRebuild();
+}
+
+void TimelineWidget::ungroup(const std::string& key)
+{
+    std::vector<FeatureGroup> groups = readGroups();
+    std::erase_if(groups, [&key](const FeatureGroup& group) { return group.key == key; });
+
+    const int transaction = Gui::Command::openActiveDocumentCommand(
+        std::string(QT_TRANSLATE_NOOP("Command", "Ungroup timeline features"))
+    );
+    writeGroups(std::move(groups));
+    Gui::Command::commitCommand(transaction);
+    expandedGroups.erase(groupStateKey(key));
+    scheduleRebuild();
+}
+
+void TimelineWidget::renameGroup(const std::string& key)
+{
+    const auto byKey = [&key](const FeatureGroup& group) {
+        return group.key == key;
+    };
+    std::vector<FeatureGroup> groups = readGroups();
+    auto found = std::find_if(groups.begin(), groups.end(), byKey);
+    if (found == groups.end()) {
+        return;
+    }
+
+    const QString current = QString::fromUtf8(found->label.c_str());
+    bool accepted = false;
+    const QString typed = QInputDialog::getText(
+        this,
+        tr("Rename Group"),
+        tr("New name:"),
+        QLineEdit::Normal,
+        current,
+        &accepted
+    );
+    // Simplified, since a tab would split the stored entry
+    const QString label = typed.simplified();
+    if (!accepted || label.isEmpty() || label == current) {
+        return;
+    }
+
+    // Read again, as the dialog ran an event loop of its own
+    groups = readGroups();
+    found = std::find_if(groups.begin(), groups.end(), byKey);
+    if (found == groups.end()) {
+        return;
+    }
+    found->label = label.toStdString();
+
+    const int transaction = Gui::Command::openActiveDocumentCommand(
+        std::string(QT_TRANSLATE_NOOP("Command", "Rename timeline group"))
+    );
+    writeGroups(std::move(groups));
+    Gui::Command::commitCommand(transaction);
+    scheduleRebuild();
+}
+
+int TimelineWidget::skipFoldedGroups(int index, int direction) const
+{
+    for (const ShownGroup& group : shownGroups) {
+        if (!group.expanded && index >= group.first && index < group.last) {
+            return direction < 0 ? group.first - 1 : group.last;
+        }
+    }
+
+    return index;
 }
 
 void TimelineWidget::editFeature(const std::string& name)
@@ -1493,12 +1939,12 @@ bool TimelineWidget::rollTo(int index)
 
 void TimelineWidget::stepBack()
 {
-    moveTo(playheadIndex - 1);
+    moveTo(skipFoldedGroups(playheadIndex - 1, -1));
 }
 
 void TimelineWidget::stepForward()
 {
-    moveTo(playheadIndex + 1);
+    moveTo(skipFoldedGroups(playheadIndex + 1, 1));
 }
 
 void TimelineWidget::rollToStart()
@@ -1530,7 +1976,7 @@ int TimelineWidget::dropBoundaryAt(const QPoint& stripPos) const
     return static_cast<int>(featureNames.size());
 }
 
-TimelineWidget::MovePlan TimelineWidget::planMove(int first, int last, int boundary)
+TimelineWidget::MovePlan TimelineWidget::planMove(int first, int last, int boundary, bool wholeGroup)
 {
     MovePlan plan;
     const int count = static_cast<int>(featureNames.size());
@@ -1556,6 +2002,14 @@ TimelineWidget::MovePlan TimelineWidget::planMove(int first, int last, int bound
     if (hasBaseFeature && boundary == 0) {
         plan.refusal = tr("Nothing can move in front of the base feature of a body");
         return plan;
+    }
+    // One level of grouping only
+    if (wholeGroup && boundary > 0 && boundary < count) {
+        const int before = featureGroup[static_cast<std::size_t>(boundary - 1)];
+        if (before >= 0 && before == featureGroup[static_cast<std::size_t>(boundary)]) {
+            plan.refusal = tr("A group cannot go inside another group");
+            return plan;
+        }
     }
 
     std::unordered_set<const App::DocumentObject*> moving;
@@ -1652,9 +2106,9 @@ TimelineWidget::MovePlan TimelineWidget::planMove(int first, int last, int bound
     return plan;
 }
 
-void TimelineWidget::moveFeatures(int first, int last, int boundary)
+void TimelineWidget::moveFeatures(int first, int last, int boundary, bool wholeGroup)
 {
-    const MovePlan plan = planMove(first, last, boundary);
+    const MovePlan plan = planMove(first, last, boundary, wholeGroup);
     if (plan.unchanged) {
         return;
     }
@@ -1709,6 +2163,30 @@ void TimelineWidget::moveFeatures(int first, int last, int boundary)
             previous = obj;
         }
 
+        // A feature dropped between two members of an unfolded group joins it, and one
+        // dropped anywhere else leaves the group it was in. Read off the strip as it was.
+        if (!wholeGroup && first == last) {
+            int joined = -1;
+            if (boundary > 0 && boundary < count) {
+                const int before = featureGroup[static_cast<std::size_t>(boundary - 1)];
+                if (before >= 0 && before == featureGroup[static_cast<std::size_t>(boundary)]) {
+                    joined = before;
+                }
+            }
+            App::DocumentObject* obj = resolve(featureNames[static_cast<std::size_t>(first)]);
+            if (obj && joined != featureGroup[static_cast<std::size_t>(first)]) {
+                std::vector<FeatureGroup> groups = readGroups();
+                for (FeatureGroup& group : groups) {
+                    std::erase(group.members, obj->getID());
+                    if (joined >= 0
+                        && group.key == shownGroups[static_cast<std::size_t>(joined)].key) {
+                        group.members.push_back(obj->getID());
+                    }
+                }
+                writeGroups(std::move(groups));
+            }
+        }
+
         // Read back now, inside the step, so the tip can be put where the playhead goes
         rebuild();
         const int target = atEnd ? static_cast<int>(featureNames.size()) - 1
@@ -1737,7 +2215,7 @@ void TimelineWidget::moveFeatures(int first, int last, int boundary)
 void TimelineWidget::updateMarkerDrag(const QPoint& globalPos)
 {
     dropBoundary = dropBoundaryAt(strip->mapFromGlobal(globalPos));
-    const MovePlan plan = planMove(dragFirst, dragLast, dropBoundary);
+    const MovePlan plan = planMove(dragFirst, dragLast, dropBoundary, dragWholeGroup);
     if (plan.unchanged || stripItems.empty()) {
         dropIndicator->hide();
         if (pressedItem) {
@@ -1778,9 +2256,10 @@ void TimelineWidget::finishMarkerDrag(const QPoint& globalPos)
 {
     const int first = dragFirst;
     const int last = dragLast;
+    const bool wholeGroup = dragWholeGroup;
     const int boundary = dropBoundaryAt(strip->mapFromGlobal(globalPos));
     endMarkerDrag();
-    moveFeatures(first, last, boundary);
+    moveFeatures(first, last, boundary, wholeGroup);
     dragDependencies.clear();
 }
 
@@ -1794,6 +2273,7 @@ void TimelineWidget::endMarkerDrag()
     dragFirst = -1;
     dragLast = -1;
     dropBoundary = -1;
+    dragWholeGroup = false;
     dropIndicator->hide();
 }
 

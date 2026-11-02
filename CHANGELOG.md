@@ -99,6 +99,13 @@ done in this fork.
   as in Fusion. A line shows where the feature will land, red when it cannot go there: a
   feature cannot move in front of something it is built on, nor past something built on
   it, and the status bar says which. A move is one undo step.
+- Features side by side on the timeline can be grouped, as in Fusion: select them and
+  choose Group from the right-click menu. A group folds into one marker, and a double
+  click or Expand unfolds it. Its menu also has Rename Group and Ungroup. A folded group
+  is dragged as one; a feature dragged out of an unfolded group leaves it, and one
+  dropped between two of its members joins it. Groups are saved with the document and
+  never change the model. A deleted feature drops out of its group, and an empty group
+  goes. The step buttons and keys step over a folded group.
 
 ### Changed
 

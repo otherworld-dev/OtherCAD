@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -59,6 +60,7 @@ class Document;
 namespace Timeline
 {
 
+class TimelineGroupMarker;
 class TimelineMarker;
 
 /**
@@ -81,6 +83,13 @@ class TimelineMarker;
  * A marker can be dragged along the strip to move its feature earlier or later in
  * the body, which is refused when it would put a feature before something it is
  * built on, or after something built on it.
+ *
+ * Adjacent features can be grouped, as in Fusion: a group folds into a single
+ * marker and unfolds to show its members. Groups are kept in the TimelineGroups
+ * property of the body's view provider, so they are saved with the document and
+ * undone like any other change, and they never touch the model itself. A member
+ * that is deleted drops out, and a group with no members left is not shown. Only
+ * one level of grouping is offered.
  *
  * One step of the playhead is one undo entry: the tip and the visibility of the
  * sketches and datums the step rolls past are written inside a single
@@ -175,10 +184,12 @@ private:
         /// The Group member they go in front of, or nullptr for the end of the Group
         App::DocumentObject* before {nullptr};
     };
-    MovePlan planMove(int first, int last, int boundary);
+    /// wholeGroup when the features are a group dragged by its own marker
+    MovePlan planMove(int first, int last, int boundary, bool wholeGroup = false);
     /// Moves the features in [first, last] to the boundary in one undo step, or says on
-    /// the status bar why it cannot
-    void moveFeatures(int first, int last, int boundary);
+    /// the status bar why it cannot. A single feature dropped between two members of an
+    /// unfolded group joins it, and one dropped outside its own group leaves it.
+    void moveFeatures(int first, int last, int boundary, bool wholeGroup = false);
     /// Where between the markers a drop at stripPos lands, as the index of the feature it
     /// goes in front of. The items of the features being dragged do not count.
     int dropBoundaryAt(const QPoint& stripPos) const;
@@ -203,6 +214,36 @@ private:
     void onMarkerSelect(const QString& feature);
     void onMarkerEdit(const QString& feature);
     void onMarkerMenu(const QString& feature, const QPoint& globalPos);
+    void onGroupSelect(const QString& key);
+    void onGroupToggle(const QString& key);
+    void onGroupMenu(const QString& key, const QPoint& globalPos);
+
+    /// A group as stored on the body: the members are feature IDs, in no special order
+    struct FeatureGroup
+    {
+        std::string key;
+        std::string label;
+        std::vector<long> members;
+    };
+    std::vector<FeatureGroup> readGroups() const;
+    /// Writes the groups back, dropping members whose feature is gone and groups left
+    /// empty. The caller has the undo entry open.
+    void writeGroups(std::vector<FeatureGroup> groups);
+    App::PropertyStringList* groupsProperty() const;
+    /// Where the fold state of a group is remembered for the session
+    std::string groupStateKey(const std::string& key) const;
+    /// The shown group with this key, or -1
+    int shownGroupIndex(const std::string& key) const;
+    /// The features a Group entry of the marker menu would group: the selected ones when
+    /// the clicked feature is among them, otherwise the clicked one. False when they are
+    /// not side by side or one of them is already grouped.
+    bool groupCandidates(int clicked, int& first, int& last) const;
+    void createGroup(int first, int last);
+    void ungroup(const std::string& key);
+    void renameGroup(const std::string& key);
+    /// Steps over a folded group rather than into it: index moved out to its far side in
+    /// the direction of travel
+    int skipFoldedGroups(int index, int direction) const;
 
     void editFeature(const std::string& name);
     void renameFeature(const std::string& name);
@@ -250,10 +291,30 @@ private:
         int first {0};
         int last {0};
         QWidget* widget {nullptr};
+        /// The marker of an unfolded group, which sits in front of its members and stands
+        /// for no position of the playhead of its own
+        bool header {false};
     };
     std::vector<StripItem> stripItems;
     /// Whether the first marker is the body's base feature, which is not in its Group
     bool hasBaseFeature {false};
+
+    /// A group as the strip shows it: the run of side by side members [first, last]
+    struct ShownGroup
+    {
+        std::string key;
+        int first {0};
+        int last {0};
+        bool expanded {false};
+        TimelineGroupMarker* marker {nullptr};
+    };
+    std::vector<ShownGroup> shownGroups;
+    /// For each feature, the index into shownGroups of the group showing it, or -1
+    std::vector<int> featureGroup;
+    /// The groups unfolded by hand, by groupStateKey(). Not saved: like a tree's
+    /// expanded rows, it is a view of the model rather than part of it.
+    std::set<std::string> expandedGroups;
+    bool dragWholeGroup {false};
 
     /// The item the left button went down on, until it comes up again
     QPointer<QWidget> pressedItem;

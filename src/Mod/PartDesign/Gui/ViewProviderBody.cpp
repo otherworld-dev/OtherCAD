@@ -113,6 +113,13 @@ ViewProviderBody::ViewProviderBody()
         App::Prop_Hidden,
         QT_TRANSLATE_NOOP("App::Property", "Sketches and datums hidden by rolling the timeline back")
     );
+    ADD_PROPERTY_TYPE(
+        TimelineGroups,
+        (),
+        "Timeline",
+        App::Prop_Hidden,
+        QT_TRANSLATE_NOOP("App::Property", "Groups of features on the timeline")
+    );
 
     sPixmap = "PartDesign_Body.svg";
 
@@ -580,7 +587,7 @@ void ViewProviderBody::unifyVisualProperty(const App::Property* prop)
 
     if (prop == &Visibility || prop == &Selectable || prop == &DisplayModeBody
         || prop == &PointColorArray || prop == &ShowPlacement || prop == &LineColorArray
-        || prop == &RollbackHidden) {
+        || prop == &RollbackHidden || prop == &TimelineGroups) {
         return;
     }
 

@@ -63,6 +63,10 @@ public:
     /// name. Kept on the body so that it is saved with the document and survives both
     /// a switch to another body and a reload.
     App::PropertyStringList RollbackHidden;
+    /// The groups the timeline folds features into, one entry each: a key, the name shown
+    /// and the IDs of the member features, separated by tabs. IDs rather than names, since
+    /// a deleted feature's name can be given to a new one but its ID never is.
+    App::PropertyStringList TimelineGroups;
 
     void attach(App::DocumentObject*) override;
 
