@@ -189,6 +189,12 @@ done in this fork.
 - An LLM Bridge change says when its rebuild was skipped because the document was still
   recomputing, or when objects still need a recompute after it, instead of reporting
   plain success.
+- Closing a document while it recomputes no longer crashes or freezes OtherCAD. A close
+  asked for in the middle of a recompute (from a timer, a script or a click handled while
+  the rebuild processes events) used to delete the document under it, and a close on the
+  main thread while the background recompute rebuilt it froze the GUI, each waiting for
+  the other. Now the recompute stops at the next object and the document closes once it
+  has finished. Without the GUI the close is refused with an error instead.
 - On Windows the background recompute ran the GUI's document updates on its own thread,
   because the hooks that hand them to the main thread never reached the App module there.
 - The Offset Face and Move Face panels showed only the list of faces: their Offset and

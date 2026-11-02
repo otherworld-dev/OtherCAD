@@ -289,3 +289,133 @@ TEST_F(AsyncRecomputeTest, WorkerSignalsRunOnTheMainThread)
     ASSERT_TRUE(FakeMainThread::pumpUntil([&fired] { return fired.load(); }, 5000ms));
     EXPECT_EQ(slotThread, std::this_thread::get_id());
 }
+
+// With the GUI the worker hands its document signals to the main thread and
+// waits for them. A close on the main thread used to wait for the worker in
+// turn, so the two waited on each other and the GUI froze.
+TEST_F(AsyncRecomputeTest, CloseOnTheMainThreadDoesNotWaitForTheWorker)
+{
+    FakeMainThread mainThread;
+
+    auto* object = dynamic_cast<App::FeatureTestAsyncBlocker*>(
+        _doc->addObject("App::FeatureTestAsyncBlocker", "BlockingFeature")
+    );
+    ASSERT_NE(object, nullptr);
+
+    App::FeatureTestAsyncBlocker::resetBlocker();
+    BOOST_SCOPE_EXIT_ALL(&)
+    {
+        App::FeatureTestAsyncBlocker::releaseBlocker();
+    };
+
+    object->touch();
+    App::GetApplication().queueRecomputeRequest(App::RecomputeRequest::fromDocumentObject(*object));
+    // The worker hands signals to the main thread on its way in, so keep pumping
+    ASSERT_TRUE(
+        FakeMainThread::pumpUntil([] { return App::FeatureTestAsyncBlocker::waitUntilStarted(0ms); }, 2000ms)
+    );
+
+    auto releaser = std::async(std::launch::async, [] {
+        std::this_thread::sleep_for(200ms);
+        App::FeatureTestAsyncBlocker::releaseBlocker();
+    });
+
+    const auto start = std::chrono::steady_clock::now();
+    App::GetApplication().closeDocument(_docName.c_str());
+    const auto elapsed = std::chrono::steady_clock::now() - start;
+
+    EXPECT_LT(elapsed, 1s);
+    EXPECT_TRUE(
+        FakeMainThread::pumpUntil(
+            [this] { return !App::GetApplication().getDocument(_docName.c_str()); },
+            5000ms
+        )
+    );
+    EXPECT_EQ(FakeMainThread::timedOutHops(), 0);
+    releaser.wait();
+    _doc = nullptr;
+}
+
+// A long recompute processes events, so a timer or a queued call can close the
+// document from inside its own recompute. That used to delete the document
+// under the recompute still running on the stack.
+TEST_F(AsyncRecomputeTest, CloseFromInsideTheRecomputeWaitsForItToFinish)
+{
+    FakeMainThread mainThread;
+
+    for (const char* name : {"First", "Second", "Third"}) {
+        _doc->addObject("App::FeatureTest", name)->touch();
+    }
+
+    int recomputed = 0;
+    bool closeReturned = true;
+    bool openDuringRecompute = false;
+    _doc->signalRecomputedObject.connect([&](const App::DocumentObject&) {
+        if (++recomputed == 1) {
+            closeReturned = App::GetApplication().closeDocument(_docName.c_str());
+        }
+    });
+    _doc->signalRecomputed.connect([&](const App::Document&, const std::vector<App::DocumentObject*>&) {
+        openDuringRecompute = App::GetApplication().getDocument(_docName.c_str()) != nullptr;
+    });
+
+    _doc->recompute();
+
+    EXPECT_FALSE(closeReturned);
+    EXPECT_TRUE(openDuringRecompute);
+    ASSERT_NE(App::GetApplication().getDocument(_docName.c_str()), nullptr);
+    // The pending close stops the recompute at the next object
+    EXPECT_EQ(recomputed, 1);
+    EXPECT_TRUE(
+        FakeMainThread::pumpUntil(
+            [this] { return !App::GetApplication().getDocument(_docName.c_str()); },
+            2000ms
+        )
+    );
+    _doc = nullptr;
+}
+
+// Without an event loop (no GUI) there is nothing to hand the close to, so it
+// is refused and the recompute carries on.
+TEST_F(AsyncRecomputeTest, CloseFromInsideTheRecomputeIsRefusedWithoutAnEventLoop)
+{
+    for (const char* name : {"First", "Second", "Third"}) {
+        _doc->addObject("App::FeatureTest", name)->touch();
+    }
+
+    int recomputed = 0;
+    bool closeReturned = true;
+    _doc->signalRecomputedObject.connect([&](const App::DocumentObject&) {
+        if (++recomputed == 1) {
+            closeReturned = App::GetApplication().closeDocument(_docName.c_str());
+        }
+    });
+
+    _doc->recompute();
+
+    EXPECT_FALSE(closeReturned);
+    ASSERT_NE(App::GetApplication().getDocument(_docName.c_str()), nullptr);
+    EXPECT_EQ(recomputed, 3);
+    EXPECT_FALSE(_doc->testStatus(App::Document::Recomputing));
+}
+
+// closeAllDocuments() used to loop until the map was empty, so a document that
+// can't close yet must not make it spin.
+TEST_F(AsyncRecomputeTest, CloseAllDocumentsFromInsideARecomputeLeavesThatDocumentOpen)
+{
+    for (const char* name : {"First", "Second"}) {
+        _doc->addObject("App::FeatureTest", name)->touch();
+    }
+
+    int recomputed = 0;
+    _doc->signalRecomputedObject.connect([&](const App::DocumentObject&) {
+        if (++recomputed == 1) {
+            App::GetApplication().closeAllDocuments();
+        }
+    });
+
+    _doc->recompute();
+
+    ASSERT_NE(App::GetApplication().getDocument(_docName.c_str()), nullptr);
+    EXPECT_EQ(recomputed, 2);
+}

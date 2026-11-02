@@ -664,6 +664,12 @@ Document* Application::newDocument(const char * proposedName, const char * propo
     doc->signalStartSave.connect(std::bind(&Application::slotStartSaveDocument, this, sp::_1, sp::_2));
     doc->signalFinishSave.connect(std::bind(&Application::slotFinishSaveDocument, this, sp::_1, sp::_2));
     doc->signalChangePropertyEditor.connect(std::bind(&Application::slotChangePropertyEditor, this, sp::_1, sp::_2));
+    // A close asked for during a recompute happens once the document is stable
+    doc->signalBecameStable.connect([this](const Document& stable) {
+        if (isDocumentClosePending(stable.getName())) {
+            schedulePendingCloses();
+        }
+    });
     // clang-format on
     //NOLINTEND
 
@@ -691,7 +697,11 @@ bool Application::closeDocument(const char* name)
 {
     const std::string documentName(name);
 
-    cancelRecomputeRequestsForDocument(documentName);
+    const auto found = DocMap.find(documentName);
+    if (!cancelRecomputeRequestsForDocument(
+            documentName, found == DocMap.end() ? nullptr : found->second)) {
+        return false;
+    }
 
     const auto pos = DocMap.find( name );
     if (pos == DocMap.end()) // no such document
@@ -722,9 +732,21 @@ bool Application::closeDocument(const char* name)
 void Application::closeAllDocuments()
 {
     Base::FlagToggler<bool> flag(_isClosingAll);
-    std::map<std::string,Document*>::iterator pos;
-    while((pos = DocMap.begin()) != DocMap.end())
-        closeDocument(pos->first.c_str());
+    // A document that is recomputing doesn't close straight away, so stop once
+    // a pass closes nothing instead of spinning on it
+    for (bool closedAny = true; closedAny && !DocMap.empty();) {
+        closedAny = false;
+        std::vector<std::string> names;
+        names.reserve(DocMap.size());
+        for (const auto& entry : DocMap) {
+            names.push_back(entry.first);
+        }
+        for (const auto& name : names) {
+            if (DocMap.contains(name) && closeDocument(name.c_str())) {
+                closedAny = true;
+            }
+        }
+    }
 }
 
 Document* Application::getDocument(const char *Name) const
@@ -882,22 +904,102 @@ void Application::queueRecomputeRequest(RecomputeRequest req)
     notifyRecomputeWorker();
 }
 
-void Application::cancelRecomputeRequestsForDocument(const std::string& documentName)
+bool Application::cancelRecomputeRequestsForDocument(const std::string& documentName,
+                                                      const Document* doc)
 {
     if (documentName.empty()) {
-        return;
+        return true;
     }
-
-    std::unique_lock<std::mutex> lock(_recomputeMutex);
-    _recomputeStateChanged.wait(lock, [this, &documentName] {
-        return !_recomputeDocumentsInProgress.contains(documentName);
-    });
 
     // Cancellation runs on document-close boundaries, so a linear scan keeps
     // the queue simple without affecting the steady-state worker path.
-    std::erase_if(_recomputeRequests, [&documentName](const RecomputeRequest& request) {
-        return requestTargetsDocument(request, documentName);
-    });
+    const auto dropQueued = [this, &documentName] {
+        std::erase_if(_recomputeRequests, [&documentName](const RecomputeRequest& request) {
+            return requestTargetsDocument(request, documentName);
+        });
+    };
+
+    std::unique_lock<std::mutex> lock(_recomputeMutex);
+    dropQueued();
+
+    const bool onWorker = _recomputeDocumentsInProgress.contains(documentName);
+    const bool recomputing = doc && doc->testStatus(Document::Recomputing);
+    if (!onWorker && !recomputing) {
+        return true;
+    }
+
+    // Closing now would delete the document under the recompute still running,
+    // and on the main thread waiting for the worker deadlocks against the
+    // signals the worker hands to the main thread. With an event loop, put the
+    // close off until the recompute has unwound.
+    if (MainThreadSignalConfig::hasHooks() && MainThreadSignalConfig::isMainThread()) {
+        _pendingCloseDocuments.insert(documentName);
+        lock.unlock();
+        Base::Console().warning(
+            "Document '%s' is recomputing. It will close when the recompute has finished\n",
+            documentName.c_str());
+        return false;
+    }
+
+    if (onWorker) {
+        _recomputeStateChanged.wait(lock, [this, &documentName] {
+            return !_recomputeDocumentsInProgress.contains(documentName);
+        });
+        dropQueued();
+        return true;
+    }
+
+    // The recompute is further up this thread's stack and there is no event
+    // loop to put the close off to
+    lock.unlock();
+    Base::Console().error("Cannot close document '%s' while it is recomputing\n",
+                          documentName.c_str());
+    return false;
+}
+
+bool Application::isDocumentClosePending(const char* name)
+{
+    if (!name) {
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(_recomputeMutex);
+    return _pendingCloseDocuments.contains(name);
+}
+
+void Application::schedulePendingCloses()
+{
+    // Without hooks invoke() would run it inline, inside the recompute
+    if (!MainThreadSignalConfig::hasHooks()) {
+        return;
+    }
+    MainThreadSignalConfig::invoke([this] { closePendingDocuments(); }, /*blocking=*/false);
+}
+
+void Application::closePendingDocuments()
+{
+    std::vector<std::string> names;
+    {
+        std::lock_guard<std::mutex> lock(_recomputeMutex);
+        names.assign(_pendingCloseDocuments.begin(), _pendingCloseDocuments.end());
+    }
+
+    for (const auto& name : names) {
+        const Document* doc = getDocument(name.c_str());
+        bool busy = false;
+        {
+            std::lock_guard<std::mutex> lock(_recomputeMutex);
+            busy = doc
+                && (doc->testStatus(Document::Recomputing)
+                    || _recomputeDocumentsInProgress.contains(name));
+            // Still busy: the end of that recompute schedules another pass
+            if (!busy) {
+                _pendingCloseDocuments.erase(name);
+            }
+        }
+        if (doc && !busy) {
+            closeDocument(name.c_str());
+        }
+    }
 }
 
 struct DocTiming {
@@ -3256,6 +3358,10 @@ void Application::recomputeWorker()
         // Process all pending recompute requests.
         while (!_recomputeRequests.empty()) {
             RecomputeRequest request = takeNextRecomputeRequest(_recomputeRequests);
+            // A document waiting to close is not recomputed again
+            if (_pendingCloseDocuments.contains(request.documentName)) {
+                continue;
+            }
             if (!request.documentName.empty()) {
                 _recomputeDocumentsInProgress.insert(request.documentName);
             }
@@ -3273,6 +3379,9 @@ void Application::recomputeWorker()
             if (!request.documentName.empty()) {
                 _recomputeDocumentsInProgress.erase(request.documentName);
                 _recomputeStateChanged.notify_all();
+                if (_pendingCloseDocuments.contains(request.documentName)) {
+                    schedulePendingCloses();
+                }
             }
         }
     }

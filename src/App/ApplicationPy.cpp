@@ -215,6 +215,27 @@ PyObject* ApplicationPy::sSetActiveDocument(PyObject* /*self*/, PyObject* args)
     Py_Return;
 }
 
+namespace
+{
+// Application::closeDocument() returned false, so the document is still there
+PyObject* closeDocumentFailed(const Document& doc)
+{
+    // It is recomputing and closes once the recompute has finished
+    if (GetApplication().isDocumentClosePending(doc.getName())) {
+        Py_Return;
+    }
+    if (doc.testStatus(Document::Recomputing)) {
+        PyErr_Format(PyExc_RuntimeError,
+                     "Cannot close document '%s' while it is recomputing",
+                     doc.getName());
+    }
+    else {
+        PyErr_Format(PyExc_RuntimeError, "Closing the document '%s' failed", doc.getName());
+    }
+    return nullptr;
+}
+}  // namespace
+
 PyObject* ApplicationPy::sCloseDocument(PyObject* /*self*/, PyObject* args)
 {
     char* pstr = nullptr;
@@ -230,8 +251,7 @@ PyObject* ApplicationPy::sCloseDocument(PyObject* /*self*/, PyObject* args)
         }
 
         if (!GetApplication().closeDocument(pstr)) {
-            PyErr_Format(PyExc_RuntimeError, "Closing the document '%s' failed", pstr);
-            return nullptr;
+            return closeDocumentFailed(*doc);
         }
 
         Py_Return;
@@ -252,8 +272,7 @@ PyObject* ApplicationPy::sCloseDocument(PyObject* /*self*/, PyObject* args)
         }
 
         if (!GetApplication().closeDocument(doc)) {
-            PyErr_Format(PyExc_RuntimeError, "Closing the document '%s' failed", doc->getName());
-            return nullptr;
+            return closeDocumentFailed(*doc);
         }
 
         Py_Return;

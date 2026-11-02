@@ -2970,6 +2970,7 @@ int Document::recompute(const std::vector<DocumentObject*>& objs,
     try {
         std::set<DocumentObject*> filter;
         size_t idx = 0;
+        bool closing = false;
         // maximum two passes to allow some form of dependency inversion
         for (int passes = 0; passes < 2 && idx < topoSortedObjects.size(); ++passes) {
             std::unique_ptr<Base::SequencerLauncher> seq;
@@ -2979,6 +2980,13 @@ int Document::recompute(const std::vector<DocumentObject*>& objs,
             }
             FC_LOG("Recompute pass " << passes);
             for (; idx < topoSortedObjects.size(); ++idx) {
+                // A close asked for during the recompute waits for it to end, so
+                // don't rebuild the rest of a document that is about to close
+                if (GetApplication().isDocumentClosePending(getName())) {
+                    FC_LOG("Stop recomputing " << getName() << ": it is closing");
+                    closing = true;
+                    break;
+                }
                 auto obj = topoSortedObjects[idx];
                 if (!obj->isAttachedToDocument() || filter.find(obj) != filter.end()) {
                     continue;
@@ -3028,6 +3036,9 @@ int Document::recompute(const std::vector<DocumentObject*>& objs,
                 if (seq) {
                     seq->next(true);
                 }
+            }
+            if (closing) {
+                break;
             }
             // check if all objects are recomputed but still thouched
             for (size_t i = 0; i < topoSortedObjects.size(); ++i) {

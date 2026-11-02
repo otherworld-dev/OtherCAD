@@ -416,6 +416,7 @@ class TestGuiDocument(unittest.TestCase):
             # the macro is written and the document is left untouched
             self.assertEqual(doc_mtime_after, doc_mtime_before)
 
+
 class EditableViewProvider:
     """Minimal view provider that accepts edit mode and counts the edit callbacks."""
 
@@ -512,3 +513,71 @@ class TestGuiEditIsolation(unittest.TestCase):
 
         FreeCAD.setActiveDocument(self.docA.Name)
         self.assertIsNotNone(self.guiA.getInEdit())
+
+
+class TestCloseDuringRecompute(unittest.TestCase):
+    """Closing a document while it recomputes waits for the recompute to finish."""
+
+    def setUp(self):
+        self.Doc = FreeCAD.newDocument("CloseDuringRecompute")
+        self.Name = self.Doc.Name
+
+    def tearDown(self):
+        deadline = time.monotonic() + 5.0
+        while self.Name in FreeCAD.listDocuments() and time.monotonic() < deadline:
+            if not FreeCAD.getDocument(self.Name).Recomputing:
+                FreeCAD.closeDocument(self.Name)
+            QtWidgets.QApplication.processEvents()
+
+    def testCloseFromATimerDuringTheRecomputeWaitsForIt(self):
+        # A long recompute processes events, so a queued timer can close the
+        # document in the middle of it. That used to delete the document under
+        # the recompute still running on the stack.
+        name = self.Name
+        seen = {}
+
+        def close():
+            try:
+                FreeCAD.closeDocument(name)
+                seen["close"] = "ok"
+            except Exception as e:
+                seen["close"] = repr(e)
+
+        class Closer:
+            def __init__(self, obj):
+                obj.Proxy = self
+
+            def execute(self, obj):
+                QtCore.QTimer.singleShot(0, close)
+                deadline = time.monotonic() + 2.0
+                while "close" not in seen and time.monotonic() < deadline:
+                    QtWidgets.QApplication.processEvents()
+                seen["open in recompute"] = name in FreeCAD.listDocuments()
+
+        class Later:
+            def __init__(self, obj):
+                obj.Proxy = self
+                obj.addProperty("App::PropertyLink", "Source")
+
+            def execute(self, obj):
+                seen["later ran"] = True
+
+        closer = self.Doc.addObject("App::FeaturePython", "Closer")
+        Closer(closer)
+        later = self.Doc.addObject("App::FeaturePython", "Later")
+        Later(later)
+        later.Source = closer
+
+        self.Doc.recompute()
+
+        self.assertEqual(seen.get("close"), "ok")
+        self.assertTrue(seen.get("open in recompute"))
+        # Once the close is pending the recompute stops at the next object
+        self.assertNotIn("later ran", seen)
+        # and the document closes when the recompute has unwound
+        self.assertIn(name, FreeCAD.listDocuments())
+        deadline = time.monotonic() + 5.0
+        while name in FreeCAD.listDocuments() and time.monotonic() < deadline:
+            QtWidgets.QApplication.processEvents()
+            time.sleep(0.01)
+        self.assertNotIn(name, FreeCAD.listDocuments())

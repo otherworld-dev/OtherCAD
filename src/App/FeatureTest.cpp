@@ -432,6 +432,8 @@ DocumentObjectExecReturn* FeatureTestAsyncBlocker::execute()
     std::unique_lock<std::mutex> lock(state.mutex);
     state.started = true;
     state.changed.notify_all();
-    state.changed.wait(lock, [&state] { return state.proceed; });
+    // Let go by itself after a while, so a test that never releases it fails
+    // instead of hanging
+    state.changed.wait_for(lock, std::chrono::seconds(10), [&state] { return state.proceed; });
     return StdReturn;
 }
