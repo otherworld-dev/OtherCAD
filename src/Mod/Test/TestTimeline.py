@@ -25,8 +25,8 @@ Rolling the history back moves the tip of the body and hides the sketches and
 datums the playhead has not reached yet. Which ones the strip hid is kept on the
 body's view provider, so it travels with the document: saving while rolled back
 and opening the file again still knows what to put back, and so does a switch to
-another body and back. Every step is one undo entry, and undoing it puts the tip
-where it was.
+another body and back. Every step is one undo entry, and so is a whole drag of
+the playhead; undoing it puts the tip where it was.
 
 To run tests:
     FreeCAD -t TestTimeline
@@ -312,6 +312,23 @@ class TimelineTestBase(unittest.TestCase):
 
         return widget.mapToGlobal(QtCore.QPoint(widget.width() - 3, widget.height() // 2))
 
+    @staticmethod
+    def _send_mouse(widget, kind, globally, buttons):
+        """A left button event at a global point, sent straight to the widget."""
+
+        moving = kind == QtCore.QEvent.MouseMove
+        QtWidgets.QApplication.instance().sendEvent(
+            widget,
+            QtGui.QMouseEvent(
+                kind,
+                QtCore.QPointF(widget.mapFromGlobal(globally)),
+                QtCore.QPointF(globally),
+                QtCore.Qt.NoButton if moving else QtCore.Qt.LeftButton,
+                buttons,
+                QtCore.Qt.NoModifier,
+            ),
+        )
+
     def _drag(self, source, target):
         """Press on source, move to the global point target and let go there.
 
@@ -321,23 +338,10 @@ class TimelineTestBase(unittest.TestCase):
 
         self.assertIsNotNone(source, "Expected a widget to drag")
         app = QtWidgets.QApplication.instance()
-        start_local = source.rect().center()
-        start = source.mapToGlobal(start_local)
+        start = source.mapToGlobal(source.rect().center())
 
         def send(kind, globally, buttons):
-            local = source.mapFromGlobal(globally)
-            moving = kind == QtCore.QEvent.MouseMove
-            app.sendEvent(
-                source,
-                QtGui.QMouseEvent(
-                    kind,
-                    QtCore.QPointF(local),
-                    QtCore.QPointF(globally),
-                    QtCore.Qt.NoButton if moving else QtCore.Qt.LeftButton,
-                    buttons,
-                    QtCore.Qt.NoModifier,
-                ),
-            )
+            self._send_mouse(source, kind, globally, buttons)
 
         send(QtCore.QEvent.MouseButtonPress, start, QtCore.Qt.LeftButton)
         steps = 4
@@ -470,6 +474,52 @@ class TestTimeline(TimelineTestBase):
 
         self.assertEqual(self.doc.UndoCount, before + 1)
         self.assertIs(self.body.Tip, self.pad)
+
+    def test_dragging_the_playhead_rolls_as_it_goes_in_one_undo_entry(self):
+        """A scrub back and forth is one entry, as in Fusion, not one per marker passed."""
+
+        playhead = self.widget.findChild(QtWidgets.QWidget, "TimelinePlayhead")
+        self.assertIsNotNone(playhead)
+        before = self.doc.UndoCount
+
+        self._send_mouse(
+            playhead,
+            QtCore.QEvent.MouseButtonPress,
+            playhead.mapToGlobal(playhead.rect().center()),
+            QtCore.Qt.LeftButton,
+        )
+        self._send_mouse(
+            playhead,
+            QtCore.QEvent.MouseMove,
+            self._in_front_of(self._marker_for("Sketch001")),
+            QtCore.Qt.LeftButton,
+        )
+        self._process_events()
+        self.assertIs(self.body.Tip, self.pad, "The model follows the playhead while dragged")
+        self.assertFalse(self.sketch2.Visibility)
+
+        self._send_mouse(
+            playhead,
+            QtCore.QEvent.MouseMove,
+            self._in_front_of(self._marker_for("Pad")),
+            QtCore.Qt.LeftButton,
+        )
+        self._process_events()
+        self.assertIsNone(self.body.Tip)
+
+        # And back again before letting go
+        target = self._after(self._marker_for("Pad"))
+        self._send_mouse(playhead, QtCore.QEvent.MouseMove, target, QtCore.Qt.LeftButton)
+        self._send_mouse(playhead, QtCore.QEvent.MouseButtonRelease, target, QtCore.Qt.NoButton)
+        self._settle()
+
+        self.assertIs(self.body.Tip, self.pad)
+        self.assertEqual(self.doc.UndoCount, before + 1)
+
+        self.doc.undo()
+        self._settle()
+        self.assertIs(self.body.Tip, self.pad2)
+        self.assertTrue(self.sketch2.Visibility)
 
     def test_undo_puts_back_the_tip_and_what_the_roll_hid(self):
         """Rolling to the start moves the tip and hides both sketches in one entry."""

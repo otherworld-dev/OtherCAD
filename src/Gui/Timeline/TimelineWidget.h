@@ -84,9 +84,12 @@ class TimelineMarker;
  *
  * One step of the playhead is one undo entry: the tip and the visibility of the
  * sketches and datums the step rolls past are written inside a single
- * transaction. Which features the strip hid is remembered in the RollbackHidden
- * property of the body's view provider rather than in the widget, so it is saved
- * with the document and survives both a reload and a switch to another body.
+ * transaction. Dragging the playhead rolls the model as it goes, and the whole
+ * drag is one undo entry however many markers it passed.
+ *
+ * Which features the strip hid is remembered in the RollbackHidden property of
+ * the body's view provider rather than in the widget, so it is saved with the
+ * document and survives both a reload and a switch to another body.
  *
  * Nothing here holds a document object across event loop turns: features are
  * remembered by internal name and resolved again on use, and every rebuild is
@@ -208,6 +211,14 @@ private:
 
     void positionPlayhead();
     void moveTo(int index);
+    /// One step of a drag of the playhead: the first opens the undo entry the whole drag
+    /// goes into, so a scrub back and forth is undone in one go
+    void scrubTo(int index);
+    /// Lets go of the playhead and closes the undo entry of the drag, if it rolled at all
+    void endScrub();
+    /// Puts the playhead at index and the tip and visibilities with it, inside the undo
+    /// entry the caller has open; false when the tip could not be moved
+    bool rollStep(int index);
     bool rollTo(int index);
     /// One of the slots above, which is all a key of the strip's ever does.
     using RollAction = void (TimelineWidget::*)();
@@ -277,6 +288,9 @@ private:
     Gui::Document* trackedDocument {nullptr};
     bool pendingRebuild {false};
     bool draggingPlayhead {false};
+    /// The undo entry a drag of the playhead rolls in, open from its first step to the release
+    int scrubTransaction {0};
+    bool scrubbing {false};
 
     fastsignals::scoped_connection connActiveDocument;
     fastsignals::scoped_connection connNewDocument;

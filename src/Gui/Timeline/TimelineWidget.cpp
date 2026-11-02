@@ -1097,18 +1097,25 @@ bool TimelineWidget::eventFilter(QObject* watched, QEvent* event)
     switch (event->type()) {
         case QEvent::MouseButtonPress:
             if (static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) {
+                endScrub();
                 draggingPlayhead = true;
                 return true;
             }
             return false;
         case QEvent::MouseMove:
+            // The model follows the playhead while it is dragged, as in Fusion
+            if (draggingPlayhead) {
+                const QPoint globalPos = static_cast<QMouseEvent*>(event)->globalPosition().toPoint();
+                scrubTo(markerIndexAt(strip->mapFromGlobal(globalPos)));
+            }
             return draggingPlayhead;
         case QEvent::MouseButtonRelease: {
             if (!draggingPlayhead) {
                 return false;
             }
-            draggingPlayhead = false;
-            moveTo(markerIndexAt(strip->mapFromGlobal(QCursor::pos())));
+            const QPoint globalPos = static_cast<QMouseEvent*>(event)->globalPosition().toPoint();
+            scrubTo(markerIndexAt(strip->mapFromGlobal(globalPos)));
+            endScrub();
             return true;
         }
         default:
@@ -1331,6 +1338,63 @@ void TimelineWidget::moveTo(int index)
         return;
     }
 
+    // One step is one undo entry
+    const int transaction = Gui::Command::openActiveDocumentCommand(
+        std::string(QT_TRANSLATE_NOOP("Command", "Roll history"))
+    );
+
+    if (rollStep(index)) {
+        Gui::Command::commitCommand(transaction);
+        return;
+    }
+
+    // The roll never happened, so neither should the half of it that may already have been
+    // written; the rebuild puts the strip back in step with the document as it really is.
+    Gui::Command::abortCommand(transaction);
+    scheduleRebuild();
+}
+
+void TimelineWidget::scrubTo(int index)
+{
+    const int count = static_cast<int>(markers.size());
+    index = std::clamp(index, -1, count - 1);
+    if (index == playheadIndex) {
+        return;
+    }
+
+    // Opened on the first step rather than on the press, so a click on the playhead that
+    // moves nothing leaves no empty entry behind
+    if (!scrubbing) {
+        if (!activateShownBody() && !bodyName.empty()) {
+            draggingPlayhead = false;
+            return;
+        }
+        scrubTransaction = Gui::Command::openActiveDocumentCommand(
+            std::string(QT_TRANSLATE_NOOP("Command", "Roll history"))
+        );
+        scrubbing = true;
+    }
+
+    if (!rollStep(index)) {
+        // A step that failed takes the whole drag back to where it started
+        Gui::Command::abortCommand(scrubTransaction);
+        scrubbing = false;
+        draggingPlayhead = false;
+        scheduleRebuild();
+    }
+}
+
+void TimelineWidget::endScrub()
+{
+    draggingPlayhead = false;
+    if (scrubbing) {
+        scrubbing = false;
+        Gui::Command::commitCommand(scrubTransaction);
+    }
+}
+
+bool TimelineWidget::rollStep(int index)
+{
     // Only a solid feature can carry the tip, so a step onto a sketch or a datum lands on
     // the same model state and the document is left alone; the strip moves either way.
     const bool tipMoves = solidAtOrBefore(index) != tipIndex;
@@ -1343,23 +1407,19 @@ void TimelineWidget::moveTo(int index)
     positionPlayhead();
     applyStates();
 
-    // One step is one undo entry. The tip goes first on purpose: Visibility is a NoModify
-    // property, which never opens a transaction of its own and is only recorded once one
-    // is already running, so the writes that do open one have to come before it.
-    const int transaction = Gui::Command::openActiveDocumentCommand(
-        std::string(QT_TRANSLATE_NOOP("Command", "Roll history"))
-    );
-
-    if (!tipMoves || rollTo(index)) {
-        applyRollbackVisibility();
-        Gui::Command::commitCommand(transaction);
-        return;
+    // The tip goes first on purpose: Visibility is a NoModify property, which never opens
+    // a transaction of its own and is only recorded once one is already running, so the
+    // writes that do open one have to come before it.
+    if (tipMoves && !rollTo(index)) {
+        return false;
     }
 
-    // The roll never happened, so neither should the half of it that may already have been
-    // written; the rebuild puts the strip back in step with the document as it really is.
-    Gui::Command::abortCommand(transaction);
-    scheduleRebuild();
+    // A drag holds off the rebuild that would read the new tip back, and its next step
+    // has to know where this one left it
+    tipIndex = solidAtOrBefore(index);
+    applyRollbackVisibility();
+    applyStates();
+    return true;
 }
 
 bool TimelineWidget::rollTo(int index)

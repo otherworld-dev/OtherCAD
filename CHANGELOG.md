@@ -102,6 +102,9 @@ done in this fork.
 
 ### Changed
 
+- Dragging the timeline's playhead rolls the model back and forward as it goes, as in
+  Fusion, instead of only when it is let go. A whole drag is one undo step, however
+  many features it passes.
 - The Start page is redone. A sidebar holds a New design button, which starts a body
   ready to sketch on, with Open and the other new file types listed under it. Recent
   files and examples are cards with the thumbnail filling the top, a file type badge
