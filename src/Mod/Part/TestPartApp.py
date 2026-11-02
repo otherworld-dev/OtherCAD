@@ -1320,3 +1320,31 @@ class PartFaceMakerBuildFaceTests(unittest.TestCase):
             2,
             f"Expected >=2 faces in InternalShape, got {len(sk.InternalShape.Faces)}",
         )
+
+
+class PartBooleanBreakTests(unittest.TestCase):
+    """Part.requestBreak() stops booleans, as the LLM bridge's cancel does.
+
+    A boolean of two coincident copies of a big assembly once held OtherCAD until it
+    died, with nothing able to stop it. Only tiny shapes here: the break is already
+    asked for when the boolean starts.
+    """
+
+    def setUp(self):
+        self.addCleanup(Part.requestBreak, False)
+        self.box = Part.makeBox(2, 2, 2)
+        self.other = Part.makeBox(2, 2, 2, FreeCAD.Vector(1, 1, 1))
+
+    def test_a_boolean_asked_to_stop_raises_instead_of_running(self):
+        Part.requestBreak(True)
+        self.assertTrue(Part.breakRequested())
+        for op in (self.box.common, self.box.cut, self.box.fuse):
+            with self.assertRaises(Part.OCCError) as raised:
+                op(self.other)
+            self.assertIn("cancelled", str(raised.exception))
+
+    def test_booleans_run_again_once_the_request_is_withdrawn(self):
+        Part.requestBreak(True)
+        Part.requestBreak(False)
+        self.assertFalse(Part.breakRequested())
+        self.assertAlmostEqual(self.box.common(self.other).Volume, 1.0, places=6)

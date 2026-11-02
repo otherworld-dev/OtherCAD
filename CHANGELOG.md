@@ -66,6 +66,10 @@ done in this fork.
     works as normal. A call the client gives up on (MCP `notifications/cancelled`, as
     clients send on their own timeout) is stopped the same way. Before, a runaway call
     held OtherCAD until it finished or the process died.
+  - Cancel stops a boolean operation as well, such as a clash check between two
+    coincident copies of a big assembly: the boolean raises "Boolean operation
+    cancelled" and the call is undone. Scripts can do the same with
+    `Part.requestBreak(True)`, which stops every boolean until `Part.requestBreak(False)`.
   - The ReadOnly and AllowPython preferences limit what clients may do.
 - Features can be suppressed from the timeline's right-click menu. A suppressed feature
   is drawn greyed out and struck through, and its tooltip says so.

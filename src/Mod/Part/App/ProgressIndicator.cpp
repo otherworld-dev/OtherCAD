@@ -66,7 +66,19 @@ void ProgressIndicator::Show(const Message_ProgressScope& theScope, const Standa
 
 Standard_Boolean ProgressIndicator::UserBreak()
 {
-    return progress->wasCanceled();
+    return breakRequested() || progress->wasCanceled();
+}
+
+std::atomic<bool> ProgressIndicator::breakFlag {false};
+
+void ProgressIndicator::requestBreak(bool on)
+{
+    breakFlag = on;
+}
+
+bool ProgressIndicator::breakRequested()
+{
+    return breakFlag;
 }
 
 void ProgressIndicator::Reset()

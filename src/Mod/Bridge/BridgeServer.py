@@ -304,6 +304,8 @@ def cancel(request=None, wait=CANCEL_WAIT):
         if call is None or (request is not None and call.request != request):
             return None
         call.cancelled = True
+        # Booleans are C++, out of the interrupt's reach, so they are asked to stop too
+        BridgeTools.request_break(True)
     deadline = time.monotonic() + wait
     while True:
         with _call_lock:
@@ -320,7 +322,8 @@ def cancel(request=None, wait=CANCEL_WAIT):
 @BridgeTools.tool(
     "cancel",
     "Stop the call that is running now, such as run_python code that is taking too long. "
-    "Its Python is interrupted and its changes are undone. Use it when a call has timed "
+    "Its Python is interrupted, a boolean operation it is in stops with an error, and its "
+    "changes are undone. Use it when a call has timed "
     "out or OtherCAD says it is still busy. Waits up to 10 s for the call to stop.",
 )
 def _cancel_tool():
@@ -379,6 +382,8 @@ def _run_tool(call, arguments):
     finally:
         with _call_lock:
             _current = outer
+            if call.cancelled:
+                BridgeTools.request_break(False)
         call.done.set()
         _clear_breadcrumb()
 

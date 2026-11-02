@@ -9,6 +9,7 @@ the HTTP server. A tool reports a problem the caller can act on by raising ToolE
 import ctypes
 import math
 import os
+import sys
 import tempfile
 import threading
 
@@ -107,6 +108,48 @@ def interrupt():
             return False
         _raise_in(_interruptible, Cancelled)
         return True
+
+
+_break_held = 0  # how many unbreakable blocks are running
+
+
+def _part_break(on):
+    # Only once Part is loaded: importing it is not for an HTTP thread, and booleans
+    # cannot be running before it is
+    part = sys.modules.get("Part")
+    if part is not None and hasattr(part, "requestBreak"):
+        part.requestBreak(on)
+
+
+def request_break(on):
+    """Ask the boolean operations running now and later to stop (on), or withdraw that.
+
+    Python cannot interrupt a boolean, so this is how cancel stops one. Not while an
+    unbreakable block runs. Returns whether it was asked.
+    """
+
+    with _interrupt_lock:
+        if on and _break_held:
+            return False
+        _part_break(on)
+        return True
+
+
+class unbreakable:
+    """Booleans run in full inside, as the rebuild that undoes a cancelled call must."""
+
+    def __enter__(self):
+        global _break_held
+        with _interrupt_lock:
+            _break_held += 1
+            _part_break(False)
+        return self
+
+    def __exit__(self, *exc):
+        global _break_held
+        with _interrupt_lock:
+            _break_held -= 1
+        return False
 
 
 class Image:

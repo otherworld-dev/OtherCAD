@@ -24,6 +24,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 
 #include <Message_ProgressIndicator.hxx>
@@ -46,7 +47,13 @@ public:
     Standard_Boolean UserBreak() override;
     void Reset() override;
 
+    /// Ask every boolean operation that runs from now on, and the ones running now, to
+    /// stop (true) until the request is withdrawn (false). Safe to call from any thread.
+    static void requestBreak(bool on);
+    static bool breakRequested();
+
 private:
+    static std::atomic<bool> breakFlag;
     std::size_t currentStep {0};
     std::unique_ptr<Base::SequencerLauncher> progress;
 };

@@ -107,6 +107,7 @@
 #include "TopoShapeWirePy.h"
 #include "TopoShapeOpCode.h"
 #include "TopoShapeMapper.h"
+#include "ProgressIndicator.h"
 
 #ifdef FCUseFreeType
 # include "FT2FC.h"
@@ -728,6 +729,18 @@ public:
             "cast_to_shape",
             &Module::cast_to_shape,
             "cast_to_shape(shape) -- Cast to the actual shape type"
+        );
+        add_varargs_method(
+            "requestBreak",
+            &Module::requestBreak,
+            "requestBreak(bool) -- Ask the boolean operations running now and every one\n"
+            "started later to stop (True), until the request is withdrawn (False).\n"
+            "A boolean asked to stop raises an error. Safe to call from any thread."
+        );
+        add_varargs_method(
+            "breakRequested",
+            &Module::breakRequested,
+            "breakRequested() -- Whether boolean operations have been asked to stop"
         );
         add_varargs_method(
             "getSortedClusters",
@@ -2468,6 +2481,22 @@ private:
         }
 
         throw Py::Exception();
+    }
+    Py::Object requestBreak(const Py::Tuple& args)
+    {
+        PyObject* on;
+        if (!PyArg_ParseTuple(args.ptr(), "O!", &PyBool_Type, &on)) {
+            throw Py::Exception();
+        }
+        Part::ProgressIndicator::requestBreak(Base::asBoolean(on));
+        return Py::None();
+    }
+    Py::Object breakRequested(const Py::Tuple& args)
+    {
+        if (!PyArg_ParseTuple(args.ptr(), "")) {
+            throw Py::Exception();
+        }
+        return Py::Boolean(Part::ProgressIndicator::breakRequested());
     }
     Py::Object getSortedClusters(const Py::Tuple& args)
     {

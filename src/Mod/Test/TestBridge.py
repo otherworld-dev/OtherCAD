@@ -875,11 +875,12 @@ class TestBridgeServer(BridgeCase):
             raise outcome["error"]
         return outcome["status"], outcome["body"]
 
-    def _cancel_runaway(self, cancel):
+    def _cancel_runaway(self, cancel, when_cancelled="pass"):
         """Start a run_python that would run for 8 s, then send cancel once it is going.
 
         The code gives up by itself after 8 s, so a cancel that does not work shows up as a
-        slow, finished call instead of a hung test.
+        slow, finished call instead of a hung test. when_cancelled runs in its except
+        Exception, which the cancel must get past, and the details hold what it printed.
         """
 
         RUNAWAY_STARTED.clear()
@@ -893,6 +894,9 @@ class TestBridgeServer(BridgeCase):
             "        pass\n"
             "except Exception:\n"
             "    print('the code caught the cancel')\n"
+            "except BaseException:\n"
+            f"    {when_cancelled}\n"
+            "    raise\n"
             "'ran to the end'"
         )
         runaway, answer = {}, {}
@@ -927,25 +931,44 @@ class TestBridgeServer(BridgeCase):
         self.assertEqual(self.pad.Length.Value, HEIGHT, "The cancelled change was kept")
         after = self._call("get_object", {"name": "Pad", "document": self.doc.Name})
         self.assertFalse(after["isError"], "A call after the cancel failed")
-        return answer
+        return answer, text
+
+    CANCEL = {
+        "jsonrpc": "2.0",
+        "id": 42,
+        "method": "tools/call",
+        "params": {"name": "cancel", "arguments": {}},
+    }
 
     def test_a_runaway_python_call_can_be_cancelled(self):
-        answer = self._cancel_runaway(
-            {
-                "jsonrpc": "2.0",
-                "id": 42,
-                "method": "tools/call",
-                "params": {"name": "cancel", "arguments": {}},
-            }
-        )
+        answer, _ = self._cancel_runaway(self.CANCEL)
         result = answer["body"]["result"]
         self.assertFalse(result["isError"], result)
         report = json.loads(result["content"][0]["text"])
         self.assertEqual(report["tool"], "run_python")
         self.assertTrue(report["stopped"], report)
 
+    def test_a_boolean_in_a_cancelled_call_stops_with_an_error(self):
+        # Two coincident boxes, the clash check that once ran for ever, in miniature
+        _, text = self._cancel_runaway(
+            self.CANCEL,
+            when_cancelled=(
+                "box = Part.makeBox(1, 1, 1)\n"
+                "    try:\n"
+                "        box.common(box.copy())\n"
+                "        print('the boolean ran')\n"
+                "    except Exception as error:\n"
+                "        print('boolean:', error)"
+            ),
+        )
+        self.assertIn("boolean:", text)
+        self.assertIn("Boolean operation cancelled", text)
+        self.assertFalse(Part.breakRequested(), "Booleans are still asked to stop")
+        box = Part.makeBox(1, 1, 1)
+        self.assertAlmostEqual(box.common(box.copy()).Volume, 1.0, places=6)
+
     def test_a_call_the_client_gives_up_on_is_cancelled(self):
-        answer = self._cancel_runaway(
+        answer, _ = self._cancel_runaway(
             {
                 "jsonrpc": "2.0",
                 "method": "notifications/cancelled",

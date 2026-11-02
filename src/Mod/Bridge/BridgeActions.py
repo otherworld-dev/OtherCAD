@@ -27,6 +27,7 @@ from BridgeTools import (
     _value,
     interruptible,
     tool,
+    unbreakable,
 )
 
 MAX_OUTPUT = 20000
@@ -106,7 +107,9 @@ def _error_entry(obj):
 
 def _abort(doc):
     doc.abortTransaction()
-    doc.recompute()
+    # Even when the call was cancelled: the model it goes back to must be rebuilt in full
+    with unbreakable():
+        doc.recompute()
 
 
 def _rebuild_note(doc, rebuilt):
