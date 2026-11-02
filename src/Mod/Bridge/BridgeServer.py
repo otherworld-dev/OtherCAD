@@ -30,6 +30,10 @@ APPROVAL_TIMEOUT = 15 * 60.0
 # Tools a client with an approver must have approved before each call
 ASK_FIRST = {"run_python"}
 START_TIMEOUT = 20.0
+# How long cancel waits for the call it stops
+CANCEL_WAIT = 10.0
+# Tools that run on the calling thread rather than taking their turn on the main thread
+RUN_HERE = {"cancel"}
 MAX_BODY = 4 * 1024 * 1024
 # Written before each call and removed after it, in the user config folder, so a session
 # that dies in the middle of a call leaves behind which call it was
@@ -145,13 +149,15 @@ class MainThreadRunner(QtCore.QObject):
                     job.cancelled = True
                     raise Busy(
                         "OtherCAD is still busy with an earlier call, so this one did not "
-                        "run and nothing was changed. Try it again in a moment."
+                        "run and nothing was changed. Try it again in a moment, or cancel the "
+                        "earlier call if it is taking too long."
                     )
         if not job.done.wait(max(0.0, deadline - time.monotonic())):
             raise TimeoutError(
                 f"OtherCAD did not finish within {timeout:.0f} s. The call is still running "
                 "and will finish on its own; check the model with a quick call before you "
-                "repeat it, or it may be done twice."
+                "repeat it, or it may be done twice. If it should not take this long, "
+                "cancel stops it."
             )
         if job.error is not None:
             raise job.error
@@ -267,12 +273,80 @@ def offers(name, read_only, allow_python):
     return not (read_only and not BridgeTools.TOOLS[name].readonly)
 
 
-def call_tool(runner, name, arguments, approve=None):
+class _Call:
+    """A tool call running on the main thread, for cancel to find."""
+
+    def __init__(self, name, request=None):
+        self.name = name
+        self.request = request
+        self.done = threading.Event()
+        self.cancelled = False
+        self.failed = False
+
+
+_call_lock = threading.Lock()
+_current = None  # the _Call running on the main thread
+
+
+def cancel(request=None, wait=CANCEL_WAIT):
+    """Stop the call running on the main thread, from any other thread.
+
+    Python that run_python runs is interrupted, and the call undoes its changes as it does
+    for an error. request, if given, picks the call by the client request it answers.
+    Waits up to wait seconds for the call to stop, and returns it, or None if no such call
+    was running.
+    """
+
+    if threading.current_thread() is threading.main_thread():
+        return None  # the call running is this one's own caller
+    with _call_lock:
+        call = _current
+        if call is None or (request is not None and call.request != request):
+            return None
+        call.cancelled = True
+    deadline = time.monotonic() + wait
+    while True:
+        with _call_lock:
+            if _current is not call:
+                break
+            # Again now and then, in case code it called swallowed the first one
+            BridgeTools.interrupt()
+        left = deadline - time.monotonic()
+        if left <= 0 or call.done.wait(min(0.5, left)):
+            break
+    return call
+
+
+@BridgeTools.tool(
+    "cancel",
+    "Stop the call that is running now, such as run_python code that is taking too long. "
+    "Its Python is interrupted and its changes are undone. Use it when a call has timed "
+    "out or OtherCAD says it is still busy. Waits up to 10 s for the call to stop.",
+)
+def _cancel_tool():
+    call = cancel()
+    if call is None:
+        return {"tool": None, "stopped": False, "note": "No call was running."}
+    if not call.done.is_set():
+        note = (
+            "Asked to stop, but it is still running, probably inside one long operation "
+            "that cannot be interrupted. It stops when that returns; check with a quick "
+            "call in a while, and do not repeat it."
+        )
+    elif call.failed:
+        note = "It stopped, and its changes were undone."
+    else:
+        note = "It finished before it could be stopped, so its changes were kept."
+    return {"tool": call.name, "stopped": call.done.is_set(), "note": note}
+
+
+def call_tool(runner, name, arguments, approve=None, request=None):
     """Run a tool on the main thread through runner: its MCP result, errors included.
 
     approve(name, arguments), if given, is asked on the main thread before a tool in
     ASK_FIRST runs, and the call is refused unless it returns True. The question waits for
     the person rather than for CALL_TIMEOUT, and nothing else runs while it is open.
+    request names the client request the call answers, for cancel(request).
     """
 
     FreeCAD.Console.PrintLog(f"Bridge: {name} {json.dumps(arguments)}\n")
@@ -283,30 +357,47 @@ def call_tool(runner, name, arguments, approve=None):
             return _tool_error(f"Not run: {error}")
         if not allowed:
             return _tool_error("The user chose not to run this, so nothing was changed.")
-    result = _call_tool(runner, name, arguments)
+    result = _call_tool(runner, name, arguments, request)
     note = _take_previous_call()
     if note:
         result["content"].append({"type": "text", "text": note})
     return result
 
 
-def _run_tool(name, arguments):
+def _run_tool(call, arguments):
     """Run a tool on the main thread, with a breadcrumb left while it runs."""
 
-    _leave_breadcrumb(name, arguments)
+    global _current
+    _leave_breadcrumb(call.name, arguments)
+    with _call_lock:
+        outer, _current = _current, call
     try:
-        return BridgeTools.call(name, arguments)
+        return BridgeTools.call(call.name, arguments)
+    except BaseException:
+        call.failed = True
+        raise
     finally:
+        with _call_lock:
+            _current = outer
+        call.done.set()
         _clear_breadcrumb()
 
 
-def _call_tool(runner, name, arguments):
+def _call_tool(runner, name, arguments, request=None):
+    call = _Call(name, request)
     try:
-        return _tool_result(runner.call(lambda: _run_tool(name, arguments)))
+        if name in RUN_HERE:
+            return _tool_result(BridgeTools.call(name, arguments))
+        return _tool_result(runner.call(lambda: _run_tool(call, arguments)))
     except BridgeTools.ActionFailed as error:
-        return _tool_error(f"{error}\n{json.dumps(error.details, indent=1)}")
+        text = str(error)
+        if call.cancelled and not text.startswith("Cancelled"):
+            text = f"Cancelled: {text}"
+        return _tool_error(f"{text}\n{json.dumps(error.details, indent=1)}")
     except (BridgeTools.ToolError, Busy, TimeoutError) as error:
         return _tool_error(str(error))
+    except BridgeTools.Cancelled:
+        return _tool_error("Cancelled: the call was stopped before it finished.")
     except Exception as error:
         text = "".join(traceback.format_exception_only(type(error), error)).strip()
         FreeCAD.Console.PrintWarning(f"Bridge: {name} failed: {text}\n")
@@ -375,6 +466,10 @@ class Server:
         method = message.get("method")
         params = message.get("params") or {}
         if msg_id is None:
+            if method == "notifications/cancelled":
+                # The client gave up on a request, as on its own timeout: stop its call
+                request = (id(self), params.get("requestId"))
+                threading.Thread(target=cancel, args=(request,), daemon=True).start()
             return None  # notifications/initialized and friends need no answer
 
         if method == "initialize":
@@ -403,7 +498,8 @@ class Server:
             if name not in BridgeTools.TOOLS or not self.offers(name):
                 return _rpc_error(msg_id, -32602, f"Unknown tool '{name}'")
             arguments = params.get("arguments") or {}
-            return {"jsonrpc": "2.0", "id": msg_id, "result": self.call_tool(name, arguments)}
+            result = self.call_tool(name, arguments, (id(self), msg_id))
+            return {"jsonrpc": "2.0", "id": msg_id, "result": result}
         return _rpc_error(msg_id, -32601, f"Unknown method '{method}'")
 
     def offers(self, name):
@@ -411,8 +507,8 @@ class Server:
 
         return offers(name, self.read_only, self.allow_python)
 
-    def call_tool(self, name, arguments):
-        return call_tool(self.runner, name, arguments, self.approve)
+    def call_tool(self, name, arguments, request=None):
+        return call_tool(self.runner, name, arguments, self.approve, request)
 
     # -- HTTP ----------------------------------------------------------------
 

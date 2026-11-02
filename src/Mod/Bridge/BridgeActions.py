@@ -19,15 +19,18 @@ import FreeCAD
 from BridgeTools import (
     DOCUMENT_ARG,
     ActionFailed,
+    Cancelled,
     ToolError,
     _active_body,
     _document,
     _object,
     _value,
+    interruptible,
     tool,
 )
 
 MAX_OUTPUT = 20000
+CANCELLED = "Cancelled: the call was stopped before it finished, and its changes were undone"
 
 # Properties a rebuild touches on its own, not worth reporting as changed
 QUIET_PROPERTIES = {"Shape", "Label2", "Visibility", "_Version", "AddSubShape", "SuppressedShape"}
@@ -148,6 +151,9 @@ def change(doc, label, func, keep_on_error=False, summary=None, verify=None):
         if isinstance(error, ActionFailed):
             error.details["rolled_back"] = True
         raise
+    except Cancelled:
+        _abort(doc)
+        raise ActionFailed(CANCELLED, {"rolled_back": True, "cancelled": True}) from None
     except Exception as error:
         _abort(doc)
         text = "".join(traceback.format_exception_only(type(error), error)).strip()
@@ -294,7 +300,8 @@ def _clip(text):
     "active document) are ready; names you define persist between calls. Printed output is "
     "returned, and the value of a final bare expression as result. The code runs as one "
     "undo step and the model is rebuilt afterwards; an exception or a rebuild error undoes "
-    "it. It runs on the GUI thread, so never loop forever or wait for input.",
+    "it. It runs on the GUI thread, so never loop forever or wait for input; cancel stops "
+    "a call that runs too long.",
     {"code": {"type": "string"}, **DOCUMENT_ARG, **KEEP_ARG},
     required=("code",),
     readonly=False,
@@ -315,12 +322,20 @@ def run_python(code, document=None, keep_on_error=False):
     def run():
         result = {}
         try:
-            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            with (
+                contextlib.redirect_stdout(out),
+                contextlib.redirect_stderr(out),
+                interruptible(),
+            ):
                 exec(compile(tree, "<bridge>", "exec"), namespace)
                 if last is not None:
                     value = eval(compile(last, "<bridge>", "eval"), namespace)
                     if value is not None:
                         result["result"] = _clip(repr(value))
+        except Cancelled:
+            raise ActionFailed(
+                CANCELLED, {"cancelled": True, "output": _clip(out.getvalue())}
+            ) from None
         except Exception as error:
             # Leave out this frame, so the traceback starts in the caller's code
             lines = traceback.format_exception(type(error), error, error.__traceback__.tb_next)

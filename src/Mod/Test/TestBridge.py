@@ -61,6 +61,8 @@ import BridgeServer
 import BridgeTools
 
 WIDTH, DEPTH, HEIGHT = 10.0, 6.0, 4.0
+# Set by the runaway code the cancel tests run, once it is going
+RUNAWAY_STARTED = threading.Event()
 
 
 def process_events(wait_ms=50):
@@ -825,8 +827,8 @@ class TestBridgeServer(BridgeCase):
         if not cls.was_running:
             Bridge.stop()
 
-    def _post(self, body, headers=None, timeout=20.0):
-        """POST from a client thread while the main thread keeps answering tool calls."""
+    def _send(self, body, outcome, headers=None, timeout=20.0):
+        """POST body and put the answer's status and body, or its error, in outcome."""
 
         data = json.dumps(body).encode("utf-8")
         request = urllib.request.Request(self.url, data=data, method="POST")
@@ -834,31 +836,128 @@ class TestBridgeServer(BridgeCase):
         request.add_header("Accept", "application/json, text/event-stream")
         for key, value in (headers or {}).items():
             request.add_header(key, value)
-        outcome = {}
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                raw = response.read()
+                outcome["status"] = response.status
+                outcome["body"] = json.loads(raw) if raw else None
+        except urllib.error.HTTPError as error:
+            outcome["status"] = error.code
+            outcome["body"] = None
+        except Exception as error:
+            outcome["error"] = error
+        outcome["at"] = time.monotonic()
 
-        def send():
-            try:
-                with urllib.request.urlopen(request, timeout=timeout) as response:
-                    raw = response.read()
-                    outcome["status"] = response.status
-                    outcome["body"] = json.loads(raw) if raw else None
-            except urllib.error.HTTPError as error:
-                outcome["status"] = error.code
-                outcome["body"] = None
-            except Exception as error:
-                outcome["error"] = error
+    def _in_thread(self, target):
+        thread = threading.Thread(target=target, daemon=True)
+        thread.start()
+        return thread
 
-        client = threading.Thread(target=send, daemon=True)
-        client.start()
+    def _pump(self, *threads, timeout=20.0):
+        """Answer tool calls on the main thread until the client threads are done."""
+
         deadline = time.monotonic() + timeout
-        while client.is_alive() and time.monotonic() < deadline:
+        while any(t.is_alive() for t in threads) and time.monotonic() < deadline:
             QtWidgets.QApplication.instance().processEvents()
             time.sleep(0.01)
-        client.join(1.0)
-        self.assertFalse(client.is_alive(), "The bridge did not answer")
+        for thread in threads:
+            thread.join(1.0)
+        self.assertFalse(any(t.is_alive() for t in threads), "The bridge did not answer")
+
+    def _post(self, body, headers=None, timeout=20.0):
+        """POST from a client thread while the main thread keeps answering tool calls."""
+
+        outcome = {}
+        self._pump(
+            self._in_thread(lambda: self._send(body, outcome, headers, timeout)), timeout=timeout
+        )
         if "error" in outcome:
             raise outcome["error"]
         return outcome["status"], outcome["body"]
+
+    def _cancel_runaway(self, cancel):
+        """Start a run_python that would run for 8 s, then send cancel once it is going.
+
+        The code gives up by itself after 8 s, so a cancel that does not work shows up as a
+        slow, finished call instead of a hung test.
+        """
+
+        RUNAWAY_STARTED.clear()
+        code = (
+            "import time, TestBridge\n"
+            "doc.getObject('Pad').Length = 9\n"
+            "TestBridge.RUNAWAY_STARTED.set()\n"
+            "start = time.monotonic()\n"
+            "try:\n"
+            "    while time.monotonic() - start < 8:\n"
+            "        pass\n"
+            "except Exception:\n"
+            "    print('the code caught the cancel')\n"
+            "'ran to the end'"
+        )
+        runaway, answer = {}, {}
+        body = {
+            "jsonrpc": "2.0",
+            "id": 41,
+            "method": "tools/call",
+            "params": {
+                "name": "run_python",
+                "arguments": {"code": code, "document": self.doc.Name},
+            },
+        }
+
+        def stop():
+            if RUNAWAY_STARTED.wait(10.0):
+                answer["sent"] = time.monotonic()
+                self._send(cancel, answer)
+
+        self._pump(
+            self._in_thread(lambda: self._send(body, runaway)), self._in_thread(stop), timeout=30.0
+        )
+        self.assertIn("sent", answer, "The runaway code never started")
+        self.assertNotIn("error", runaway)
+        self.assertLess(runaway["at"] - answer["sent"], 3.0, "The code was not stopped")
+        result = runaway["body"]["result"]
+        self.assertTrue(result["isError"], result)
+        text = result["content"][0]["text"]
+        self.assertIn("Cancelled", text)
+        self.assertIn('"rolled_back": true', text)
+        self.assertNotIn("ran to the end", text)
+        self.assertNotIn("the code caught the cancel", text)
+        self.assertEqual(self.pad.Length.Value, HEIGHT, "The cancelled change was kept")
+        after = self._call("get_object", {"name": "Pad", "document": self.doc.Name})
+        self.assertFalse(after["isError"], "A call after the cancel failed")
+        return answer
+
+    def test_a_runaway_python_call_can_be_cancelled(self):
+        answer = self._cancel_runaway(
+            {
+                "jsonrpc": "2.0",
+                "id": 42,
+                "method": "tools/call",
+                "params": {"name": "cancel", "arguments": {}},
+            }
+        )
+        result = answer["body"]["result"]
+        self.assertFalse(result["isError"], result)
+        report = json.loads(result["content"][0]["text"])
+        self.assertEqual(report["tool"], "run_python")
+        self.assertTrue(report["stopped"], report)
+
+    def test_a_call_the_client_gives_up_on_is_cancelled(self):
+        answer = self._cancel_runaway(
+            {
+                "jsonrpc": "2.0",
+                "method": "notifications/cancelled",
+                "params": {"requestId": 41, "reason": "timed out"},
+            }
+        )
+        self.assertEqual(answer["status"], 202)
+
+    def test_cancel_with_nothing_running_says_so(self):
+        result = self._call("cancel", {})
+        self.assertFalse(result["isError"], result)
+        self.assertIsNone(json.loads(result["content"][0]["text"])["tool"])
 
     def _call(self, name, arguments):
         status, body = self._post(

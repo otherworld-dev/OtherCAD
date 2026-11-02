@@ -61,6 +61,11 @@ done in this fork.
     user config folder. If OtherCAD dies in the middle of a call, the next session warns
     about that call in the report view and tells the client which call it was, so it is
     not simply run again.
+  - A new `cancel` tool stops the call that is running, such as a `run_python` loop that
+    never ends: its Python is interrupted and its changes are undone, and the next call
+    works as normal. A call the client gives up on (MCP `notifications/cancelled`, as
+    clients send on their own timeout) is stopped the same way. Before, a runaway call
+    held OtherCAD until it finished or the process died.
   - The ReadOnly and AllowPython preferences limit what clients may do.
 - Features can be suppressed from the timeline's right-click menu. A suppressed feature
   is drawn greyed out and struck through, and its tooltip says so.
