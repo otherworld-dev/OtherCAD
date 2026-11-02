@@ -41,7 +41,8 @@
                         { "command": "PartDesign_Fillet", "label": "Fillet" },
                         { "command": "PartDesign_Chamfer", "label": "Chamfer" },
                         { "command": "PartDesign_Thickness", "label": "Shell" },
-                        { "command": "PartDesign_Draft", "label": "Draft" }
+                        { "command": "PartDesign_Draft", "label": "Draft" },
+                        { "command": "Std_ChangeParameters", "label": "Change Parameters" }
                     ],
                     "menu": [
                         { "command": "PartDesign_PressPull", "label": "Press Pull" },
@@ -61,6 +62,7 @@
                         { "command": "Std_SetMaterial", "label": "Physical Material" },
                         { "command": "Std_SetAppearance", "label": "Appearance" },
                         { "command": "Material_Edit", "label": "Manage Materials" },
+                        { "command": "Std_ChangeParameters", "label": "Change Parameters" },
                         { "command": "Std_Refresh", "label": "Compute All" }
                     ]
                 },

@@ -539,6 +539,7 @@ SET(Dialog_CPP_SRCS
     TaskElementColors.cpp
     Dialogs/DlgObjectSelection.cpp
     Dialogs/DlgAddProperty.cpp
+    Dialogs/DlgChangeParameters.cpp
     VectorListEditor.cpp
 )
 
@@ -583,6 +584,7 @@ SET(Dialog_HPP_SRCS
     TaskElementColors.h
     Dialogs/DlgObjectSelection.h
     Dialogs/DlgAddProperty.h
+    Dialogs/DlgChangeParameters.h
     VectorListEditor.h
 )
 
@@ -1404,6 +1406,7 @@ SET(FreeCADGui_CPP_SRCS
     EditableDatumLabelPyImp.cpp
     ExpressionBinding.cpp
     ExpressionBindingPy.cpp
+    ModelParameters.cpp
     GraphicsViewZoom.cpp
     ExpressionCompleter.cpp
     FileHandler.cpp
@@ -1446,6 +1449,7 @@ SET(FreeCADGui_SRCS
     EditableDatumLabel.h
     ExpressionBinding.h
     ExpressionBindingPy.h
+    ModelParameters.h
     ExpressionCompleter.h
     FreeCADGuiInit.py
     FreeCADGuiTest.py

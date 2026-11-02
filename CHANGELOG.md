@@ -68,6 +68,14 @@ done in this fork.
   panel lists the reference as missing so it can be removed and picked again.
 - A feature panel says at its top why the feature cannot be built while a value is
   wrong, and again if OK is pressed on it, instead of only in the Report view.
+- Change Parameters, under Modify on the SOLID tab, lists the document's user
+  parameters and the model's dimensions in one place, as Fusion's Parameters dialog
+  does. User parameters can be added with a unit and a value or formula, renamed (the
+  formulas that use one follow the new name), edited and deleted while nothing uses
+  them; they live in a variable set called Parameters, made when the first one is
+  added. Named sketch dimensions, feature sizes such as an extrude's distance, and
+  values that formulas link can be edited there too. Each edit is one undo step and
+  recomputes the model.
 
 ### Changed
 
