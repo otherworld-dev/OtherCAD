@@ -261,6 +261,9 @@ void TimelineWidget::setupUi()
 
     bodyLabel = new QLabel(this);
     bodyLabel->setObjectName(QStringLiteral("TimelineBodyLabel"));
+    // A click makes the body on the strip the active one, as the tree's indicator does
+    bodyLabel->setCursor(Qt::PointingHandCursor);
+    bodyLabel->installEventFilter(this);
     bodyLabel->hide();
 
     outerLayout->addWidget(bodyLabel, 0, Qt::AlignVCenter);
@@ -623,16 +626,28 @@ void TimelineWidget::rebuild()
 
 void TimelineWidget::updateBodyLabel()
 {
-    // The strip can show a body other than the one new features go into, and has to say so
+    // The strip names its body and says whether new features go into it, as it can show a
+    // body other than the active one. The marks match the tree's active-body indicator.
     App::DocumentObject* body = currentBody();
     Gui::Application* app = Gui::Application::Instance;
-    if (body && app && body != activeBody(app->activeDocument())) {
-        bodyLabel->setText(tr("%1 (inactive)").arg(QString::fromUtf8(body->Label.getValue())));
-        bodyLabel->show();
+    if (!body || !app) {
+        bodyLabel->hide();
+        return;
+    }
+    const QString name = QString::fromUtf8(body->Label.getValue());
+    const bool active = body == activeBody(app->activeDocument());
+    QFont font = bodyLabel->font();
+    font.setBold(active);
+    bodyLabel->setFont(font);
+    if (active) {
+        bodyLabel->setText(QString(QChar(0x25C9)) + QLatin1Char(' ') + name);
+        bodyLabel->setToolTip(tr("The active body: new features go into it"));
     }
     else {
-        bodyLabel->hide();
+        bodyLabel->setText(QString(QChar(0x25CB)) + QLatin1Char(' ') + tr("%1 (inactive)").arg(name));
+        bodyLabel->setToolTip(tr("Click to make this body the active one"));
     }
+    bodyLabel->show();
 }
 
 void TimelineWidget::positionPlayhead()
@@ -1143,6 +1158,12 @@ bool TimelineWidget::event(QEvent* event)
 
 bool TimelineWidget::eventFilter(QObject* watched, QEvent* event)
 {
+    if (watched == bodyLabel && event->type() == QEvent::MouseButtonRelease
+        && static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) {
+        activateShownBody();
+        updateBodyLabel();
+        return true;
+    }
     // A focused marker or step button is offered the key before the strip is, so the
     // claim has to be made here as well as in event() above.
     if (event->type() == QEvent::ShortcutOverride && keyAction(static_cast<QKeyEvent*>(event))) {

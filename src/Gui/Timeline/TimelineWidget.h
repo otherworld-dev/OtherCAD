@@ -146,7 +146,7 @@ private:
     void clearStrip();
     void refreshMarkers();
     void applyStates();
-    /// Shows the "(inactive)" label when the body on the strip is not the active one
+    /// Names the body on the strip, marked active or "(inactive)" like the tree's indicator
     void updateBodyLabel();
 
     App::Document* currentDocument() const;

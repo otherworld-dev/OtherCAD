@@ -32,6 +32,7 @@ To run tests:
     FreeCAD -t TestTimeline
 """
 
+import importlib
 import os
 import shutil
 import tempfile
@@ -43,6 +44,15 @@ import FreeCADGui
 import Part
 import Sketcher
 from PySide import QtCore, QtGui, QtWidgets
+
+# FreeCAD's PySide shim does not re-export QtTest (see TestBrowserFolders)
+QtTest = None
+for _binding in ("PySide6.QtTest", "PySide.QtTest"):
+    try:
+        QtTest = importlib.import_module(_binding)
+        break
+    except Exception:  # pragma: no cover - depends on which binding is installed
+        continue
 
 # The strip and the dock that holds it share this object name, so the class name
 # is what tells them apart. Both are set in Gui::Timeline::TimelineWidget.
@@ -1216,7 +1226,7 @@ class TestTimelineFollowsSelection(TimelineTestBase):
             if not m.isHidden()
         ]
 
-    def _inactive_label(self):
+    def _body_label(self):
         return self.widget.findChild(QtWidgets.QLabel, "TimelineBodyLabel")
 
     def _select(self, obj):
@@ -1224,12 +1234,35 @@ class TestTimelineFollowsSelection(TimelineTestBase):
         FreeCADGui.Selection.addSelection(self.doc.Name, obj.Name)
         self._settle()
 
+    def _assert_label_shows_active(self, body):
+        # The strip names the active body too, as Fusion's browser always shows which
+        # component is active (#753)
+        label = self._body_label()
+        self.assertFalse(label.isHidden())
+        self.assertIn(body.Label, label.text())
+        self.assertNotIn("inactive", label.text())
+        self.assertTrue(label.font().bold())
+
+    def test_the_label_names_the_active_body(self):
+        self._assert_label_shows_active(self.body)
+
+    def test_clicking_the_label_activates_the_shown_body(self):
+        if QtTest is None:
+            self.skipTest("QtTest is not available in this build")
+        self._select(self.other_pad)
+        self.assertIn("inactive", self._body_label().text())
+        QtTest.QTest.mouseClick(self._body_label(), QtCore.Qt.LeftButton)
+        self._settle()
+        view = FreeCADGui.getDocument(self.doc.Name).ActiveView
+        self.assertEqual(view.getActiveObject("pdbody").Name, self.other.Name)
+        self._assert_label_shows_active(self.other)
+
     def test_selecting_in_another_body_shows_its_history_without_activating_it(self):
         self._select(self.other_pad)
         self.assertEqual(self._labels(), ["OtherSketch", "OtherPad"])
         view = FreeCADGui.getDocument(self.doc.Name).ActiveView
         self.assertEqual(view.getActiveObject("pdbody").Name, self.body.Name)
-        label = self._inactive_label()
+        label = self._body_label()
         self.assertIsNotNone(label)
         # Hidden rather than visible, like the markers: the label is the strip's to show,
         # whether or not the dock itself is on screen
@@ -1240,7 +1273,7 @@ class TestTimelineFollowsSelection(TimelineTestBase):
         self._select(self.other_pad)
         self.other.Label = "Bracket"
         self._settle()
-        self.assertIn("Bracket", self._inactive_label().text())
+        self.assertIn("Bracket", self._body_label().text())
 
     def test_clearing_the_selection_keeps_the_body(self):
         self._select(self.other_pad)
@@ -1262,7 +1295,7 @@ class TestTimelineFollowsSelection(TimelineTestBase):
         self._activate_body(self.body)
         self._settle()
         self.assertEqual(len(self._labels()), FEATURE_COUNT)
-        self.assertTrue(self._inactive_label().isHidden())
+        self._assert_label_shows_active(self.body)
 
     def test_while_editing_the_strip_stays_on_the_edited_body(self):
         gui_doc = FreeCADGui.getDocument(self.doc.Name)
@@ -1295,7 +1328,7 @@ class TestTimelineFollowsSelection(TimelineTestBase):
             gui_doc.resetEdit()
             self._settle()
         self.assertEqual(len(self._labels()), FEATURE_COUNT)
-        self.assertTrue(self._inactive_label().isHidden())
+        self._assert_label_shows_active(self.body)
 
     def test_opening_an_edit_takes_the_strip_to_the_edited_body(self):
         self._select(self.other_pad)
@@ -1306,7 +1339,7 @@ class TestTimelineFollowsSelection(TimelineTestBase):
         self._settle()
         try:
             self.assertEqual(len(self._labels()), FEATURE_COUNT)
-            self.assertTrue(self._inactive_label().isHidden())
+            self._assert_label_shows_active(self.body)
         finally:
             gui_doc.resetEdit()
             self._settle()
@@ -1327,7 +1360,7 @@ class TestTimelineFollowsSelection(TimelineTestBase):
             gui_doc.resetEdit()
             self._settle()
         self.assertEqual(len(self._labels()), FEATURE_COUNT)
-        self.assertTrue(self._inactive_label().isHidden())
+        self._assert_label_shows_active(self.body)
 
     def test_edit_from_an_inactive_body_marker_activates_it_and_opens_the_feature(self):
         self._select(self.other_pad)

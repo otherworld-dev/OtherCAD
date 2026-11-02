@@ -11,6 +11,10 @@ done in this fork.
 
 ### Added
 
+- The model tree shows which body is active, like the radio button on a Fusion component:
+  every body row ends in a ring, filled on the active body, and clicking a ring makes that
+  body active. The timeline names its body as well, marked the same way and in bold when
+  it is the active one, and clicking the name activates the body it shows.
 - AI Chat, in the Tools menu, is a panel where you talk to Claude about the open model
   without setting up an MCP client. It uses the plan you are signed in to in Claude Code,
   so Claude Code must be installed. Claude gets the LLM Bridge's tools and nothing else:
