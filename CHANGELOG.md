@@ -114,6 +114,13 @@ done in this fork.
   distance along its own normal, so offsetting a cylinder or a hole's wall changes its
   radius. Move Face still works only on flat faces, and says to use Offset Face for a
   curved one.
+- Move (M, and Move on the ribbon) puts three arrows and three turning handles on the
+  selected body or object, coloured by axis, with their values in boxes in the view, as
+  Fusion's Move does. The body follows as you drag or type, turning about its middle, and
+  the panel keeps X, Y and Z distance and angle fields. OK keeps the whole move as one
+  undo step; Cancel puts it back. Picking a feature moves its body. With a face picked, M
+  moves that face with Move Face instead of being greyed out. The numeric Placement
+  dialog is still under Edit > Placement.
 
 ### Changed
 

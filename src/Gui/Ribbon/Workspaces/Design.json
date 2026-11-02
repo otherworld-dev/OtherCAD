@@ -56,7 +56,7 @@
                         { "command": "Part_Scale", "label": "Scale" },
                         { "command": "PartDesign_Boolean", "label": "Combine" },
                         { "command": "Part_Defeaturing", "label": "Remove" },
-                        { "command": "Std_Placement", "label": "Move" },
+                        { "command": "Std_Move", "label": "Move" },
                         { "command": "Std_Alignment", "label": "Align" },
                         { "command": "Std_Delete", "label": "Delete" },
                         { "command": "Std_SetMaterial", "label": "Physical Material" },

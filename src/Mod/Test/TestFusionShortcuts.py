@@ -273,6 +273,7 @@ class TestFusionShortcuts(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         try:
             self.assertFalse(FreeCADGui.Command.get("Std_Placement").isActive())
+            self.assertFalse(FreeCADGui.Command.get("Std_Move").isActive())
             self.assertFalse(FreeCADGui.Command.get("Std_Measure").isActive())
         finally:
             FreeCADGui.ActiveDocument.resetEdit()

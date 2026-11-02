@@ -54,6 +54,7 @@ SET(Test_SRCS
     TestOverlayPanelWidth.py
     TestGizmoValueLabels.py
     TestFaceToolArrows.py
+    TestMoveGizmo.py
     TestChangeParameters.py
     TestPatternPanel.py
     TestViewportProjection.py
