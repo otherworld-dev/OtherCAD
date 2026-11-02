@@ -106,6 +106,14 @@ done in this fork.
   dropped between two of its members joins it. Groups are saved with the document and
   never change the model. A deleted feature drops out of its group, and an empty group
   goes. The step buttons and keys step over a folded group.
+- Offset Face, Move Face and Press/Pull on a face put an arrow on the face, along its
+  normal, with its distance in a box beside it, as in Fusion. Drag the arrow or type in
+  the box. Move Face keeps its X, Y and Z fields and gains an Along normal field, which
+  the arrow drives.
+- Offset Face and Press/Pull work on curved faces too: the face grows or shrinks by the
+  distance along its own normal, so offsetting a cylinder or a hole's wall changes its
+  radius. Move Face still works only on flat faces, and says to use Offset Face for a
+  curved one.
 
 ### Changed
 
@@ -152,6 +160,8 @@ done in this fork.
 
 ### Fixed
 
+- The Offset Face and Move Face panels showed only the list of faces: their Offset and
+  X, Y and Z fields never appeared, so the distance could not be changed there.
 - A sketch point snapped to an arc's midpoint, a circle or arc quadrant, or a crossing
   now stays there. Before, all of these got a plain point-on-curve constraint and slid
   along the curve. An arc midpoint now adds a construction radius that the arc's ends are

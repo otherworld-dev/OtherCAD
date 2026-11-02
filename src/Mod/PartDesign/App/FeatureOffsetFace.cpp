@@ -51,3 +51,8 @@ gp_Vec OffsetFace::displacement(const TopoDS_Face& face) const
 {
     return outwardNormal(face) * Offset.getValue();
 }
+
+std::optional<double> OffsetFace::normalOffset() const
+{
+    return Offset.getValue();
+}

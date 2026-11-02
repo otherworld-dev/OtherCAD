@@ -21,6 +21,7 @@
  *                                                                         *
  ***************************************************************************/
 
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -140,11 +141,47 @@ App::DocumentObjectExecReturn* SweptFace::execute()
         for (const TopoDS_Face& face : faces) {
             // The face travels along a single direction, which only describes what was
             // asked for while the face is flat. A curved one would move along the normal
-            // of its middle and come out wrong everywhere else, so refuse it outright.
+            // of its middle and come out wrong everywhere else, so it either moves by
+            // the same distance along its own normal everywhere or is refused.
             if (!Part::TopoShape(face).isPlanar()) {
-                return new App::DocumentObjectExecReturn(
-                    QT_TRANSLATE_NOOP("Exception", "This tool works only on flat faces")
-                );
+                const std::optional<double> distance = normalOffset();
+                if (!distance) {
+                    return new App::DocumentObjectExecReturn(QT_TRANSLATE_NOOP(
+                        "Exception",
+                        "This tool works only on flat faces. Offset Face or Press/Pull "
+                        "changes a curved one."
+                    ));
+                }
+                if (std::abs(*distance) < Precision::Confusion()) {
+                    continue;
+                }
+
+                // Thickening the face by the distance gives the shell between where it
+                // was and where it ends up, the curved counterpart of the prism below:
+                // a cylinder's wall comes out as a tube, which changes its radius.
+                Part::TopoShape shell;
+                try {
+                    shell = Part::TopoShape(face).makeElementOffset(
+                        *distance,
+                        Precision::Confusion(),
+                        false,
+                        false,
+                        0,
+                        Part::JoinType::arc,
+                        Part::FillType::fill
+                    );
+                }
+                catch (const Base::Exception& e) {
+                    // A face with no boundary of its own, such as a whole sphere, has
+                    // no edge for the shell's sides to grow from.
+                    FC_LOG("Offsetting a curved face failed: " << e.what());
+                    return new App::DocumentObjectExecReturn(
+                        QT_TRANSLATE_NOOP("Exception", "This curved face cannot be offset")
+                    );
+                }
+                result = *distance > 0.0 ? result.makeElementFuse(shell)
+                                         : result.makeElementCut(shell);
+                continue;
             }
 
             const gp_Vec travel = displacement(face);

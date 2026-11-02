@@ -2816,10 +2816,11 @@ void makeFaceTool(Gui::Command* cmd, const std::string& which)
     else {
         base = static_cast<Part::Feature*>(selected.getObject());
 
-        // Offsetting or moving a face sweeps it along one direction, which only says what
-        // the user asked for while the face is flat. A curved face would be swept along
-        // the normal of its middle and quietly come out wrong everywhere else.
-        const bool flatOnly = which == "OffsetFace" || which == "MoveFace";
+        // Moving a face sweeps it along one direction, which only says what the user
+        // asked for while the face is flat. A curved face would be swept along the
+        // normal of its middle and quietly come out wrong everywhere else. Offset Face
+        // grows or shrinks a curved face along its own normal instead, as Fusion does.
+        const bool flatOnly = which == "MoveFace";
         const Part::TopoShape& shape = base->Shape.getShape();
 
         for (const std::string& name : selected.getSubNames()) {
@@ -2833,7 +2834,10 @@ void makeFaceTool(Gui::Command* cmd, const std::string& which)
                 QMessageBox::warning(
                     Gui::getMainWindow(),
                     QObject::tr("Wrong selection"),
-                    QObject::tr("%1 works only on flat faces.")
+                    QObject::tr(
+                        "%1 works only on flat faces. Offset Face or Press/Pull "
+                        "changes a curved one."
+                    )
                         .arg(QCoreApplication::translate(cmd->className(), cmd->getMenuText()))
                 );
                 return;
