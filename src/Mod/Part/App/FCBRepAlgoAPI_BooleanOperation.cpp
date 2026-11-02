@@ -35,6 +35,7 @@
 #include <TopoDS_Iterator.hxx>
 #include <Precision.hxx>
 #include <FuzzyHelper.h>
+#include <ProgressIndicator.h>
 #include <SignalException.h>
 #include <Base/Console.h>
 
@@ -102,12 +103,22 @@ void FCBRepAlgoAPI_BooleanOperation::Build()
     Build(progressRange);
 }
 
-void FCBRepAlgoAPI_BooleanOperation::Build(const Message_ProgressRange& progressRange)
+// A stop asked for with Part::ProgressIndicator::requestBreak() holds for every boolean,
+// even one built without a progress indicator
+static void checkBreak(const Message_ProgressRange& progressRange)
 {
-    Part::SignalException sig;
+    if (Part::ProgressIndicator::breakRequested()) {
+        throw Standard_ConstructionError("Boolean operation cancelled");
+    }
     if (progressRange.UserBreak()) {
         throw Standard_ConstructionError("User aborted");
     }
+}
+
+void FCBRepAlgoAPI_BooleanOperation::Build(const Message_ProgressRange& progressRange)
+{
+    Part::SignalException sig;
+    checkBreak(progressRange);
     if (myOperation == BOPAlgo_CUT && myArguments.Size() == 1 && myTools.Size() == 1
         && myTools.First().ShapeType() == TopAbs_COMPOUND) {
         // cut argument and compound tool
@@ -133,9 +144,7 @@ void FCBRepAlgoAPI_BooleanOperation::Build(const Message_ProgressRange& progress
         BRepAlgoAPI_BooleanOperation::Build();
 #endif
     }
-    if (progressRange.UserBreak()) {
-        throw Standard_ConstructionError("User aborted");
-    }
+    checkBreak(progressRange);
 }
 
 void FCBRepAlgoAPI_BooleanOperation::RecursiveAddTools(const TopoDS_Shape& theTool)

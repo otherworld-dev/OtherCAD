@@ -775,8 +775,14 @@ PyObject* DocumentPy::recompute(PyObject* args)
             options = Document::DepNoCycle;
         }
 
+        // A recompute asked for while this document is already recomputing is skipped.
+        // Returning 0 for it read the same as "nothing to do", so say -1 instead.
+        const bool alreadyRecomputing = getDocumentPtr()->testStatus(Document::Recomputing);
         int objectCount =
             getDocumentPtr()->recompute(objs, Base::asBoolean(force), nullptr, options);
+        if (alreadyRecomputing) {
+            objectCount = -1;
+        }
 
         // Document::recompute() hides possibly raised Python exceptions by its features
         // So, check if an error is set and return null if yes

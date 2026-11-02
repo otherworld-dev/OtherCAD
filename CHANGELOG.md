@@ -57,6 +57,19 @@ done in this fork.
     the model is recomputing, now waits for it to finish rather than running in the middle
     of it. A call that can't start within 20 s is turned away with nothing changed, and one
     that runs past 50 s is reported as still running so the client knows not to repeat it.
+  - While a call runs, its name and arguments are kept in `BridgeLastCall.json` in the
+    user config folder. If OtherCAD dies in the middle of a call, the next session warns
+    about that call in the report view and tells the client which call it was, so it is
+    not simply run again.
+  - A new `cancel` tool stops the call that is running, such as a `run_python` loop that
+    never ends: its Python is interrupted and its changes are undone, and the next call
+    works as normal. A call the client gives up on (MCP `notifications/cancelled`, as
+    clients send on their own timeout) is stopped the same way. Before, a runaway call
+    held OtherCAD until it finished or the process died.
+  - Cancel stops a boolean operation as well, such as a clash check between two
+    coincident copies of a big assembly: the boolean raises "Boolean operation
+    cancelled" and the call is undone. Scripts can do the same with
+    `Part.requestBreak(True)`, which stops every boolean until `Part.requestBreak(False)`.
   - The ReadOnly and AllowPython preferences limit what clients may do.
 - Features can be suppressed from the timeline's right-click menu. A suppressed feature
   is drawn greyed out and struck through, and its tooltip says so.
@@ -180,6 +193,24 @@ done in this fork.
 
 ### Fixed
 
+- `doc.recompute()` called while the document is already recomputing returns -1, and
+  `obj.recompute(True)` returns False. Both skip the rebuild, but returned 0 and True as
+  if all was well, so a script carried on with a model that had not been rebuilt.
+- A recompute that runs past 30 seconds says so once in the report view, naming the
+  object it has got to (the time is the `RecomputeWarnSeconds` preference under
+  `BaseApp/Preferences/Document`). Before, a long one looked like a stuck document.
+- An LLM Bridge change says when its rebuild was skipped because the document was still
+  recomputing, or when objects still need a recompute after it, instead of reporting
+  plain success.
+- Closing a document while it recomputes no longer crashes or freezes OtherCAD. A close
+  asked for in the middle of a recompute (from a timer, a script or a click handled while
+  the rebuild processes events) used to delete the document under it, and a close on the
+  main thread while the background recompute rebuilt it froze the GUI, each waiting for
+  the other. Now the recompute stops at the next object and the document closes once it
+  has finished, unless the document is opened again before then. Without the GUI the
+  close is refused with an error instead.
+- On Windows the background recompute ran the GUI's document updates on its own thread,
+  because the hooks that hand them to the main thread never reached the App module there.
 - The Offset Face and Move Face panels showed only the list of faces: their Offset and
   X, Y and Z fields never appeared, so the distance could not be changed there.
 - A sketch point snapped to an arc's midpoint, a circle or arc quadrant, or a crossing

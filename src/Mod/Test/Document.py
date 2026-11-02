@@ -1216,6 +1216,59 @@ class DocumentRecomputeCases(unittest.TestCase):
         self.Doc.removeObject(L7.Name)
         self.Doc.removeObject(L8.Name)
 
+    def testRecomputeInsideARecomputeSaysItWasSkipped(self):
+        # A recompute asked for while the document is already recomputing does nothing.
+        # It used to return 0, the same as "nothing to do", so a caller carried on with a
+        # stale model. It returns -1 now, and a recursive object recompute returns False.
+        seen = {}
+
+        class Nested:
+            def __init__(self, obj):
+                obj.Proxy = self
+
+            def execute(self, obj):
+                seen["recomputing"] = obj.Document.Recomputing
+                seen["document"] = obj.Document.recompute()
+                seen["object"] = obj.recompute(True)
+
+        Nested(self.Doc.addObject("App::FeaturePython", "Nested"))
+        self.assertGreater(self.Doc.recompute(), 0)
+        self.assertEqual(seen, {"recomputing": True, "document": -1, "object": False})
+        # Outside a recompute nothing changed: nothing to do is still 0
+        self.assertFalse(self.Doc.Recomputing)
+        self.assertEqual(self.Doc.recompute(), 0)
+        self.Doc.Label_1.touch()
+        self.assertTrue(self.Doc.Label_1.recompute(True))
+
+    def testClosingTheDocumentFromItsOwnRecomputeIsRefused(self):
+        # Closing a document from inside its own recompute used to delete it
+        # under the recompute still running. Without the GUI there is no event
+        # loop to put the close off to, so it is refused and the recompute
+        # carries on.
+        if FreeCAD.GuiUp:
+            self.skipTest("with the GUI the close waits instead: GuiDocument covers that")
+        name = self.Doc.Name
+        seen = {}
+
+        class Closer:
+            def __init__(self, obj):
+                obj.Proxy = self
+
+            def execute(self, obj):
+                try:
+                    FreeCAD.closeDocument(name)
+                    seen["error"] = ""
+                except RuntimeError as e:
+                    seen["error"] = str(e)
+                seen["open"] = name in FreeCAD.listDocuments()
+
+        Closer(self.Doc.addObject("App::FeaturePython", "Closer"))
+        self.assertGreater(self.Doc.recompute(), 0)
+        self.assertIn(name, FreeCAD.listDocuments())
+        self.assertTrue(seen["open"])
+        self.assertIn("recomputing", seen["error"])
+        self.assertFalse(self.Doc.Recomputing)
+
     def tearDown(self):
         # closing doc
         FreeCAD.closeDocument("RecomputeTests")

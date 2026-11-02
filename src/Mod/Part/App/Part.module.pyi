@@ -108,6 +108,15 @@ def cast_to_shape(shape: Shape, /) -> Shape:
     """Normalize a shape-like proxy to the public `Shape` wrapper."""
     ...
 
+def requestBreak(on: bool, /) -> None:
+    """Ask boolean operations, the running ones and every one started later, to stop
+    (True) until the request is withdrawn (False). Safe to call from any thread."""
+    ...
+
+def breakRequested() -> bool:
+    """Whether boolean operations have been asked to stop."""
+    ...
+
 # Surface, sweep, and topology builders
 @overload
 def makeRevolution(

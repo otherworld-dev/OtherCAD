@@ -44,6 +44,7 @@ import tempfile
 import threading
 import time
 import unittest
+import unittest.mock
 import urllib.error
 import urllib.request
 import weakref
@@ -55,10 +56,13 @@ import Sketcher
 from PySide import QtWidgets
 
 import Bridge
+import BridgeActions
 import BridgeServer
 import BridgeTools
 
 WIDTH, DEPTH, HEIGHT = 10.0, 6.0, 4.0
+# Set by the runaway code the cancel tests run, once it is going
+RUNAWAY_STARTED = threading.Event()
 
 
 def process_events(wait_ms=50):
@@ -613,6 +617,30 @@ class TestBridgeActions(BridgeCase):
         ran = self._call("run_python", {"code": "doc.addObject('Part::Box', 'Box')\nNone"})
         self.assertIn("Box", ran["created"])
 
+    def test_python_says_when_its_rebuild_was_skipped(self):
+        # A rebuild asked for while the document is still recomputing does nothing and
+        # returns -1 (#1007). The call used to report plain success over a stale model.
+        doc = self.doc
+
+        class StillRecomputing:
+            def __getattr__(self, name):
+                return getattr(doc, name)
+
+            def recompute(self, *args):
+                return -1
+
+        ran = self._call("run_python", {"code": "x = 1"})
+        self.assertNotIn("rebuild", ran)
+        with unittest.mock.patch.object(
+            BridgeActions, "_document", lambda name: StillRecomputing()
+        ):
+            ran = self._call("run_python", {"code": "doc.Pad.Length = 7"})
+        self.assertIn("rebuild skipped: the document is still recomputing", ran["rebuild"])
+        self.assertIn("still need a recompute", ran["rebuild"])
+        # The change itself was kept, and the next rebuild picks it up
+        self.assertGreater(self.doc.recompute(), 0)
+        self.assertAlmostEqual(self.pad.Length.Value, 7.0)
+
     def test_python_that_raises_is_undone_with_its_traceback(self):
         with self.assertRaises(BridgeTools.ActionFailed) as caught:
             self._call(
@@ -799,8 +827,8 @@ class TestBridgeServer(BridgeCase):
         if not cls.was_running:
             Bridge.stop()
 
-    def _post(self, body, headers=None, timeout=20.0):
-        """POST from a client thread while the main thread keeps answering tool calls."""
+    def _send(self, body, outcome, headers=None, timeout=20.0):
+        """POST body and put the answer's status and body, or its error, in outcome."""
 
         data = json.dumps(body).encode("utf-8")
         request = urllib.request.Request(self.url, data=data, method="POST")
@@ -808,31 +836,151 @@ class TestBridgeServer(BridgeCase):
         request.add_header("Accept", "application/json, text/event-stream")
         for key, value in (headers or {}).items():
             request.add_header(key, value)
-        outcome = {}
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                raw = response.read()
+                outcome["status"] = response.status
+                outcome["body"] = json.loads(raw) if raw else None
+        except urllib.error.HTTPError as error:
+            outcome["status"] = error.code
+            outcome["body"] = None
+        except Exception as error:
+            outcome["error"] = error
+        outcome["at"] = time.monotonic()
 
-        def send():
-            try:
-                with urllib.request.urlopen(request, timeout=timeout) as response:
-                    raw = response.read()
-                    outcome["status"] = response.status
-                    outcome["body"] = json.loads(raw) if raw else None
-            except urllib.error.HTTPError as error:
-                outcome["status"] = error.code
-                outcome["body"] = None
-            except Exception as error:
-                outcome["error"] = error
+    def _in_thread(self, target):
+        thread = threading.Thread(target=target, daemon=True)
+        thread.start()
+        return thread
 
-        client = threading.Thread(target=send, daemon=True)
-        client.start()
+    def _pump(self, *threads, timeout=20.0):
+        """Answer tool calls on the main thread until the client threads are done."""
+
         deadline = time.monotonic() + timeout
-        while client.is_alive() and time.monotonic() < deadline:
+        while any(t.is_alive() for t in threads) and time.monotonic() < deadline:
             QtWidgets.QApplication.instance().processEvents()
             time.sleep(0.01)
-        client.join(1.0)
-        self.assertFalse(client.is_alive(), "The bridge did not answer")
+        for thread in threads:
+            thread.join(1.0)
+        self.assertFalse(any(t.is_alive() for t in threads), "The bridge did not answer")
+
+    def _post(self, body, headers=None, timeout=20.0):
+        """POST from a client thread while the main thread keeps answering tool calls."""
+
+        outcome = {}
+        self._pump(
+            self._in_thread(lambda: self._send(body, outcome, headers, timeout)), timeout=timeout
+        )
         if "error" in outcome:
             raise outcome["error"]
         return outcome["status"], outcome["body"]
+
+    def _cancel_runaway(self, cancel, when_cancelled="pass"):
+        """Start a run_python that would run for 8 s, then send cancel once it is going.
+
+        The code gives up by itself after 8 s, so a cancel that does not work shows up as a
+        slow, finished call instead of a hung test. when_cancelled runs in its except
+        Exception, which the cancel must get past, and the details hold what it printed.
+        """
+
+        RUNAWAY_STARTED.clear()
+        code = (
+            "import time, TestBridge\n"
+            "doc.getObject('Pad').Length = 9\n"
+            "TestBridge.RUNAWAY_STARTED.set()\n"
+            "start = time.monotonic()\n"
+            "try:\n"
+            "    while time.monotonic() - start < 8:\n"
+            "        pass\n"
+            "except Exception:\n"
+            "    print('the code caught the cancel')\n"
+            "except BaseException:\n"
+            f"    {when_cancelled}\n"
+            "    raise\n"
+            "'ran to the end'"
+        )
+        runaway, answer = {}, {}
+        body = {
+            "jsonrpc": "2.0",
+            "id": 41,
+            "method": "tools/call",
+            "params": {
+                "name": "run_python",
+                "arguments": {"code": code, "document": self.doc.Name},
+            },
+        }
+
+        def stop():
+            if RUNAWAY_STARTED.wait(10.0):
+                answer["sent"] = time.monotonic()
+                self._send(cancel, answer)
+
+        self._pump(
+            self._in_thread(lambda: self._send(body, runaway)), self._in_thread(stop), timeout=30.0
+        )
+        self.assertIn("sent", answer, "The runaway code never started")
+        self.assertNotIn("error", runaway)
+        self.assertLess(runaway["at"] - answer["sent"], 3.0, "The code was not stopped")
+        result = runaway["body"]["result"]
+        self.assertTrue(result["isError"], result)
+        text = result["content"][0]["text"]
+        self.assertIn("Cancelled", text)
+        self.assertIn('"rolled_back": true', text)
+        self.assertNotIn("ran to the end", text)
+        self.assertNotIn("the code caught the cancel", text)
+        self.assertEqual(self.pad.Length.Value, HEIGHT, "The cancelled change was kept")
+        after = self._call("get_object", {"name": "Pad", "document": self.doc.Name})
+        self.assertFalse(after["isError"], "A call after the cancel failed")
+        return answer, text
+
+    CANCEL = {
+        "jsonrpc": "2.0",
+        "id": 42,
+        "method": "tools/call",
+        "params": {"name": "cancel", "arguments": {}},
+    }
+
+    def test_a_runaway_python_call_can_be_cancelled(self):
+        answer, _ = self._cancel_runaway(self.CANCEL)
+        result = answer["body"]["result"]
+        self.assertFalse(result["isError"], result)
+        report = json.loads(result["content"][0]["text"])
+        self.assertEqual(report["tool"], "run_python")
+        self.assertTrue(report["stopped"], report)
+
+    def test_a_boolean_in_a_cancelled_call_stops_with_an_error(self):
+        # Two coincident boxes, the clash check that once ran for ever, in miniature
+        _, text = self._cancel_runaway(
+            self.CANCEL,
+            when_cancelled=(
+                "box = Part.makeBox(1, 1, 1)\n"
+                "    try:\n"
+                "        box.common(box.copy())\n"
+                "        print('the boolean ran')\n"
+                "    except Exception as error:\n"
+                "        print('boolean:', error)"
+            ),
+        )
+        self.assertIn("boolean:", text)
+        self.assertIn("Boolean operation cancelled", text)
+        self.assertFalse(Part.breakRequested(), "Booleans are still asked to stop")
+        box = Part.makeBox(1, 1, 1)
+        self.assertAlmostEqual(box.common(box.copy()).Volume, 1.0, places=6)
+
+    def test_a_call_the_client_gives_up_on_is_cancelled(self):
+        answer, _ = self._cancel_runaway(
+            {
+                "jsonrpc": "2.0",
+                "method": "notifications/cancelled",
+                "params": {"requestId": 41, "reason": "timed out"},
+            }
+        )
+        self.assertEqual(answer["status"], 202)
+
+    def test_cancel_with_nothing_running_says_so(self):
+        result = self._call("cancel", {})
+        self.assertFalse(result["isError"], result)
+        self.assertIsNone(json.loads(result["content"][0]["text"])["tool"])
 
     def _call(self, name, arguments):
         status, body = self._post(
@@ -911,6 +1059,83 @@ class TestBridgeServer(BridgeCase):
             headers={"Origin": "https://evil.example"},
         )
         self.assertEqual(status, 403)
+
+
+class TestBridgeBreadcrumb(BridgeCase):
+    """A session that dies in the middle of a call leaves a note of that call behind.
+
+    A clash check's boolean once took OtherCAD down with no trace of what had been
+    running. Each call now writes its name and arguments to a file in the user config
+    folder and removes it when it is done, and the next session reports a file still there.
+    """
+
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.path = os.path.join(folder.name, BridgeServer.BREADCRUMB)
+        for name, value in (
+            ("_breadcrumb_dir", folder.name),
+            ("_checked_previous", False),
+            ("_previous_call", None),
+        ):
+            patcher = unittest.mock.patch.object(BridgeServer, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.runner = BridgeServer.MainThreadRunner()
+        self.addCleanup(self.runner.deleteLater)
+        # Last, so a setUp that fails here leaves no document open
+        super().setUp()
+
+    def _leave(self, pid):
+        with open(self.path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "tool": "run_python",
+                    "arguments": {"code": "tool.Shape.common(parked.Shape)"},
+                    "started": "2026-11-01 14:02:11",
+                    "pid": pid,
+                },
+                f,
+            )
+
+    def test_a_call_leaves_a_breadcrumb_only_while_it_runs(self):
+        code = "# " + "x" * 2000 + f"\nimport json\njson.load(open({self.path!r}))"
+        result = BridgeServer.call_tool(self.runner, "run_python", {"code": code})
+        self.assertFalse(result["isError"], result)
+        seen = json.loads(result["content"][0]["text"])["result"]
+        self.assertIn("'tool': 'run_python'", seen)
+        self.assertIn("more characters", seen, "Long code is not cut short")
+        self.assertLess(len(seen), 1000)
+        self.assertFalse(os.path.exists(self.path), "The breadcrumb outlived its call")
+
+    def test_a_call_that_fails_clears_its_breadcrumb_too(self):
+        result = BridgeServer.call_tool(self.runner, "run_python", {"code": "1 / 0"})
+        self.assertTrue(result["isError"])
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_the_call_a_dead_session_was_running_is_reported_once(self):
+        self._leave(pid=-1)
+        server = BridgeServer.Server("127.0.0.1", 0)
+        server.start()
+        self.addCleanup(server.stop)
+        self.assertFalse(os.path.exists(self.path), "The old breadcrumb was not cleared")
+        hello = server.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+        self.assertIn("tool.Shape.common(parked.Shape)", hello["result"]["instructions"])
+
+        first = server.call_tool("list_documents", {})
+        self.assertFalse(first["isError"])
+        self.assertEqual(len(first["content"]), 2, first)
+        note = first["content"][1]["text"]
+        self.assertIn("run_python", note)
+        self.assertIn("2026-11-01 14:02:11", note)
+        self.assertIn("tool.Shape.common(parked.Shape)", note)
+        second = server.call_tool("list_documents", {})
+        self.assertEqual(len(second["content"]), 1, "The note came back twice")
+
+    def test_a_call_still_running_in_this_session_is_not_reported(self):
+        self._leave(pid=os.getpid())
+        self.assertIsNone(BridgeServer.check_previous_session())
+        self.assertTrue(os.path.exists(self.path))
 
 
 class TestBridgeServerErrors(unittest.TestCase):

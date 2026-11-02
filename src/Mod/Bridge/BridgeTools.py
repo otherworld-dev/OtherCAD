@@ -6,9 +6,12 @@ They take and return JSON-friendly values, so they can be called and tested with
 the HTTP server. A tool reports a problem the caller can act on by raising ToolError.
 """
 
+import ctypes
 import math
 import os
+import sys
 import tempfile
+import threading
 
 import FreeCAD
 
@@ -38,6 +41,115 @@ class ActionFailed(ToolError):
     def __init__(self, message, details):
         super().__init__(message)
         self.details = details
+
+
+class Cancelled(BaseException):
+    """Raised into the code run_python runs when its call is cancelled.
+
+    A BaseException, like KeyboardInterrupt, so the code's own `except Exception` does not
+    swallow it.
+    """
+
+
+# The thread running code that interrupt() may stop, while it runs it
+_interrupt_lock = threading.Lock()
+_interruptible = None
+
+
+def _raise_in(thread_id, exc):
+    """Have thread_id raise exc at its next Python instruction, or withdraw it (None)."""
+
+    ctypes.pythonapi.PyThreadState_SetAsyncExc(
+        ctypes.c_ulong(thread_id), ctypes.py_object(exc) if exc is not None else None
+    )
+
+
+def _close_interruptible():
+    global _interruptible
+    with _interrupt_lock:
+        if _interruptible is not None:
+            _raise_in(_interruptible, None)  # one asked for but not raised yet
+            _interruptible = None
+
+
+class interruptible:
+    """While the code inside runs, interrupt() from another thread raises Cancelled in it.
+
+    Python only: code inside a long C++ call is stopped once that call returns to Python.
+    """
+
+    def __enter__(self):
+        global _interruptible
+        with _interrupt_lock:
+            _interruptible = threading.get_ident()
+        return self
+
+    def __exit__(self, kind, value, tb):
+        cancelled = False
+        for _ in range(3):
+            try:
+                _close_interruptible()
+                break
+            except Cancelled:  # it came in just as the code finished
+                cancelled = True
+        if cancelled and kind is None:
+            raise Cancelled()
+        return False
+
+
+def interrupt():
+    """From another thread, raise Cancelled in the interruptible code running now.
+
+    Returns whether any was running.
+    """
+
+    with _interrupt_lock:
+        if _interruptible is None or _interruptible == threading.get_ident():
+            return False
+        _raise_in(_interruptible, Cancelled)
+        return True
+
+
+_break_held = 0  # how many unbreakable blocks are running
+
+
+def _part_break(on):
+    # Only once Part is loaded: importing it is not for an HTTP thread, and booleans
+    # cannot be running before it is
+    part = sys.modules.get("Part")
+    if part is not None and hasattr(part, "requestBreak"):
+        part.requestBreak(on)
+
+
+def request_break(on):
+    """Ask the boolean operations running now and later to stop (on), or withdraw that.
+
+    Python cannot interrupt a boolean, so this is how cancel stops one. Not while an
+    unbreakable block runs. Returns whether it was asked.
+    """
+
+    with _interrupt_lock:
+        if on and _break_held:
+            return False
+        _part_break(on)
+        return True
+
+
+class unbreakable:
+    """Booleans run in full inside, as the rebuild that undoes a cancelled call must."""
+
+    def __enter__(self):
+        global _break_held
+        with _interrupt_lock:
+            _break_held += 1
+            _part_break(False)
+        return self
+
+    def __exit__(self, *exc):
+        global _break_held
+        with _interrupt_lock:
+            _break_held -= 1
+        return False
 
 
 class Image:

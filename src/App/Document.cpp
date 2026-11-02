@@ -37,6 +37,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <format>
+#include <chrono>
 #include <optional>
 
 #include <boost/algorithm/string.hpp>
@@ -2937,11 +2938,39 @@ int Document::recompute(const std::vector<DocumentObject*>& objs,
         GetApplication().GetParameterGroupByPath("User parameter:BaseApp/Preferences/Document");
     bool canAbort = hGrp->GetBool("CanAbortRecompute", true);
 
+    // A recompute that runs for minutes looks stuck from outside (the Recomputing flag
+    // stays set and nested recomputes are skipped). Past this many seconds say so once,
+    // naming the object it has got to. 0 turns the warning off.
+    const double warnSeconds = hGrp->GetFloat("RecomputeWarnSeconds", 30.0);
+    const auto recomputeStart = std::chrono::steady_clock::now();
+    bool warnedLong = false;
+    auto warnIfLong = [&](const DocumentObject* obj, size_t index) {
+        if (warnedLong || warnSeconds <= 0.0) {
+            return;
+        }
+        const std::chrono::duration<double> elapsed =
+            std::chrono::steady_clock::now() - recomputeStart;
+        if (elapsed.count() < warnSeconds) {
+            return;
+        }
+        warnedLong = true;
+        const std::string msg = std::format(
+            "Document '{}' has been recomputing for {:.1f} s, now at {} ({} of {} objects)\n",
+            Label.getValue(),
+            elapsed.count(),
+            obj->getFullName(),
+            index + 1,
+            topoSortedObjects.size()
+        );
+        Base::Console().warning("%s", msg.c_str());
+    };
+
     tracker.checkpoint("pre-recompute & topo sort");
 
     try {
         std::set<DocumentObject*> filter;
         size_t idx = 0;
+        bool closing = false;
         // maximum two passes to allow some form of dependency inversion
         for (int passes = 0; passes < 2 && idx < topoSortedObjects.size(); ++passes) {
             std::unique_ptr<Base::SequencerLauncher> seq;
@@ -2951,6 +2980,13 @@ int Document::recompute(const std::vector<DocumentObject*>& objs,
             }
             FC_LOG("Recompute pass " << passes);
             for (; idx < topoSortedObjects.size(); ++idx) {
+                // A close asked for during the recompute waits for it to end, so
+                // don't rebuild the rest of a document that is about to close
+                if (GetApplication().isDocumentClosePending(getName())) {
+                    FC_LOG("Stop recomputing " << getName() << ": it is closing");
+                    closing = true;
+                    break;
+                }
                 auto obj = topoSortedObjects[idx];
                 if (!obj->isAttachedToDocument() || filter.find(obj) != filter.end()) {
                     continue;
@@ -2961,6 +2997,7 @@ int Document::recompute(const std::vector<DocumentObject*>& objs,
                     doRecompute = true;
                     ++objectCount;
                     int res = _recomputeFeature(obj);
+                    warnIfLong(obj, idx);
                     if (res != 0) {
                         if (hasError) {
                             *hasError = true;
@@ -2999,6 +3036,9 @@ int Document::recompute(const std::vector<DocumentObject*>& objs,
                 if (seq) {
                     seq->next(true);
                 }
+            }
+            if (closing) {
+                break;
             }
             // check if all objects are recomputed but still thouched
             for (size_t i = 0; i < topoSortedObjects.size(); ++i) {
@@ -3330,9 +3370,12 @@ bool Document::recomputeFeature(DocumentObject* feature, bool recursive)
     }
 
     if (recursive) {
+        // Inside a recompute of this document the nested one is skipped, so the
+        // feature was not recomputed: don't report that as a success
+        const bool alreadyRecomputing = testStatus(Document::Recomputing);
         bool hasError = false;
         recompute({feature}, true, &hasError);
-        return !hasError;
+        return !hasError && !alreadyRecomputing;
     }
     _recomputeFeature(feature);
     signalRecomputedObject(*feature);

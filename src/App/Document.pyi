@@ -402,6 +402,10 @@ class Document(PropertyContainer):
     ) -> int:
         """
         Recompute the document and returns the amount of recomputed features.
+
+        Returns -1 when the document is already recomputing (a recompute called
+        from inside another one): nothing was recomputed and the objects stay
+        touched.
         """
         ...
 

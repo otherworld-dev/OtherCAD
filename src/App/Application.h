@@ -399,6 +399,9 @@ public:
     // Adds a recompute request to the processing queue.
     void queueRecomputeRequest(RecomputeRequest req);
 
+    /// True while the close of a document waits for its recompute to finish
+    bool isDocumentClosePending(const char* name);
+
     // NOLINTBEGIN
     // clang-format off
     /**
@@ -1065,9 +1068,11 @@ private:
     void recomputeWorker();
     // Helper to notify the worker thread when new requests are available
     void notifyRecomputeWorker();
-    // Drop queued requests for a document and wait for any active recompute of
-    // that document to finish before closing it
-    void cancelRecomputeRequestsForDocument(const std::string& documentName);
+    // Drop queued requests for a document before it closes. Returns false when
+    // the close has to wait for a recompute of the document instead: with an
+    // event loop the close is then deferred, without one it is refused.
+    // Elsewhere, any active worker recompute of the document is waited for.
+    bool cancelRecomputeRequestsForDocument(const std::string& documentName, const Document* doc);
 
     bool _isRestoring{false};
     bool _allowPartial{false};
@@ -1091,6 +1096,14 @@ private:
 
     static Base::ConsoleObserverStd  *_pConsoleObserverStd;
     static Base::ConsoleObserverFile *_pConsoleObserverFile;
+
+    // Documents whose close was asked for while they were recomputing, guarded
+    // by _recomputeMutex. They close once the recompute has unwound. Kept last
+    // so the members above keep their offsets for modules not yet rebuilt.
+    std::set<std::string> _pendingCloseDocuments;
+    // Queue closePendingDocuments() on the main thread's event loop
+    void schedulePendingCloses();
+    void closePendingDocuments();
 };
 
 /**
