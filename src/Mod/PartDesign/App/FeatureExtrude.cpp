@@ -35,6 +35,7 @@
 #include <gp_Dir.hxx>
 #include <TopoDS.hxx>
 #include <gp_Ax2.hxx>
+#include <gp_Pln.hxx>
 #include <Precision.hxx>
 #include <TopExp_Explorer.hxx>
 #include <TopoDS_Compound.hxx>
@@ -476,6 +477,28 @@ App::DocumentObjectExecReturn* FeatureExtrude::buildExtrusion(ExtrudeOptions opt
     // get the normal vector of the sketch
     Base::Vector3d SketchVector = getProfileNormal();
 
+    // One direction serves every profile, so each must lie in a plane parallel to the first.
+    // Each is then extruded from its own plane, as Fusion does.
+    try {
+        const gp_Dir sketchDir(SketchVector.x, SketchVector.y, SketchVector.z);
+        for (const TopoShape& extra : getExtraProfileFaces()) {
+            gp_Pln plane;
+            if (!extra.findPlane(plane)
+                || !plane.Axis().Direction().IsParallel(sketchDir, Precision::Angular())) {
+                return new App::DocumentObjectExecReturn(QT_TRANSLATE_NOOP(
+                    "Exception",
+                    "Each extra profile must be flat and parallel to the first profile"
+                ));
+            }
+        }
+    }
+    catch (const Base::Exception& e) {
+        return new App::DocumentObjectExecReturn(e.what());
+    }
+    catch (const Standard_Failure& e) {
+        return new App::DocumentObjectExecReturn(e.GetMessageString());
+    }
+
     try {
         this->positionByPrevious();
         auto invObjLoc = getLocation().Inverted();
@@ -660,6 +683,19 @@ App::DocumentObjectExecReturn* FeatureExtrude::buildExtrusion(ExtrudeOptions opt
                 sketchNormalDir.Transform(invTrsf);  // Transform to global CS, like 'dir' was.
 
                 Base::Vector3d sketchCenter = startSketch.getBoundBox().GetCenter();
+                if (ExtraProfiles.getSize() > 0) {
+                    // Extra profiles may sit in other parallel planes; the first profile's
+                    // is the one to mirror across
+                    TopoShape first = getTopoShapeVerifiedFace(
+                        false,
+                        false,
+                        Profile.getValue(),
+                        Profile.getSubValues()
+                    );
+                    first.move(invObjLoc);
+                    sketchCenter
+                        = moveProfileToStart(first, dir, startOffset, false).getBoundBox().GetCenter();
+                }
                 gp_Ax2 mirrorPlane(
                     gp_Pnt(sketchCenter.x, sketchCenter.y, sketchCenter.z),
                     sketchNormalDir

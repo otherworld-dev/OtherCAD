@@ -41,6 +41,17 @@ namespace PartDesign
 /// Normalize an angle in radians to [0, 2 pi), snapping a near-full turn to zero.
 PartDesignExport double normalizeAngleRadians(double angle);
 
+/// A link list that stays out of the saved file while it is empty. It keeps the type of
+/// PropertyLinkSubList, so a file that does carry it reads back as one.
+class PartDesignExport PropertyOptionalLinkSubList: public App::PropertyLinkSubList
+{
+public:
+    void setPersistent(bool on)
+    {
+        StatusBits.set(PropNoPersist, !on);
+    }
+};
+
 class PartDesignExport ProfileBased: public PartDesign::FeatureAddSub
 {
     PROPERTY_HEADER_WITH_OVERRIDE(PartDesign::ProfileBased);
@@ -69,6 +80,17 @@ public:
     App::PropertyLinkSubList UpToShape2;
 
     App::PropertyBool AllowMultiFace;
+
+    /// Further profiles built along with Profile, from other sketches or planar faces, as
+    /// Fusion's Extrude and Revolve take several. Hidden and left out of the file while empty,
+    /// so a feature with one profile saves exactly as before.
+    PropertyOptionalLinkSubList ExtraProfiles;
+
+    /// Whether the feature builds ExtraProfiles as well as Profile
+    virtual bool supportsExtraProfiles() const
+    {
+        return false;
+    }
 
     short mustExecute() const override;
 
@@ -118,6 +140,9 @@ public:
      * @param allowOpen: Whether allow open wire
      * @param profile: optional profile object, if not given then use 'Profile' property
      * @param subs: optional profile sub-object names, if not given then use 'Profile' property
+     *
+     * Without a profile given, the faces of ExtraProfiles are added to the result when the
+     * feature supports them, so the result is a compound of every profile face.
      */
     TopoShape getTopoShapeVerifiedFace(
         bool silent = false,
@@ -125,6 +150,10 @@ public:
         const App::DocumentObject* profile = nullptr,
         const std::vector<std::string>& subs = {}
     ) const;
+
+    /// The faces of ExtraProfiles, one shape for each linked object, in global coordinates.
+    /// Empty when the feature does not support extra profiles.
+    std::vector<TopoShape> getExtraProfileFaces(bool silent = false) const;
 
     /// Returns the wires the sketch is composed of
     // TODO: Toponaming April 2024 Deprecated in favor of TopoShape method.  Remove when possible.
@@ -242,6 +271,14 @@ protected:
     void onBaseFeatureRerouted(App::DocumentObject* oldBase, App::DocumentObject* newBase) override;
 
 private:
+    TopoShape makeVerifiedFace(
+        bool silent,
+        bool allowOpen,
+        const App::DocumentObject* obj,
+        const std::vector<std::string>& subs,
+        bool multiFace
+    ) const;
+
     bool isParallelPlane(const TopoDS_Shape&, const TopoDS_Shape&) const;
     bool isEqualGeometry(const TopoDS_Shape&, const TopoDS_Shape&) const;
     bool isQuasiEqual(const TopoDS_Shape&, const TopoDS_Shape&) const;

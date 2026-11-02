@@ -1225,6 +1225,48 @@ void prepareProfileBased(
         else {
             // Always use the subs
             runProfileCmdWithSubs();
+
+            // Further selected sketches, regions or faces become extra profiles of the same
+            // feature, as Fusion's Extrude and Revolve take several
+            std::vector<Gui::SelectionObject> selection = cmd->getSelection().getSelectionEx();
+            if (ProfileFeature && ProfileFeature->supportsExtraProfiles() && selection.size() > 1) {
+                std::ostringstream ss;
+                std::vector<App::DocumentObject*> sketches;
+                for (std::size_t i = 1; i < selection.size(); ++i) {
+                    App::DocumentObject* extra = selection[i].getObject();
+                    if (!extra || extra == feature) {
+                        continue;
+                    }
+                    std::vector<std::string> extraSubs;
+                    if (extra->isDerivedFrom<Part::Part2DObject>()) {
+                        extraSubs = pickedRegions(selection[i].getSubNames());
+                        sketches.push_back(extra);
+                    }
+                    else {
+                        for (const std::string& sub : selection[i].getSubNames()) {
+                            if (sub.rfind("Face", 0) == 0) {
+                                extraSubs.push_back(sub);
+                            }
+                        }
+                        if (extraSubs.empty()) {
+                            continue;
+                        }
+                    }
+                    if (extraSubs.empty()) {
+                        // No region picked is the whole sketch
+                        extraSubs.emplace_back();
+                    }
+                    for (const std::string& sub : extraSubs) {
+                        ss << "(" << Gui::Command::getObjectCmd(extra) << ", '" << sub << "'),";
+                    }
+                }
+                if (!ss.str().empty()) {
+                    FCMD_OBJ_CMD(Feat, "ExtraProfiles = [" << ss.str() << "]");
+                    for (App::DocumentObject* sketch : sketches) {
+                        FCMD_OBJ_HIDE(sketch);
+                    }
+                }
+            }
         }
 
         func(static_cast<Part::Feature*>(feature), Feat);

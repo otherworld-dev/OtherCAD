@@ -65,6 +65,12 @@ public:
     /** @name methods override feature */
     //@{
     short mustExecute() const override;
+
+    /// Extra profiles are revolved about the same axis, under the rules Profile follows
+    bool supportsExtraProfiles() const override
+    {
+        return true;
+    }
     void onChanged(const App::Property* prop) override;
     //@}
 

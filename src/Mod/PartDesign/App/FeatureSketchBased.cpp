@@ -130,12 +130,23 @@ ProfileBased::ProfileBased()
         App::Prop_None,
         "Allow multiple faces in profile"
     );
+    ADD_PROPERTY_TYPE(
+        ExtraProfiles,
+        (nullptr),
+        "SketchBased",
+        App::Prop_None,
+        "Further profiles built along with Profile"
+    );
+    // Out of sight and out of the file until used (see onChanged)
+    ExtraProfiles.setStatus(App::Property::Hidden, true);
+    ExtraProfiles.setPersistent(false);
 }
 
 short ProfileBased::mustExecute() const
 {
     if (Profile.isTouched() || Midplane.isTouched() || Reversed.isTouched() || UpToFace.isTouched()
-        || UpToFace2.isTouched() || UpToShape.isTouched() || UpToShape2.isTouched()) {
+        || UpToFace2.isTouched() || UpToShape.isTouched() || UpToShape2.isTouched()
+        || ExtraProfiles.isTouched()) {
         return 1;
     }
     return PartDesign::FeatureAddSub::mustExecute();
@@ -227,20 +238,104 @@ TopoShape ProfileBased::getTopoShapeVerifiedFace(
     bool silent,
     bool allowOpen,
     const App::DocumentObject* profile,
-    const std::vector<std::string>& _subs
+    const std::vector<std::string>& subs
 ) const
 {
-    auto obj = profile ? profile : Profile.getValue();
+    if (profile) {
+        return makeVerifiedFace(silent, allowOpen, profile, subs, AllowMultiFace.getValue());
+    }
+
+    TopoShape shape = makeVerifiedFace(
+        silent,
+        allowOpen,
+        Profile.getValue(),
+        Profile.getSubValues(),
+        AllowMultiFace.getValue()
+    );
+    if (shape.isNull() || !supportsExtraProfiles() || ExtraProfiles.getSize() == 0) {
+        return shape;
+    }
+
+    std::vector<TopoShape> faces {shape};
+    for (const TopoShape& extra : getExtraProfileFaces(silent)) {
+        if (extra.isNull()) {
+            return {};
+        }
+        faces.push_back(extra);
+    }
+    // Profiles of different sketches may overlap. Fusing them merges an overlap into one
+    // face, as Fusion does, rather than building it twice.
+    TopoShape all(0, getDocument()->getStringHasher());
+    try {
+        all.makeElementFuse(faces);
+        all = all.makeElementRefine(nullptr, Part::RefineFail::shapeUntouched);
+    }
+    catch (const Standard_Failure&) {
+        all = TopoShape();
+    }
+    catch (const Base::Exception&) {
+        all = TopoShape();
+    }
+    if (all.isNull() || !all.hasSubShape(TopAbs_FACE)) {
+        all = TopoShape(0, getDocument()->getStringHasher());
+        all.makeElementCompound(faces);
+    }
+    return all;
+}
+
+std::vector<TopoShape> ProfileBased::getExtraProfileFaces(bool silent) const
+{
+    std::vector<TopoShape> faces;
+    if (!supportsExtraProfiles()) {
+        return faces;
+    }
+
+    // One face (or compound of faces) per linked object, its regions taken together the way
+    // Profile takes its own. No sub-element is the whole object.
+    std::vector<std::pair<App::DocumentObject*, std::vector<std::string>>> profiles;
+    const auto& objects = ExtraProfiles.getValues();
+    const auto& subNames = ExtraProfiles.getSubValues();
+    for (std::size_t i = 0; i < objects.size(); ++i) {
+        auto it = std::find_if(profiles.begin(), profiles.end(), [&](const auto& entry) {
+            return entry.first == objects[i];
+        });
+        if (it == profiles.end()) {
+            profiles.emplace_back(objects[i], std::vector<std::string>());
+            it = std::prev(profiles.end());
+        }
+        if (i < subNames.size() && !subNames[i].empty()) {
+            it->second.push_back(subNames[i]);
+        }
+    }
+
+    for (const auto& [object, subs] : profiles) {
+        // Regions are always taken as several faces, whatever an old file says for Profile
+        TopoShape face = makeVerifiedFace(silent, false, object, subs, true);
+        if (face.isNull()) {
+            return {TopoShape()};
+        }
+        faces.push_back(face);
+    }
+    return faces;
+}
+
+TopoShape ProfileBased::makeVerifiedFace(
+    bool silent,
+    bool allowOpen,
+    const App::DocumentObject* obj,
+    const std::vector<std::string>& subs,
+    bool multiFace
+) const
+{
     if (!obj || !obj->getNameInDocument()) {
         if (silent) {
             return TopoShape();
         }
         throw Base::ValueError("No profile linked");
     }
-    const auto& subs = profile ? _subs : Profile.getSubValues();
     try {
         TopoShape shape;
-        if (AllowMultiFace.getValue()) {
+        if (multiFace) {
             if (subs.empty()) {
                 shape = Part::Feature::getTopoShape(
                     obj,
@@ -330,7 +425,7 @@ TopoShape ProfileBased::getTopoShapeVerifiedFace(
                         }
                     }
                     if (!shape.isNull()) {
-                        if (AllowMultiFace.getValue()) {
+                        if (multiFace) {
                             shape = shape.makeElementFace();  // default to use FaceMakerBullseye
                         }
                         else {
@@ -369,7 +464,7 @@ TopoShape ProfileBased::getTopoShapeVerifiedFace(
             }
         }
         if (count > 1) {
-            if (AllowMultiFace.getValue() || obj->isDerivedFrom<Part::Part2DObject>()) {
+            if (multiFace || obj->isDerivedFrom<Part::Part2DObject>()) {
                 return shape;
             }
             FC_WARN("Found more than one face from profile");
@@ -744,6 +839,11 @@ void ProfileBased::onChanged(const App::Property* prop)
     if (prop == &Profile) {
         // if attached to a sketch then mark it as read-only
         this->Placement.setStatus(App::Property::ReadOnly, Profile.getValue() != nullptr);
+    }
+    else if (prop == &ExtraProfiles) {
+        const bool empty = ExtraProfiles.getSize() == 0;
+        ExtraProfiles.setStatus(App::Property::Hidden, empty);
+        ExtraProfiles.setPersistent(!empty);
     }
 
     FeatureAddSub::onChanged(prop);
@@ -1551,7 +1651,8 @@ Base::Vector3d ProfileBased::getProfileNormal() const
         return SketchVector;
     }
 
-    TopoShape shape = getTopoShapeVerifiedFace(true, true);
+    // The first profile sets the normal; extra profiles are checked against it
+    TopoShape shape = getTopoShapeVerifiedFace(true, true, obj, Profile.getSubValues());
     if (shape.isNull()) {
         return SketchVector;
     }

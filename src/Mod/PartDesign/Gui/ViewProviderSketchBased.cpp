@@ -22,6 +22,8 @@
  *                                                                         *
  ***************************************************************************/
 
+#include <algorithm>
+
 #include <Inventor/nodes/SoAnnotation.h>
 
 #include <App/Document.h>
@@ -77,9 +79,18 @@ ViewProviderSketchBased::~ViewProviderSketchBased() = default;
 std::vector<App::DocumentObject*> ViewProviderSketchBased::claimChildren() const
 {
     std::vector<App::DocumentObject*> temp;
-    App::DocumentObject* sketch = getObject<PartDesign::ProfileBased>()->Profile.getValue();
+    auto* profileBased = getObject<PartDesign::ProfileBased>();
+    App::DocumentObject* sketch = profileBased->Profile.getValue();
     if (sketch && !sketch->isDerivedFrom<PartDesign::Feature>()) {
         temp.push_back(sketch);
+    }
+
+    // The sketches of extra profiles are taken in the same way as the first one's
+    for (App::DocumentObject* extra : profileBased->ExtraProfiles.getValues()) {
+        if (extra && !extra->isDerivedFrom<PartDesign::Feature>()
+            && std::find(temp.begin(), temp.end(), extra) == temp.end()) {
+            temp.push_back(extra);
+        }
     }
 
     return temp;
@@ -122,7 +133,7 @@ void ViewProviderSketchBased::updateData(const App::Property* prop)
         return;
     }
 
-    if (prop == &profileBased->Profile) {
+    if (prop == &profileBased->Profile || prop == &profileBased->ExtraProfiles) {
         updateProfileShape();
     }
 }

@@ -301,6 +301,27 @@ App::DocumentObjectExecReturn* Revolved::tryExecuteRevolved()
 
     gp_Dir dir = Base::convertTo<gp_Dir>(v);
     gp_Pnt pnt = Base::convertTo<gp_Pnt>(Base.getValue());
+
+    // Extra profiles follow the rule Profile does: flat, and the axis not along the normal
+    try {
+        for (const TopoShape& extra : getExtraProfileFaces()) {
+            gp_Pln plane;
+            if (!extra.findPlane(plane)
+                || plane.Axis().Direction().IsParallel(dir, Precision::Angular())) {
+                return new App::DocumentObjectExecReturn(QT_TRANSLATE_NOOP(
+                    "Exception",
+                    "Each extra profile must be flat and must not face along the revolve axis"
+                ));
+            }
+        }
+    }
+    catch (const Base::Exception& e) {
+        return new App::DocumentObjectExecReturn(e.what());
+    }
+    catch (const Standard_Failure& e) {
+        return new App::DocumentObjectExecReturn(e.GetMessageString());
+    }
+
     positionByPrevious();
     auto invObjLoc = getLocation().Inverted();
     pnt.Transform(invObjLoc.Transformation());

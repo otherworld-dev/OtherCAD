@@ -21,6 +21,7 @@
 # *                                                                         *
 # ***************************************************************************
 
+import math
 import unittest
 
 import FreeCAD
@@ -129,6 +130,77 @@ class TestRevolve(unittest.TestCase):
         )
         for actual, expected in zip(reference_values, direct_values):
             self.assertAlmostEqual(actual, expected)
+
+    # -- several profiles in one feature (#752) ---------------------------
+
+    def _squareSketch(self, body, name, plane, x, y, size):
+        support = [f for f in body.Origin.OriginFeatures if f.Role == plane][0]
+        sketch = body.newObject("Sketcher::SketchObject", name)
+        sketch.AttachmentSupport = (support, [""])
+        sketch.MapMode = "FlatFace"
+        corners = [
+            FreeCAD.Vector(x, y, 0),
+            FreeCAD.Vector(x + size, y, 0),
+            FreeCAD.Vector(x + size, y + size, 0),
+            FreeCAD.Vector(x, y + size, 0),
+        ]
+        for start, end in zip(corners, corners[1:] + corners[:1]):
+            sketch.addGeometry(Part.LineSegment(start, end), False)
+        return sketch
+
+    def _zAxis(self, body):
+        return [f for f in body.Origin.OriginFeatures if f.Role == "Z_Axis"][0]
+
+    def testRevolutionWithExtraProfiles(self):
+        """Profiles on two planes through the axis are revolved about it together."""
+        body = self.Doc.addObject("PartDesign::Body", "Body")
+        first = self._squareSketch(body, "First", "XZ_Plane", 10, 0, 10)
+        second = self._squareSketch(body, "Second", "YZ_Plane", 30, 0, 10)
+        self.Doc.recompute()
+        revolution = body.newObject("PartDesign::Revolution", "Revolution")
+        revolution.Profile = first
+        revolution.ExtraProfiles = [(second, "")]
+        revolution.ReferenceAxis = (self._zAxis(body), [""])
+        revolution.Angle = 360
+        self.Doc.recompute()
+
+        self.assertTrue(revolution.isValid(), revolution.getStatusString())
+        expected = math.pi * ((20**2 - 10**2) + (40**2 - 30**2)) * 10
+        self.assertAlmostEqual(revolution.Shape.Volume, expected, places=4)
+
+    def testGrooveWithExtraProfiles(self):
+        body = self.Doc.addObject("PartDesign::Body", "Body")
+        cylinder = body.newObject("PartDesign::AdditiveCylinder", "Cylinder")
+        cylinder.Radius = 50
+        cylinder.Height = 20
+        first = self._squareSketch(body, "First", "XZ_Plane", 40, 5, 5)
+        second = self._squareSketch(body, "Second", "YZ_Plane", 20, 5, 5)
+        self.Doc.recompute()
+        groove = body.newObject("PartDesign::Groove", "Groove")
+        groove.Profile = first
+        groove.ExtraProfiles = [(second, "")]
+        groove.ReferenceAxis = (self._zAxis(body), [""])
+        groove.Angle = 360
+        self.Doc.recompute()
+
+        self.assertTrue(groove.isValid(), groove.getStatusString())
+        removed = math.pi * ((45**2 - 40**2) + (25**2 - 20**2)) * 5
+        self.assertAlmostEqual(groove.Shape.Volume, math.pi * 50**2 * 20 - removed, places=4)
+
+    def testRevolveRefusesAnExtraProfileFacingAlongTheAxis(self):
+        body = self.Doc.addObject("PartDesign::Body", "Body")
+        first = self._squareSketch(body, "First", "XZ_Plane", 10, 0, 10)
+        second = self._squareSketch(body, "Second", "XY_Plane", 30, 0, 10)
+        self.Doc.recompute()
+        revolution = body.newObject("PartDesign::Revolution", "Revolution")
+        revolution.Profile = first
+        revolution.ExtraProfiles = [(second, "")]
+        revolution.ReferenceAxis = (self._zAxis(body), [""])
+        revolution.Angle = 360
+        self.Doc.recompute()
+
+        self.assertFalse(revolution.isValid())
+        self.assertIn("revolve axis", revolution.getStatusString())
 
     def tearDown(self):
         # closing doc

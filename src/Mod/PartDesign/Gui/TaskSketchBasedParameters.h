@@ -92,9 +92,22 @@ Q_SIGNALS:
     /// Picking has been switched off, so whoever owns the hint row can have it back.
     void pickingFinished();
 
+public:
+    /// Hides the sketches among the feature's extra profiles, as the feature hides Profile
+    static void hideExtraProfileSketches(PartDesign::ProfileBased* feature);
+
 private:
     void onSelectionChanged(const Gui::SelectionChanges& msg) override;
     void toggleRegion(const std::string& subName);
+    /// Adds a region, a whole sketch (empty sub) or a face to the extra profiles, or takes
+    /// it out again if it is there already
+    void toggleExtraProfile(App::DocumentObject* object, const std::string& subName);
+    /// The picked object and element as an extra profile, or a null object if it is not one
+    std::pair<App::DocumentObject*, std::string> extraProfileFor(
+        App::DocumentObject* object,
+        const std::string& element
+    ) const;
+    void showOtherSketches(bool show);
     PartDesign::ProfileBased* getFeature() const;
     Gui::ViewProvider* getProfileViewProvider() const;
 
@@ -103,6 +116,8 @@ private:
     QToolButton* pickButton;
     bool provisional {false};
     bool profileWasVisible {false};
+    /// The body's other sketches shown to pick from, hidden again when picking stops
+    std::vector<App::DocumentObjectT> shownSketches;
 };
 
 /// Convenience class to collect common methods for all SketchBased features

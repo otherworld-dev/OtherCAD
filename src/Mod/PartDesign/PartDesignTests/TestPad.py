@@ -357,7 +357,204 @@ class TestPad(unittest.TestCase):
         self.Doc.recompute()
         self.assertAlmostEqual(self.Pad.Shape.Volume, 1.5)
 
+    # -- several profiles in one feature (#752) ---------------------------
+
+    def _squaresSketch(self, body, name, squares, z=0.0, size=10.0):
+        """A sketch on the XY plane, lifted by z, with a square at each (x, y)."""
+        xy = [f for f in body.Origin.OriginFeatures if f.Role == "XY_Plane"][0]
+        sketch = body.newObject("Sketcher::SketchObject", name)
+        sketch.AttachmentSupport = (xy, [""])
+        sketch.MapMode = "FlatFace"
+        sketch.AttachmentOffset = FreeCAD.Placement(Base.Vector(0, 0, z), FreeCAD.Rotation())
+        sketch.MakeInternals = True
+        for x, y in squares:
+            corners = [
+                Base.Vector(x, y, 0),
+                Base.Vector(x + size, y, 0),
+                Base.Vector(x + size, y + size, 0),
+                Base.Vector(x, y + size, 0),
+            ]
+            for start, end in zip(corners, corners[1:] + corners[:1]):
+                sketch.addGeometry(Part.LineSegment(start, end), False)
+        return sketch
+
+    def testExtraProfilesFromAnotherSketch(self):
+        body = self.Doc.addObject("PartDesign::Body", "Body")
+        first = self._squaresSketch(body, "First", [(0, 0)])
+        second = self._squaresSketch(body, "Second", [(20, 0)], z=5)
+        self.Doc.recompute()
+        pad = body.newObject("PartDesign::Pad", "Pad")
+        pad.Profile = first
+        pad.ExtraProfiles = [(second, "")]
+        pad.Length = 10
+        self.Doc.recompute()
+
+        self.assertTrue(pad.isValid(), pad.getStatusString())
+        self.assertAlmostEqual(pad.Shape.Volume, 2000.0, places=6)
+        # Each profile is extruded from its own plane
+        self.assertAlmostEqual(pad.Shape.BoundBox.ZMax, 15.0, places=6)
+        self.assertIn(second, pad.OutList)
+        self.assertIn(pad, second.InList)
+
+    def testSymmetricUpToFaceMirrorsAcrossTheFirstProfile(self):
+        body = self.Doc.addObject("PartDesign::Body", "Body")
+        first = self._squaresSketch(body, "First", [(0, 0)])
+        second = self._squaresSketch(body, "Second", [(20, 0)], z=5)
+        plane = body.newObject("PartDesign::Plane", "Limit")
+        plane.AttachmentSupport = (first.AttachmentSupport[0][0], [""])
+        plane.MapMode = "FlatFace"
+        plane.AttachmentOffset = FreeCAD.Placement(Base.Vector(0, 0, 20), FreeCAD.Rotation())
+        self.Doc.recompute()
+        pad = body.newObject("PartDesign::Pad", "Pad")
+        pad.Profile = first
+        pad.ExtraProfiles = [(second, "")]
+        pad.Type = "UpToFace"
+        pad.UpToFace = (plane, [""])
+        pad.SideType = "Symmetric"
+        self.Doc.recompute()
+
+        self.assertTrue(pad.isValid(), pad.getStatusString())
+        # Mirrored across the first profile's plane, z = 0, not the middle of both
+        self.assertAlmostEqual(pad.Shape.BoundBox.ZMax, 20.0, places=6)
+        self.assertAlmostEqual(pad.Shape.BoundBox.ZMin, -20.0, places=6)
+
+    def testExtraProfilesTakeRegionsOfAnotherSketch(self):
+        body = self.Doc.addObject("PartDesign::Body", "Body")
+        first = self._squaresSketch(body, "First", [(0, 0), (20, 0)])
+        second = self._squaresSketch(body, "Second", [(0, 20), (20, 20)])
+        self.Doc.recompute()
+        pad = body.newObject("PartDesign::Pad", "Pad")
+        pad.Profile = (first, ["InternalFace1"])
+        pad.ExtraProfiles = [(second, "InternalFace1"), (second, "InternalFace2")]
+        pad.Length = 5
+        self.Doc.recompute()
+
+        self.assertTrue(pad.isValid(), pad.getStatusString())
+        self.assertAlmostEqual(pad.Shape.Volume, 3 * 500.0, places=6)
+
+    def testOverlappingProfilesOfTwoSketchesMerge(self):
+        body = self.Doc.addObject("PartDesign::Body", "Body")
+        first = self._squaresSketch(body, "First", [(0, 0)])
+        second = self._squaresSketch(body, "Second", [(5, 0)])
+        self.Doc.recompute()
+        pad = body.newObject("PartDesign::Pad", "Pad")
+        pad.Profile = first
+        pad.ExtraProfiles = [(second, "")]
+        pad.Length = 10
+        self.Doc.recompute()
+
+        self.assertTrue(pad.isValid(), pad.getStatusString())
+        self.assertAlmostEqual(pad.Shape.Volume, 1500.0, places=6)
+        self.assertEqual(len(pad.Shape.Solids), 1)
+
+    def testExtraProfileFromAFaceOfTheSolid(self):
+        body = self.Doc.addObject("PartDesign::Body", "Body")
+        box = body.newObject("PartDesign::AdditiveBox", "Box")
+        box.Length = box.Width = box.Height = 10
+        sketch = self._squaresSketch(body, "Sketch", [(20, 0)])
+        self.Doc.recompute()
+        top = [
+            f"Face{i + 1}"
+            for i, face in enumerate(box.Shape.Faces)
+            if abs(face.CenterOfMass.z - 10) < 1e-7
+        ][0]
+        pad = body.newObject("PartDesign::Pad", "Pad")
+        pad.Profile = sketch
+        pad.ExtraProfiles = [(box, top)]
+        pad.Length = 5
+        self.Doc.recompute()
+
+        self.assertTrue(pad.isValid(), pad.getStatusString())
+        self.assertAlmostEqual(pad.Shape.Volume, 1000.0 + 500.0 + 500.0, places=6)
+        self.assertAlmostEqual(pad.Shape.BoundBox.ZMax, 15.0, places=6)
+
+    def testPocketWithExtraProfiles(self):
+        body = self.Doc.addObject("PartDesign::Body", "Body")
+        box = body.newObject("PartDesign::AdditiveBox", "Box")
+        box.Length = 40
+        box.Width = 40
+        box.Height = 10
+        first = self._squaresSketch(body, "First", [(5, 5)], z=10, size=5)
+        second = self._squaresSketch(body, "Second", [(25, 25)], z=10, size=5)
+        self.Doc.recompute()
+        pocket = body.newObject("PartDesign::Pocket", "Pocket")
+        pocket.Profile = first
+        pocket.ExtraProfiles = [(second, "")]
+        pocket.Length = 4
+        self.Doc.recompute()
+
+        self.assertTrue(pocket.isValid(), pocket.getStatusString())
+        self.assertAlmostEqual(pocket.Shape.Volume, 16000.0 - 2 * 100.0, places=6)
+
+    def testExtraProfileOutOfPlaneIsRefused(self):
+        body = self.Doc.addObject("PartDesign::Body", "Body")
+        first = self._squaresSketch(body, "First", [(0, 0)])
+        xz = [f for f in body.Origin.OriginFeatures if f.Role == "XZ_Plane"][0]
+        second = body.newObject("Sketcher::SketchObject", "Second")
+        second.AttachmentSupport = (xz, [""])
+        second.MapMode = "FlatFace"
+        corners = [Base.Vector(20, 0, 0), Base.Vector(30, 0, 0), Base.Vector(30, 10, 0)]
+        for start, end in zip(corners, corners[1:] + corners[:1]):
+            second.addGeometry(Part.LineSegment(start, end), False)
+        self.Doc.recompute()
+        pad = body.newObject("PartDesign::Pad", "Pad")
+        pad.Profile = first
+        pad.ExtraProfiles = [(second, "")]
+        self.Doc.recompute()
+
+        self.assertFalse(pad.isValid())
+        self.assertIn("parallel", pad.getStatusString())
+
+    def testOneProfileSavesAsBefore(self):
+        """ExtraProfiles stays out of the file until it is used, then reads back."""
+        import os
+        import tempfile
+        import zipfile
+
+        body = self.Doc.addObject("PartDesign::Body", "Body")
+        first = self._squaresSketch(body, "First", [(0, 0)])
+        second = self._squaresSketch(body, "Second", [(20, 0)])
+        self.Doc.recompute()
+        pad = body.newObject("PartDesign::Pad", "Pad")
+        pad.Profile = first
+        pad.Length = 10
+        self.Doc.recompute()
+        self.assertIn("Hidden", pad.getPropertyStatus("ExtraProfiles"))
+
+        def documentXml(path):
+            with zipfile.ZipFile(path) as archive:
+                return archive.read("Document.xml").decode("utf-8")
+
+        path = os.path.join(tempfile.mkdtemp(), "MultiProfile.FCStd")
+        self.Doc.saveAs(path)
+        self.assertNotIn('name="ExtraProfiles"', documentXml(path))
+
+        pad.ExtraProfiles = [(second, "")]
+        self.Doc.recompute()
+        self.assertNotIn("Hidden", pad.getPropertyStatus("ExtraProfiles"))
+        self.Doc.save()
+        self.assertIn('name="ExtraProfiles"', documentXml(path))
+
+        # Emptied again, it leaves the file again
+        pad.ExtraProfiles = []
+        self.Doc.recompute()
+        self.Doc.save()
+        self.assertNotIn('name="ExtraProfiles"', documentXml(path))
+
+        pad.ExtraProfiles = [(second, "")]
+        self.Doc.recompute()
+        volume = pad.Shape.Volume
+        self.Doc.save()
+        name = self.Doc.Name
+        FreeCAD.closeDocument(name)
+        self.Doc = FreeCAD.openDocument(path)
+        pad = self.Doc.getObject("Pad")
+        self.assertEqual([link[0].Name for link in pad.ExtraProfiles], ["Second"])
+        self.Doc.recompute()
+        self.assertAlmostEqual(pad.Shape.Volume, volume, places=6)
+        self.assertAlmostEqual(volume, 2000.0, places=6)
+
     def tearDown(self):
-        # closing doc
-        FreeCAD.closeDocument("PartDesignTestPad")
+        # closing doc (by its own name: the save test reopens it from the file)
+        FreeCAD.closeDocument(self.Doc.Name)
         # print ("omit closing document for debugging")

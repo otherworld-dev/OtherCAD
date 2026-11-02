@@ -87,6 +87,14 @@ done in this fork.
   Pad was lost and Edge1, in the same place, is used instead.", and right-clicking it
   offers Edit to Reselect. The warning goes once the feature has been edited, or the
   change that caused it is undone.
+- One Extrude or Revolve can be built from several profiles at once, as in Fusion:
+  regions of different sketches, whole sketches and flat faces of the solid. While the
+  panel's Select is on, the body's sketches are shown, and clicking a region, a sketch's
+  curve or a flat face adds it; clicking it again takes it out. Selecting several before
+  starting the command does the same. Extrude takes each profile from its own plane, so
+  the extra ones must lie in planes parallel to the first. Revolve turns them all about
+  the same axis. Profiles that overlap are merged. A feature with one profile is saved
+  exactly as before.
 
 ### Changed
 
