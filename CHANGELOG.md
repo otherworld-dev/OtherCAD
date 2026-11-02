@@ -57,6 +57,10 @@ done in this fork.
     the model is recomputing, now waits for it to finish rather than running in the middle
     of it. A call that can't start within 20 s is turned away with nothing changed, and one
     that runs past 50 s is reported as still running so the client knows not to repeat it.
+  - While a call runs, its name and arguments are kept in `BridgeLastCall.json` in the
+    user config folder. If OtherCAD dies in the middle of a call, the next session warns
+    about that call in the report view and tells the client which call it was, so it is
+    not simply run again.
   - The ReadOnly and AllowPython preferences limit what clients may do.
 - Features can be suppressed from the timeline's right-click menu. A suppressed feature
   is drawn greyed out and struck through, and its tooltip says so.

@@ -10,6 +10,7 @@ import base64
 import collections
 import http.server
 import json
+import os
 import sys
 import threading
 import time
@@ -30,6 +31,11 @@ APPROVAL_TIMEOUT = 15 * 60.0
 ASK_FIRST = {"run_python"}
 START_TIMEOUT = 20.0
 MAX_BODY = 4 * 1024 * 1024
+# Written before each call and removed after it, in the user config folder, so a session
+# that dies in the middle of a call leaves behind which call it was
+BREADCRUMB = "BridgeLastCall.json"
+# How much of each argument the breadcrumb keeps
+BREADCRUMB_ARGUMENT = 300
 
 INSTRUCTIONS = (
     "You are connected to a running OtherCAD session (a FreeCAD fork with a Fusion-style "
@@ -152,6 +158,85 @@ class MainThreadRunner(QtCore.QObject):
         return job.result
 
 
+_breadcrumb_dir = None  # the user config folder, unless a test points it elsewhere
+_checked_previous = False
+_previous_call = None  # the note on a call a dead session was running, until passed on
+
+
+def _breadcrumb_path():
+    return os.path.join(_breadcrumb_dir or FreeCAD.getUserConfigDir(), BREADCRUMB)
+
+
+def _clip_argument(value):
+    text = value if isinstance(value, str) else json.dumps(value, default=str)
+    if len(text) > BREADCRUMB_ARGUMENT:
+        more = len(text) - BREADCRUMB_ARGUMENT
+        text = f"{text[:BREADCRUMB_ARGUMENT]}... ({more} more characters)"
+    return text
+
+
+def _leave_breadcrumb(name, arguments):
+    crumb = {
+        "tool": name,
+        "arguments": {key: _clip_argument(value) for key, value in arguments.items()},
+        "started": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "pid": os.getpid(),
+    }
+    try:
+        with open(_breadcrumb_path(), "w", encoding="utf-8") as f:
+            json.dump(crumb, f, indent=1)
+    except OSError:
+        pass
+
+
+def _clear_breadcrumb():
+    try:
+        os.remove(_breadcrumb_path())
+    except OSError:
+        pass
+
+
+def check_previous_session():
+    """The note on the call a session that died mid-call was running, or None.
+
+    Reads the breadcrumb that session left once per session, warns about it and removes
+    it. The note is kept until the next tool call passes it on to its client.
+    """
+
+    global _checked_previous, _previous_call
+    if _checked_previous:
+        return _previous_call
+    _checked_previous = True
+    try:
+        with open(_breadcrumb_path(), encoding="utf-8") as f:
+            crumb = json.load(f)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError):
+        crumb = {}
+    if not isinstance(crumb, dict):
+        crumb = {}
+    if crumb.get("pid") == os.getpid():
+        return None  # a call of this session's, still running
+    _clear_breadcrumb()
+    tool = crumb.get("tool", "an unknown tool")
+    started = crumb.get("started", "an unknown time")
+    arguments = json.dumps(crumb.get("arguments", {}), indent=1)
+    _previous_call = (
+        f"The last OtherCAD session ended in the middle of a bridge call: {tool}, started "
+        f"{started}. That call probably took it down, so do not run it again as it was. "
+        f"Its arguments were:\n{arguments}"
+    )
+    FreeCAD.Console.PrintWarning(f"Bridge: {_previous_call}\n")
+    return _previous_call
+
+
+def _take_previous_call():
+    global _previous_call
+    note, _previous_call = check_previous_session(), None
+    return note
+
+
 def _rpc_error(msg_id, code, message):
     return {"jsonrpc": "2.0", "id": msg_id, "error": {"code": code, "message": message}}
 
@@ -198,8 +283,26 @@ def call_tool(runner, name, arguments, approve=None):
             return _tool_error(f"Not run: {error}")
         if not allowed:
             return _tool_error("The user chose not to run this, so nothing was changed.")
+    result = _call_tool(runner, name, arguments)
+    note = _take_previous_call()
+    if note:
+        result["content"].append({"type": "text", "text": note})
+    return result
+
+
+def _run_tool(name, arguments):
+    """Run a tool on the main thread, with a breadcrumb left while it runs."""
+
+    _leave_breadcrumb(name, arguments)
     try:
-        return _tool_result(runner.call(lambda: BridgeTools.call(name, arguments)))
+        return BridgeTools.call(name, arguments)
+    finally:
+        _clear_breadcrumb()
+
+
+def _call_tool(runner, name, arguments):
+    try:
+        return _tool_result(runner.call(lambda: _run_tool(name, arguments)))
     except BridgeTools.ActionFailed as error:
         return _tool_error(f"{error}\n{json.dumps(error.details, indent=1)}")
     except (BridgeTools.ToolError, Busy, TimeoutError) as error:
@@ -240,6 +343,7 @@ class Server:
         self.httpd = _HTTPServer((host, port), self._handler_class())
         self.port = self.httpd.server_address[1]
         self.thread = None
+        check_previous_session()
 
     @property
     def url(self):
@@ -284,7 +388,9 @@ class Server:
                     ),
                     "capabilities": {"tools": {"listChanged": False}},
                     "serverInfo": {"name": "othercad", "version": _app_version()},
-                    "instructions": INSTRUCTIONS,
+                    "instructions": "\n\n".join(
+                        filter(None, (INSTRUCTIONS, check_previous_session()))
+                    ),
                 },
             }
         if method == "ping":

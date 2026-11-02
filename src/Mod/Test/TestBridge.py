@@ -939,6 +939,83 @@ class TestBridgeServer(BridgeCase):
         self.assertEqual(status, 403)
 
 
+class TestBridgeBreadcrumb(BridgeCase):
+    """A session that dies in the middle of a call leaves a note of that call behind.
+
+    A clash check's boolean once took OtherCAD down with no trace of what had been
+    running. Each call now writes its name and arguments to a file in the user config
+    folder and removes it when it is done, and the next session reports a file still there.
+    """
+
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.path = os.path.join(folder.name, BridgeServer.BREADCRUMB)
+        for name, value in (
+            ("_breadcrumb_dir", folder.name),
+            ("_checked_previous", False),
+            ("_previous_call", None),
+        ):
+            patcher = unittest.mock.patch.object(BridgeServer, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.runner = BridgeServer.MainThreadRunner()
+        self.addCleanup(self.runner.deleteLater)
+        # Last, so a setUp that fails here leaves no document open
+        super().setUp()
+
+    def _leave(self, pid):
+        with open(self.path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "tool": "run_python",
+                    "arguments": {"code": "tool.Shape.common(parked.Shape)"},
+                    "started": "2026-11-01 14:02:11",
+                    "pid": pid,
+                },
+                f,
+            )
+
+    def test_a_call_leaves_a_breadcrumb_only_while_it_runs(self):
+        code = "# " + "x" * 2000 + f"\nimport json\njson.load(open({self.path!r}))"
+        result = BridgeServer.call_tool(self.runner, "run_python", {"code": code})
+        self.assertFalse(result["isError"], result)
+        seen = json.loads(result["content"][0]["text"])["result"]
+        self.assertIn("'tool': 'run_python'", seen)
+        self.assertIn("more characters", seen, "Long code is not cut short")
+        self.assertLess(len(seen), 1000)
+        self.assertFalse(os.path.exists(self.path), "The breadcrumb outlived its call")
+
+    def test_a_call_that_fails_clears_its_breadcrumb_too(self):
+        result = BridgeServer.call_tool(self.runner, "run_python", {"code": "1 / 0"})
+        self.assertTrue(result["isError"])
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_the_call_a_dead_session_was_running_is_reported_once(self):
+        self._leave(pid=-1)
+        server = BridgeServer.Server("127.0.0.1", 0)
+        server.start()
+        self.addCleanup(server.stop)
+        self.assertFalse(os.path.exists(self.path), "The old breadcrumb was not cleared")
+        hello = server.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+        self.assertIn("tool.Shape.common(parked.Shape)", hello["result"]["instructions"])
+
+        first = server.call_tool("list_documents", {})
+        self.assertFalse(first["isError"])
+        self.assertEqual(len(first["content"]), 2, first)
+        note = first["content"][1]["text"]
+        self.assertIn("run_python", note)
+        self.assertIn("2026-11-01 14:02:11", note)
+        self.assertIn("tool.Shape.common(parked.Shape)", note)
+        second = server.call_tool("list_documents", {})
+        self.assertEqual(len(second["content"]), 1, "The note came back twice")
+
+    def test_a_call_still_running_in_this_session_is_not_reported(self):
+        self._leave(pid=os.getpid())
+        self.assertIsNone(BridgeServer.check_previous_session())
+        self.assertTrue(os.path.exists(self.path))
+
+
 class TestBridgeServerErrors(unittest.TestCase):
     """What the HTTP server prints when a request goes wrong."""
 
