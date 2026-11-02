@@ -26,6 +26,7 @@
 #include <functional>
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -38,6 +39,7 @@
 #include <QMetaObject>
 #include <QObject>
 #include <QPointer>
+#include <QString>
 
 #include <Base/Placement.h>
 #include <Gui/DocumentObserver.h>
@@ -102,7 +104,7 @@ public:
     using CountExpressionGetter = std::function<bool()>;
     /// Gives the gizmo a box beside it for a number of copies, read and written through these;
     /// the box takes no count outside minimum..maximum. hasExpression, when given, is asked
-    /// whether the count box hides for a formula, the same way the value box does for its own
+    /// whether the count box hides for a formula: unlike the value box, it takes numbers only
     void setCountBinding(
         CountGetter getter,
         CountSetter setter,
@@ -123,11 +125,20 @@ public:
     virtual void updateCountLabel()
     {}
 
-    /// Whether the gizmo is drawn: set visible and not driven by a formula
+    /// Whether the gizmo is drawn. One whose field has a formula is drawn too, with the
+    /// formula in its box.
     bool isShownInView();
     void setContainer(GizmoContainer* container);
 
 protected:
+    /// Puts the field's value, or its formula when it has one, in the value label
+    void showValueInLabel();
+    /// Binds the field to a formula typed in the value label, or sets a number typed over
+    /// one; returns why the text cannot be used
+    QString commitTypedText(const QString& text, std::optional<double> number);
+    /// Drops the field's formula as a drag begins, so the dragged value replaces it
+    void releaseExpression();
+
     /// Shows or hides the gizmo's own guide line or arc, which the value label replaces
     virtual void showGuideGeometry([[maybe_unused]] bool show)
     {}
@@ -143,6 +154,8 @@ protected:
     GizmoValueLabel* valueLabel = nullptr;
     GizmoContainer* container = nullptr;
     QMetaObject::Connection valueLabelConnection;
+    QMetaObject::Connection expressionConnection;
+    QMetaObject::Connection labelFocusConnection;
 
     CountGetter countGetter;
     CountSetter countSetter;

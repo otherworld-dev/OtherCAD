@@ -76,6 +76,11 @@ done in this fork.
   added. Named sketch dimensions, feature sizes such as an extrude's distance, and
   values that formulas link can be edited there too. Each edit is one undo step and
   recomputes the model.
+- The value boxes on feature gizmos take formulas, such as `Width * 2`: Enter, Tab or
+  clicking away binds the value to it, and a formula that cannot be used is turned
+  away with the reason. A value driven by a formula keeps its gizmo, shows the formula
+  in its box and its value in the tooltip, and typing a number over the formula or
+  dragging the gizmo replaces it.
 
 ### Changed
 

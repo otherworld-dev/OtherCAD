@@ -343,6 +343,8 @@ QuantitySpinBox::~QuantitySpinBox() = default;
 void QuantitySpinBox::bind(const App::ObjectIdentifier& _path)
 {
     ExpressionSpinBox::bind(_path);
+    // The newly bound property may already have an expression
+    Q_EMIT boundExpressionChanged();
 }
 
 void QuantitySpinBox::showIcon()
@@ -960,6 +962,40 @@ QString QuantitySpinBox::getUserString(const Base::Quantity& val) const
 void QuantitySpinBox::setExpression(std::shared_ptr<Expression> expr)
 {
     ExpressionSpinBox::setExpression(expr);
+}
+
+App::DocumentObject* QuantitySpinBox::boundObject() const
+{
+    return isBound() ? getPath().getDocumentObject() : nullptr;
+}
+
+std::shared_ptr<App::Expression> QuantitySpinBox::boundExpression() const
+{
+    return isBound() ? getExpression() : nullptr;
+}
+
+void QuantitySpinBox::setBoundExpression(std::shared_ptr<App::Expression> expr)
+{
+    App::DocumentObject* object = boundObject();
+    if (!object) {
+        throw Base::RuntimeError("The field is not bound to a property");
+    }
+    // ExpressionSpinBox::setExpression swallows a failure into a red field; the caller
+    // wants to hear about it instead
+    if (expr) {
+        std::string error = object->ExpressionEngine.validateExpression(getPath(), expr);
+        if (!error.empty()) {
+            throw Base::RuntimeError(error);
+        }
+    }
+    setExpression(std::move(expr));
+    updateExpression();
+}
+
+void QuantitySpinBox::onChange()
+{
+    ExpressionSpinBox::onChange();
+    Q_EMIT boundExpressionChanged();
 }
 
 QAbstractSpinBox::StepEnabled QuantitySpinBox::stepEnabled() const

@@ -29,6 +29,7 @@
 #include <numbers>
 #include <QAbstractSpinBox>
 #include <QApplication>
+#include <QCoreApplication>
 #include <QLineEdit>
 #include <QTimer>
 
@@ -38,6 +39,8 @@
 #include <algorithm>
 
 #include <App/Application.h>
+#include <App/DocumentObject.h>
+#include <App/Expression.h>
 #include <Base/Converter.h>
 #include <Base/Parameter.h>
 #include <Base/Precision.h>
@@ -47,6 +50,7 @@
 #include <Gui/Control.h>
 #include <Gui/Inventor/Draggers/GizmoStyleParameters.h>
 #include <Gui/Inventor/So3DAnnotation.h>
+#include <Gui/ModelParameters.h>
 #include <Gui/Inventor/SoToggleSwitch.h>
 #include <Gui/ViewProviderDragger.h>
 #include <Gui/QuantitySpinBox.h>
@@ -182,12 +186,34 @@ GizmoValueLabel* Gizmo::getValueLabel() const
 void Gizmo::setValueLabel(GizmoValueLabel* label)
 {
     QObject::disconnect(valueLabelConnection);
+    QObject::disconnect(expressionConnection);
+    QObject::disconnect(labelFocusConnection);
     valueLabel = label;
     if (label) {
         // Typing in the box is typing in the task panel field
         valueLabelConnection
             = QObject::connect(label, &GizmoValueLabel::valueEdited, label, [this](double value) {
+                  if (property->boundExpression()) {
+                      // The box falling back to the formula's own value changes nothing;
+                      // another number typed over the formula replaces it
+                      if (std::abs(value - property->rawValue()) < Base::Precision::Confusion()) {
+                          return;
+                      }
+                      releaseExpression();
+                  }
                   property->setValue(value);
+              });
+        label->setTextCommitter([this](const QString& text, std::optional<double> number) {
+            return commitTypedText(text, number);
+        });
+        expressionConnection
+            = QObject::connect(property, &QuantitySpinBox::boundExpressionChanged, label, [this]() {
+                  updateValueLabel();
+              });
+        // A box left with a formula it could not use shows what the field holds again
+        labelFocusConnection
+            = QObject::connect(label, &GizmoValueLabel::focusLeft, label, [this, label]() {
+                  QTimer::singleShot(0, label, [this]() { updateValueLabel(); });
               });
     }
     showGuideGeometry(!label);
@@ -259,7 +285,66 @@ void Gizmo::setCountLabel(GizmoValueLabel* label)
 
 bool Gizmo::isShownInView()
 {
-    return visible && property && !property->hasExpression();
+    return visible && property;
+}
+
+void Gizmo::showValueInLabel()
+{
+    if (!valueLabel) {
+        return;
+    }
+    std::shared_ptr<App::Expression> expression = property->boundExpression();
+    if (!expression) {
+        valueLabel->setValue(property->rawValue());
+        return;
+    }
+    const std::string text = ModelParameters::displayText(property->boundObject(), *expression);
+    valueLabel->showExpression(QString::fromStdString(text), property->rawValue());
+}
+
+QString Gizmo::commitTypedText(const QString& text, std::optional<double> number)
+{
+    try {
+        if (number) {
+            // A number typed over a formula replaces it
+            releaseExpression();
+            property->setValue(*number);
+            return {};
+        }
+        App::DocumentObject* object = property->boundObject();
+        if (!object) {
+            return QCoreApplication::translate("Gui::Gizmo", "This value takes a number only");
+        }
+        std::shared_ptr<App::Expression> expr(ModelParameters::parse(object, text.toStdString()));
+        // Turns away a result in the wrong unit now, which the field would only show as an error
+        Base::Quantity value = ModelParameters::evaluate(*expr, property->value().getUnit());
+        if (ModelParameters::isConstant(*expr)) {
+            releaseExpression();
+            property->setValue(value.getValue());
+            return {};
+        }
+        property->setBoundExpression(expr);
+    }
+    catch (const Base::Exception& error) {
+        return QString::fromUtf8(error.what());
+    }
+    catch (const std::exception& error) {
+        return QString::fromUtf8(error.what());
+    }
+    return {};
+}
+
+void Gizmo::releaseExpression()
+{
+    if (!property->boundExpression()) {
+        return;
+    }
+    try {
+        property->setBoundExpression(nullptr);
+    }
+    catch (const Base::Exception& error) {
+        error.reportException();
+    }
 }
 
 void Gizmo::setContainer(GizmoContainer* container)
@@ -396,9 +481,9 @@ void LinearGizmo::setProperty(QuantitySpinBox* property)
     );
     formulaDialogConnection
         = QuantitySpinBox::connect(property, &Gui::QuantitySpinBox::showFormulaDialog, [this](bool) {
-              // This will set the visibility of the actual geometry to true or false
-              // based on if an expression is bound and the externally set visibility
+              // Shows the formula, or the value again, once the formula dialog closes
               setVisibility(visible);
+              updateValueLabel();
           });
 
     // Updates the gizmo state based on the new property
@@ -435,7 +520,7 @@ void LinearGizmo::setClickCallback(ClickCallback callback)
 void LinearGizmo::setVisibility(bool visible)
 {
     this->visible = visible;
-    getDraggerContainer()->visible = visible && !property->hasExpression();
+    getDraggerContainer()->visible = visible;
 
     if (container) {
         container->refreshValueLabels();
@@ -453,7 +538,7 @@ void LinearGizmo::updateValueLabel()
             draggerContainer->getPointerDirection(),
             dragger->translation.getValue()[1]
         );
-        valueLabel->setValue(property->rawValue());
+        showValueInLabel();
     }
     updateCountLabel();
 }
@@ -516,6 +601,10 @@ void LinearGizmo::draggingFinished()
 
 void LinearGizmo::draggingContinued()
 {
+    if (!hasDragged) {
+        // Dragging a value that a formula drives replaces the formula, as typing over it does
+        releaseExpression();
+    }
     hasDragged = true;
     double value = initialValue + getDragLength();
 
@@ -737,6 +826,10 @@ void RotationGizmo::draggingFinished()
 
 void RotationGizmo::draggingContinued()
 {
+    if (!hasDragged) {
+        // Dragging a value that a formula drives replaces the formula, as typing over it does
+        releaseExpression();
+    }
     hasDragged = true;
     const double period = getRotationPeriod(multFactor);
     double dragOffset = getClosestEquivalentAngle(getRotAngle(), lastDragOffset, period);
@@ -792,9 +885,9 @@ void RotationGizmo::setProperty(QuantitySpinBox* property)
     );
     formulaDialogConnection
         = QuantitySpinBox::connect(property, &Gui::QuantitySpinBox::showFormulaDialog, [this](bool) {
-              // This will set the visibility of the actual geometry to true or false
-              // based on if an expression is bound and the externally set visibility
+              // Shows the formula, or the value again, once the formula dialog closes
               setVisibility(visible);
+              updateValueLabel();
           });
 
     // Updates the gizmo state based on the new property
@@ -826,7 +919,7 @@ void RotationGizmo::setClickCallback(ClickCallback callback)
 void RotationGizmo::setVisibility(bool visible)
 {
     this->visible = visible;
-    getDraggerContainer()->visible = visible && !property->hasExpression();
+    getDraggerContainer()->visible = visible;
 
     if (container) {
         container->refreshValueLabels();
@@ -857,7 +950,7 @@ void RotationGizmo::updateValueLabel()
         auto sweep = static_cast<float>(property->rawValue() * multFactor + addFactor);
 
         valueLabel->showAngle(draggerContainer->translation.getValue(), axis, zeroRay, sweep, radius);
-        valueLabel->setValue(property->rawValue());
+        showValueInLabel();
     }
     updateCountLabel();
 }

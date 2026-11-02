@@ -21,10 +21,13 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
+#include <optional>
 
 #include <QObject>
 #include <QPointer>
+#include <QString>
 
 #include <Inventor/SbVec3f.h>
 
@@ -86,6 +89,18 @@ public:
 
     /// Puts value in the box, unless the box already holds it, so typed text is left alone
     void setValue(double value);
+    /// Shows a formula in the box in place of its value, which goes in the tooltip; typing
+    /// over it replaces it, as in Fusion
+    void showExpression(const QString& expression, double value);
+    /// The formula the box shows, or an empty string when it shows a value
+    QString shownExpression() const;
+
+    /// Takes typed text that the box cannot pass on as a number as it is typed: a formula,
+    /// or a number typed over a formula (given as number). Returns why the text cannot be
+    /// used, or an empty string once it has been.
+    using TextCommitter = std::function<QString(const QString& text, std::optional<double> number)>;
+    /// Without one, as for a count, the box takes numbers only
+    void setTextCommitter(TextCommitter committer);
     /// The values the box takes; one typed outside them is turned away
     void setRange(double minimum, double maximum);
     void setShown(bool shown);
@@ -107,6 +122,13 @@ private:
     Base::Vector3d toGlobalPoint(const SbVec3f& point) const;
     Base::Vector3d toGlobalDirection(const SbVec3f& direction) const;
     Base::Vector3d towardsViewer() const;
+    /// Hands typed text to the committer when it needs one; false when it was refused
+    bool commitTypedText(bool reportError);
+    /// Whether the user has typed in the box since its text was last set
+    bool isBeingTyped() const;
+    /// Writes the formula into the box, which is left holding its value underneath
+    void putExpressionText();
+    void showError(const QString& message);
     /// Redraws the "x" mark for the box's current palette, font and device pixel ratio
     void updateTimesMark();
 
@@ -116,6 +138,10 @@ private:
     Kind kind;
     std::unique_ptr<EditableDatumLabel> label;
     bool shown = false;
+    TextCommitter committer;
+    QString expression;
+    /// Set while the committer runs, so the box shows what was just committed
+    bool committing = false;
     /// The count box's leading "x" mark action, so it can be redrawn in place rather than
     /// added again; null for a Kind::Value box, which has none
     QPointer<QAction> timesMarkAction;

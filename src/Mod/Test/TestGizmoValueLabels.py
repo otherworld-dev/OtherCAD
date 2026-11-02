@@ -503,3 +503,99 @@ class TestGizmoValueLabelsOnOtherFeatures(GizmoLabelCase):
             (box_centre - self._screen_point(point)).manhattanLength() for point in candidates
         ]
         self.assertLessEqual(min(misses), 15, f"box at {box_centre} is not halfway round the arc")
+
+
+class TestGizmoValueExpressions(GizmoLabelCase):
+    """Formulas in the value boxes, the way Fusion takes one in its distance box (#757)."""
+
+    _focused_length_box = TestGizmoValueLabels._focused_length_box
+
+    def _add_width(self, width=7.0):
+        """A user parameter, Width, in the document's parameters object."""
+
+        self._close_editing()
+        params = self.doc.addObject("App::VarSet", "Parameters")
+        params.addProperty("App::PropertyDistance", "Width", "Parameters")
+        params.Width = width
+        self.doc.recompute()
+        return params
+
+    def _bind_length(self, formula):
+        self.pad.setExpression("Length", formula)
+        self.doc.recompute()
+
+    def _expressions(self):
+        return dict(self.pad.ExpressionEngine)
+
+    def test_a_length_set_by_a_formula_keeps_its_box_and_shows_the_formula(self):
+        self._add_width()
+        self._bind_length("Parameters.Width * 2")
+        self._reopen()
+        box = self._wait_for_distance_boxes(1)[0]
+        self.assertEqual(box.findChild(QtWidgets.QLineEdit).text(), "Width * 2")
+        self.assertIn("14", box.toolTip(), "the box's tooltip does not give the formula's value")
+
+    def test_a_formula_typed_in_the_box_drives_the_length(self):
+        self._add_width()
+        self._reopen()
+        box = self._focused_length_box()
+        self._type(box, "Width * 2")
+        self._press(box, QtCore.Qt.Key_Return)
+        self.assertTrue(
+            self._wait(lambda: FreeCADGui.Control.activeTaskDialog() is None),
+            "Enter did not take the formula and finish the extrude",
+        )
+        self.assertEqual(self._expressions().get("Length"), "Parameters.Width * 2")
+        self.assertAlmostEqual(self._length(), 14.0)
+
+    def test_tab_takes_a_formula_and_moves_on(self):
+        self._add_width()
+        self._reopen()
+        box = self._focused_length_box()
+        self._type(box, "Width + 1 mm")
+        self._press(box, QtCore.Qt.Key_Tab)
+        self.assertEqual(self._expressions().get("Length"), "Parameters.Width + 1 mm")
+        self.assertIsNotNone(FreeCADGui.Control.activeTaskDialog())
+        self.assertTrue(
+            self._wait(lambda: box.findChild(QtWidgets.QLineEdit).text() == "Width + 1 mm"),
+            "the box does not show the formula it took",
+        )
+
+    def test_a_formula_that_cannot_be_used_keeps_the_box_open(self):
+        self._add_width()
+        self._reopen()
+        box = self._focused_length_box()
+        self._type(box, "Nope * 2")
+        self._press(box, QtCore.Qt.Key_Return)
+        self._process_events(100)
+        self.assertIsNotNone(
+            FreeCADGui.Control.activeTaskDialog(), "a broken formula finished the extrude"
+        )
+        self.assertTrue(box.toolTip(), "the box does not say why the formula was refused")
+        self.assertNotIn("Length", self._expressions())
+
+    def test_a_number_typed_over_a_formula_replaces_it(self):
+        self._add_width()
+        self._bind_length("Parameters.Width * 2")
+        self._reopen()
+        box = self._focused_length_box()
+        self._type(box, "30")
+        self.assertAlmostEqual(self._length(), 30.0)
+        self._press(box, QtCore.Qt.Key_Return)
+        self.assertTrue(self._wait(lambda: FreeCADGui.Control.activeTaskDialog() is None))
+        self.assertNotIn("Length", self._expressions())
+        self.assertAlmostEqual(self._length(), 30.0)
+
+    def test_dragging_an_arrow_that_a_formula_drives_replaces_the_formula(self):
+        self._add_width()
+        self._bind_length("Parameters.Width * 2")
+        self._reopen()
+        self._settle_view()
+        # The arrow's tip sits at the formula's 14 mm, not the fixture's 10 mm, which
+        # _drag_arrow's heights are measured from: these take it down by about 8 mm
+        self.ARROW_TIP = FreeCAD.Vector(5.0, 3.0, 14.0)
+        self._drag_arrow([6.0, 4.0])
+        self.assertNotIn("Length", self._expressions())
+        self.assertLess(self._length(), 14.0)
+        box = self._wait_for_distance_boxes(1)[0]
+        self.assertAlmostEqual(box.property("rawValue"), self._length(), places=4)
