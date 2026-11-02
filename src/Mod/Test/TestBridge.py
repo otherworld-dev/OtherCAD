@@ -44,6 +44,7 @@ import tempfile
 import threading
 import time
 import unittest
+import unittest.mock
 import urllib.error
 import urllib.request
 import weakref
@@ -55,6 +56,7 @@ import Sketcher
 from PySide import QtWidgets
 
 import Bridge
+import BridgeActions
 import BridgeServer
 import BridgeTools
 
@@ -612,6 +614,30 @@ class TestBridgeActions(BridgeCase):
         self.assertEqual(ran["result"], "21")
         ran = self._call("run_python", {"code": "doc.addObject('Part::Box', 'Box')\nNone"})
         self.assertIn("Box", ran["created"])
+
+    def test_python_says_when_its_rebuild_was_skipped(self):
+        # A rebuild asked for while the document is still recomputing does nothing and
+        # returns -1 (#1007). The call used to report plain success over a stale model.
+        doc = self.doc
+
+        class StillRecomputing:
+            def __getattr__(self, name):
+                return getattr(doc, name)
+
+            def recompute(self, *args):
+                return -1
+
+        ran = self._call("run_python", {"code": "x = 1"})
+        self.assertNotIn("rebuild", ran)
+        with unittest.mock.patch.object(
+            BridgeActions, "_document", lambda name: StillRecomputing()
+        ):
+            ran = self._call("run_python", {"code": "doc.Pad.Length = 7"})
+        self.assertIn("rebuild skipped: the document is still recomputing", ran["rebuild"])
+        self.assertIn("still need a recompute", ran["rebuild"])
+        # The change itself was kept, and the next rebuild picks it up
+        self.assertGreater(self.doc.recompute(), 0)
+        self.assertAlmostEqual(self.pad.Length.Value, 7.0)
 
     def test_python_that_raises_is_undone_with_its_traceback(self):
         with self.assertRaises(BridgeTools.ActionFailed) as caught:

@@ -3,13 +3,21 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
+#include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <vector>
 
 #include "App/Application.h"
 #include "App/Document.h"
+#include "App/FeatureTest.h"
 #include "App/MergeDocuments.h"
 #include "App/StringHasher.h"
+#include "Base/Console.h"
 #include "Base/Writer.h"
 #include <src/App/InitApplication.h>
 
@@ -132,6 +140,103 @@ TEST_F(DocumentTest, importObjectsRestoresSourceStringHasher)
     EXPECT_GT(restoredStringCount, 0);
     connection.disconnect();
     std::remove(savedPath.c_str());
+}
+
+namespace
+{
+
+// Collects the warnings sent to the console while it is alive
+class WarningCollector final: public Base::ILogger
+{
+public:
+    WarningCollector()
+    {
+        Base::Console().attachObserver(this);
+    }
+    ~WarningCollector() override
+    {
+        Base::Console().detachObserver(this);
+    }
+    WarningCollector(const WarningCollector&) = delete;
+    WarningCollector& operator=(const WarningCollector&) = delete;
+
+    void sendLog(
+        const std::string& /*notifiername*/,
+        const std::string& msg,
+        Base::LogStyle level,
+        Base::IntendedRecipient /*recipient*/,
+        Base::ContentType /*content*/
+    ) override
+    {
+        if (level == Base::LogStyle::Warning) {
+            std::lock_guard<std::mutex> lock(mutex);
+            warnings.push_back(msg);
+        }
+    }
+
+    const char* name() override
+    {
+        return "WarningCollector";
+    }
+
+    int count(const std::string& text)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        return static_cast<int>(std::ranges::count_if(warnings, [&text](const std::string& msg) {
+            return msg.find(text) != std::string::npos;
+        }));
+    }
+
+private:
+    std::mutex mutex;
+    std::vector<std::string> warnings;
+};
+
+}  // namespace
+
+TEST_F(DocumentTest, aLongRecomputeWarnsOnceWhileItIsStillRunning)
+{
+    // A recompute that runs for minutes looks like a stuck Recomputing flag from outside
+    // (#1007). Past RecomputeWarnSeconds it says so once, naming where it has got to.
+    auto hGrp = App::GetApplication().GetParameterGroupByPath(
+        "User parameter:BaseApp/Preferences/Document"
+    );
+    hGrp->SetFloat("RecomputeWarnSeconds", 0.05);
+
+    auto* slow = doc()->addObject("App::FeatureTestAsyncBlocker", "Slow");
+    auto* after = doc()->addObject("App::FeatureTest", "After");
+    auto* last = doc()->addObject("App::FeatureTest", "Last");
+    ASSERT_NE(slow, nullptr);
+    slow->touch();
+    after->touch();
+    last->touch();
+
+    App::FeatureTestAsyncBlocker::resetBlocker();
+    std::thread releaser([] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        App::FeatureTestAsyncBlocker::releaseBlocker();
+    });
+
+    int warnings = 0;
+    {
+        WarningCollector collector;
+        doc()->recompute();
+        warnings = collector.count("has been recomputing");
+    }
+    releaser.join();
+    EXPECT_EQ(warnings, 1);
+
+    // A quick recompute under the default threshold stays quiet
+    hGrp->RemoveFloat("RecomputeWarnSeconds");
+    App::FeatureTestAsyncBlocker::releaseBlocker();
+    slow->touch();
+    after->touch();
+    {
+        WarningCollector collector;
+        doc()->recompute();
+        warnings = collector.count("has been recomputing");
+    }
+    EXPECT_EQ(warnings, 0);
 }
 
 // NOLINTEND(readability-magic-numbers)

@@ -180,6 +180,15 @@ done in this fork.
 
 ### Fixed
 
+- `doc.recompute()` called while the document is already recomputing returns -1, and
+  `obj.recompute(True)` returns False. Both skip the rebuild, but returned 0 and True as
+  if all was well, so a script carried on with a model that had not been rebuilt.
+- A recompute that runs past 30 seconds says so once in the report view, naming the
+  object it has got to (the time is the `RecomputeWarnSeconds` preference under
+  `BaseApp/Preferences/Document`). Before, a long one looked like a stuck document.
+- An LLM Bridge change says when its rebuild was skipped because the document was still
+  recomputing, or when objects still need a recompute after it, instead of reporting
+  plain success.
 - The Offset Face and Move Face panels showed only the list of faces: their Offset and
   X, Y and Z fields never appeared, so the distance could not be changed there.
 - A sketch point snapped to an arc's midpoint, a circle or arc quadrant, or a crossing

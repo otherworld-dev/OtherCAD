@@ -106,6 +106,22 @@ def _abort(doc):
     doc.recompute()
 
 
+def _rebuild_note(doc, rebuilt):
+    """Say so when the rebuild after a change did not bring the model up to date.
+
+    doc.recompute() returns -1 when it is called while the document is already
+    recomputing, and does nothing: the change then sits in a model that is not rebuilt.
+    """
+
+    pending = [o for o in doc.Objects if o.isValid() and "Touched" in o.State]
+    notes = []
+    if rebuilt is not None and rebuilt < 0:
+        notes.append("rebuild skipped: the document is still recomputing")
+    if pending:
+        notes.append(f"{len(pending)} object(s) still need a recompute")
+    return "; ".join(notes)
+
+
 def change(doc, label, func, keep_on_error=False, summary=None, verify=None):
     """Run func as one undo step, rebuild, and report or undo what it did.
 
@@ -126,7 +142,7 @@ def change(doc, label, func, keep_on_error=False, summary=None, verify=None):
         finally:
             # What the rebuild then touches is its own doing, not the caller's
             FreeCAD.removeDocumentObserver(recorder)
-        doc.recompute()
+        rebuilt = doc.recompute()
     except ToolError as error:
         _abort(doc)
         if isinstance(error, ActionFailed):
@@ -151,6 +167,9 @@ def change(doc, label, func, keep_on_error=False, summary=None, verify=None):
             errors.append(problem)
     report = {"change": label, "created": created, "deleted": deleted, "changed": changed}
     report.update(extra)
+    rebuild = _rebuild_note(doc, rebuilt)
+    if rebuild:
+        report["rebuild"] = rebuild
     if errors:
         report["errors"] = errors
     if errors and not keep_on_error:
