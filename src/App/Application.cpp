@@ -1301,6 +1301,12 @@ Document* Application::openDocumentPrivate(const char * FileName,
     // Before creating a new document we check whether the document is already open
     auto doc = getDocumentByPath(File.filePath().c_str(), PathMatchMode::MatchCanonicalWarning);
     if(doc) {
+        // Asking for the document again wins over a close put off until its
+        // recompute finished: the caller gets a document that stays open
+        {
+            std::lock_guard<std::mutex> lock(_recomputeMutex);
+            _pendingCloseDocuments.erase(doc->getName());
+        }
         if(doc->testStatus(Document::PartialDoc)
                 || doc->testStatus(Document::PartialRestore)) {
             // Here means a document is already partially loaded, but the document

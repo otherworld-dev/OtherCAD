@@ -24,6 +24,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <deque>
+#include <filesystem>
 #include <functional>
 #include <future>
 #include <memory>
@@ -373,6 +374,33 @@ TEST_F(AsyncRecomputeTest, CloseFromInsideTheRecomputeWaitsForItToFinish)
         )
     );
     _doc = nullptr;
+}
+
+// Asking for the document again while its close is put off wins: the caller
+// gets a document that stays open, and the close doesn't happen later
+TEST_F(AsyncRecomputeTest, OpeningADocumentWhoseCloseIsPutOffKeepsItOpen)
+{
+    FakeMainThread mainThread;
+
+    _doc->addObject("App::FeatureTest", "First")->touch();
+    const std::string path = (std::filesystem::temp_directory_path() / (_docName + ".FCStd")).string();
+    ASSERT_TRUE(_doc->saveAs(path.c_str()));
+    BOOST_SCOPE_EXIT_ALL(&)
+    {
+        std::error_code ignored;
+        std::filesystem::remove(path, ignored);
+    };
+
+    _doc->signalRecomputedObject.connect([this](const App::DocumentObject&) {
+        App::GetApplication().closeDocument(_docName.c_str());
+    });
+    _doc->recompute();
+    ASSERT_TRUE(App::GetApplication().isDocumentClosePending(_docName.c_str()));
+
+    EXPECT_EQ(App::GetApplication().openDocument(path.c_str()), _doc);
+    EXPECT_FALSE(App::GetApplication().isDocumentClosePending(_docName.c_str()));
+    FakeMainThread::pumpUntil([] { return false; }, 300ms);
+    EXPECT_EQ(App::GetApplication().getDocument(_docName.c_str()), _doc);
 }
 
 // Without an event loop (no GUI) there is nothing to hand the close to, so it

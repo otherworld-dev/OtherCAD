@@ -194,7 +194,8 @@ done in this fork.
   the rebuild processes events) used to delete the document under it, and a close on the
   main thread while the background recompute rebuilt it froze the GUI, each waiting for
   the other. Now the recompute stops at the next object and the document closes once it
-  has finished. Without the GUI the close is refused with an error instead.
+  has finished, unless the document is opened again before then. Without the GUI the
+  close is refused with an error instead.
 - On Windows the background recompute ran the GUI's document updates on its own thread,
   because the hooks that hand them to the main thread never reached the App module there.
 - The Offset Face and Move Face panels showed only the list of faces: their Offset and
