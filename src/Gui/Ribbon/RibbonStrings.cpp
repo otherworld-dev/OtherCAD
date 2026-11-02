@@ -73,6 +73,7 @@ namespace
     QT_TRANSLATE_NOOP("Ribbon", "Centerline"),
     QT_TRANSLATE_NOOP("Ribbon", "Centrifugal"),
     QT_TRANSLATE_NOOP("Ribbon", "Chamfer"),
+    QT_TRANSLATE_NOOP("Ribbon", "Change Parameters"),
     QT_TRANSLATE_NOOP("Ribbon", "Change Value"),
     QT_TRANSLATE_NOOP("Ribbon", "Check Geometry"),
     QT_TRANSLATE_NOOP("Ribbon", "Check Job"),
