@@ -213,6 +213,20 @@ using namespace App;
 namespace sp = std::placeholders;
 namespace fs = std::filesystem;
 
+// One pair of main-thread hooks for every module: Gui installs them, and the
+// document signals FreeCADApp emits from the recompute worker use them.
+MainThreadSignalConfig::IsMainThreadFn& MainThreadSignalConfig::isMainThreadSlot()
+{
+    static IsMainThreadFn fn = nullptr;
+    return fn;
+}
+
+MainThreadSignalConfig::InvokeFn& MainThreadSignalConfig::invokeSlot()
+{
+    static InvokeFn fn = nullptr;
+    return fn;
+}
+
 namespace
 {
 

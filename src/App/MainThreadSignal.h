@@ -22,6 +22,7 @@
 #ifndef APP_MAINTHREADSIGNAL_H
 #define APP_MAINTHREADSIGNAL_H
 
+#include <FCGlobal.h>
 #include <Base/Interpreter.h>
 #include <fastsignals/signal.h>
 #include <functional>
@@ -42,7 +43,7 @@ namespace App
 // may observe while recompute can run on a worker thread. Raw
 // App::DocumentObject signals intentionally remain plain fastsignals with
 // same-thread semantics.
-class MainThreadSignalConfig
+class AppExport MainThreadSignalConfig
 {
 public:
     using IsMainThreadFn = bool (*)();  // true iff currently on GUI/main thread
@@ -77,16 +78,11 @@ public:
     }
 
 private:
-    static IsMainThreadFn& isMainThreadSlot()
-    {
-        static IsMainThreadFn fn = nullptr;
-        return fn;
-    }
-    static InvokeFn& invokeSlot()
-    {
-        static InvokeFn fn = nullptr;
-        return fn;
-    }
+    // Defined in Application.cpp so every module shares one pair of hooks. As
+    // inline function statics each DLL got its own copy on Windows, so the
+    // hooks FreeCADGui installs never reached the signals FreeCADApp emits.
+    static IsMainThreadFn& isMainThreadSlot();
+    static InvokeFn& invokeSlot();
 };
 
 namespace detail
@@ -234,7 +230,13 @@ private:
             return self->sig_(std::forward<typename ::fastsignals::signal_arg_t<Arguments>>(args)...);
         }
 
-        Base::PyGILStateRelease release;
+        // Let the main thread run Python while this thread waits for it. Only a
+        // thread holding the GIL can release it: a worker recomputing a single
+        // feature doesn't, and releasing it there aborts Python.
+        std::optional<Base::PyGILStateRelease> release;
+        if (Py_IsInitialized() && PyGILState_Check()) {
+            release.emplace();
+        }
 
         auto caps = std::make_tuple(
             detail::captureSignalArg<typename ::fastsignals::signal_arg_t<Arguments>>(args)...

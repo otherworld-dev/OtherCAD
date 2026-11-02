@@ -189,6 +189,8 @@ done in this fork.
 - An LLM Bridge change says when its rebuild was skipped because the document was still
   recomputing, or when objects still need a recompute after it, instead of reporting
   plain success.
+- On Windows the background recompute ran the GUI's document updates on its own thread,
+  because the hooks that hand them to the main thread never reached the App module there.
 - The Offset Face and Move Face panels showed only the list of faces: their Offset and
   X, Y and Z fields never appeared, so the distance could not be changed there.
 - A sketch point snapped to an arc's midpoint, a circle or arc quadrant, or a crossing
