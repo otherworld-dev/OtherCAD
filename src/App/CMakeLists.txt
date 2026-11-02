@@ -291,6 +291,7 @@ SET(Properties_HPP_SRCS
     PropertyFile.h
     PropertyGeo.h
     PropertyLinks.h
+    ReferenceWarnings.h
     PropertyPythonObject.h
     PropertyStandard.h
     PropertyUnits.h

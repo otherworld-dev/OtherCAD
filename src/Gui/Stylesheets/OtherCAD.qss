@@ -3476,6 +3476,11 @@ QWidget#TimelineMarker[timelineTip="true"] {
   border-bottom: 2px solid @AccentColor;
 }
 
+/* A feature that built, but on a reference the naming code had to find again. */
+QWidget#TimelineMarker[timelineWarning="true"] {
+  border: 1px solid #e0a800;
+}
+
 /* A marker has no text, so a failed feature is marked by its border as well as its badge. */
 QWidget#TimelineMarker[timelineError="true"] {
   border: 1px solid #d93025;

@@ -1000,8 +1000,14 @@ void TimelineWidget::onMarkerMenu(const QString& feature, const QPoint& globalPo
 
     const int index = indexOfFeature(name);
 
+    // A feature in yellow is opened to check or reselect the reference that moved
+    const bool warned = std::any_of(markers.cbegin(), markers.cend(), [&](TimelineMarker* marker) {
+        App::DocumentObject* obj = marker->object();
+        return obj && name == obj->getNameInDocument() && marker->hasWarning();
+    });
+
     QMenu menu(this);
-    QAction* editAction = menu.addAction(tr("Edit"));
+    QAction* editAction = menu.addAction(warned ? tr("Edit to Reselect") : tr("Edit"));
     QAction* renameAction = menu.addAction(tr("Rename"));
     QAction* deleteAction = menu.addAction(tr("Delete"));
     QAction* suppressAction = nullptr;

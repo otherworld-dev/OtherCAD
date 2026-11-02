@@ -974,3 +974,149 @@ class TestTimelineFollowsSelection(TimelineTestBase):
         self.doc.removeObject(self.other.Name)
         self._settle()
         self.assertEqual(len(self._labels()), FEATURE_COUNT)
+
+
+class TestTimelineReferenceWarnings(TimelineTestBase):
+    """A feature that still builds, but only because the naming code had to find one of
+    its edges again by where it lies, is drawn in yellow with what changed in its
+    tooltip (#754). Fusion does the same and offers to reselect."""
+
+    _choose_from_marker_menu = TestTimeline._choose_from_marker_menu
+
+    def setUp(self):
+        super().setUp()
+        self.edge = None
+        for index, edge in enumerate(self.pad2.Shape.Edges, start=1):
+            a, b = (vertex.Point for vertex in edge.Vertexes)
+            if abs(a.z - b.z) > 5 and abs(a.x - 10) < 1e-6 and abs(a.y - 6) < 1e-6:
+                self.edge = f"Edge{index}"
+        self.assertIsNotNone(self.edge, "the pad has no vertical edge at its far corner")
+        self.fillet = self.body.newObject("PartDesign::Fillet", "Fillet")
+        self.fillet.Base = (self.pad2, [self.edge])
+        self.fillet.Radius = 1.0
+        self.doc.recompute()
+        if not self._wait_for_markers(FEATURE_COUNT + 1):
+            self.skipTest("The fillet never reached the timeline strip")
+        self.assertTrue(self.fillet.isValid())
+
+    def tearDown(self):
+        if FreeCADGui.Control.activeDialog():
+            FreeCADGui.Control.closeDialog()
+        gui_doc = (
+            FreeCADGui.getDocument(self.doc.Name)
+            if self.doc.Name in FreeCAD.listDocuments()
+            else None
+        )
+        if gui_doc is not None and gui_doc.getInEdit():
+            gui_doc.resetEdit()
+        self._process_events()
+        super().tearDown()
+
+    def _redraw_the_first_profile(self):
+        """Redrawn lines are new lines to the sketch, so every name the shape gave the
+        fillet's edge is gone, while an edge in the same place is still there."""
+
+        self.sketch.deleteAllGeometry()
+        self._draw_rectangle(self.sketch, 10.0, 6.0)
+        self.doc.recompute()
+        self._settle()
+
+    def test_a_rematched_edge_turns_the_marker_yellow(self):
+        self._redraw_the_first_profile()
+
+        self.assertTrue(self.fillet.isValid(), self.fillet.getStatusString())
+        marker = self._marker_for("Fillet")
+        self.assertIsNotNone(marker)
+        # What the style sheet draws the yellow border from
+        self.assertTrue(marker.property("timelineWarning"))
+        self.assertFalse(marker.property("timelineError"))
+        self.assertIn(f"{self.edge} of Pad001 was lost", marker.toolTip())
+        self.assertIn("Edit Fillet", marker.toolTip())
+
+    def test_a_plain_change_leaves_the_marker_alone(self):
+        """An edge that keeps its name is no guess."""
+
+        self.pad2.Length = 25.0
+        self.doc.recompute()
+        self._settle()
+
+        self.assertTrue(self.fillet.isValid())
+        self.assertFalse(self._marker_for("Fillet").property("timelineWarning"))
+
+    def test_a_failure_wins_over_a_warning(self):
+        self._redraw_the_first_profile()
+        self.fillet.Radius = 50.0  # far too big for the edge
+        self.doc.recompute()
+        self._settle()
+
+        self.assertFalse(self.fillet.isValid())
+        marker = self._marker_for("Fillet")
+        self.assertTrue(marker.property("timelineError"))
+        self.assertFalse(marker.property("timelineWarning"))
+
+    def test_editing_the_feature_clears_the_warning(self):
+        """Opening the feature is where the user checks or reselects the edge, so once
+        that edit is over there is nothing left to warn about."""
+
+        self._redraw_the_first_profile()
+        gui_doc = FreeCADGui.getDocument(self.doc.Name)
+        gui_doc.setEdit(self.fillet.Name)
+        self._settle()
+        self.assertTrue(self._marker_for("Fillet").property("timelineWarning"))
+
+        if FreeCADGui.Control.activeDialog():
+            FreeCADGui.Control.closeDialog()
+        gui_doc.resetEdit()
+        self._settle()
+
+        self.assertFalse(self._marker_for("Fillet").property("timelineWarning"))
+
+    def test_undoing_the_change_takes_the_warning_back(self):
+        """Undo puts the link back on the name it had, so it no longer points at the
+        edge it was moved to."""
+
+        self.doc.openTransaction("Redraw")
+        self._redraw_the_first_profile()
+        self.doc.commitTransaction()
+        self._settle()
+        self.assertTrue(self._marker_for("Fillet").property("timelineWarning"))
+
+        self.doc.undo()
+        self._settle()
+
+        self.assertTrue(self.fillet.isValid())
+        self.assertFalse(self._marker_for("Fillet").property("timelineWarning"))
+
+    def test_the_marker_menu_offers_to_reselect(self):
+        self._redraw_the_first_profile()
+
+        self._choose_from_marker_menu("Fillet", "Edit to Reselect")
+        self._settle()
+
+        in_edit = FreeCADGui.getDocument(self.doc.Name).getInEdit()
+        self.assertIsNotNone(in_edit)
+        self.assertEqual(in_edit.Object.Name, self.fillet.Name)
+
+    def _tree_icon(self, label):
+        for tree in self.window.findChildren(QtWidgets.QTreeWidget):
+            flags = QtCore.Qt.MatchExactly | QtCore.Qt.MatchRecursive
+            for item in tree.findItems(label, flags, 0):
+                return item.icon(0).pixmap(16, 16).toImage()
+        return None
+
+    def test_the_model_tree_badges_the_feature_too(self):
+        before = self._tree_icon("Fillet")
+        if before is None:
+            self.skipTest("The model tree is not shown in this test environment")
+
+        self._redraw_the_first_profile()
+        self.assertNotEqual(self._tree_icon("Fillet"), before, "no warning badge in the tree")
+
+        gui_doc = FreeCADGui.getDocument(self.doc.Name)
+        gui_doc.setEdit(self.fillet.Name)
+        self._settle()
+        if FreeCADGui.Control.activeDialog():
+            FreeCADGui.Control.closeDialog()
+        gui_doc.resetEdit()
+        self._settle()
+        self.assertEqual(self._tree_icon("Fillet"), before, "the badge outlived the edit")

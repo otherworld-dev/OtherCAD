@@ -81,6 +81,12 @@ done in this fork.
   away with the reason. A value driven by a formula keeps its gizmo, shows the formula
   in its box and its value in the tooltip, and typing a number over the formula or
   dragging the gizmo replaces it.
+- A feature that still builds, but only because an edge or face it used was lost and
+  one in the same place was found instead, is drawn in yellow on the timeline, with a
+  warning badge in the model tree. Its tooltip says what moved, for example "Edge5 of
+  Pad was lost and Edge1, in the same place, is used instead.", and right-clicking it
+  offers Edit to Reselect. The warning goes once the feature has been edited, or the
+  change that caused it is undone.
 
 ### Changed
 

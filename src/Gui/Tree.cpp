@@ -53,6 +53,7 @@
 #include <App/AutoTransaction.h>
 #include <App/GeoFeatureGroupExtension.h>
 #include <App/Link.h>
+#include <App/ReferenceWarnings.h>
 #include <App/SuppressibleExtension.h>
 
 #include "Tree.h"
@@ -4688,6 +4689,12 @@ void DocumentItem::slotResetEdit(const Gui::ViewProviderDocumentObject& v)
     }
     END_FOREACH_ITEM
     tree->editingItem = nullptr;
+
+    // Ending the edit clears a reference warning, which changes no property
+    auto it = ObjectMap.find(v.getObject());
+    if (it != ObjectMap.end()) {
+        it->second->testStatus();
+    }
 }
 
 void DocumentItem::slotNewObject(const Gui::ViewProviderDocumentObject& obj)
@@ -6847,7 +6854,9 @@ enum Status
     External = 1 << 4,
     Freezed = 1 << 5,
     FolderBody = 1 << 6,
-    RolledBack = 1 << 7
+    RolledBack = 1 << 7,
+    /// Built, but on a reference the naming code had to find again
+    Warning = 1 << 8
 };
 
 // Whether a row is greyed out. In a group showing folders that means rolled back, and a
@@ -6936,6 +6945,13 @@ void DocumentObjectItem::generateIcon(int currentStatus, QIcon::Mode mode, QIcon
             pxError = Gui::BitmapFactory().pixmapFromSvg("overlay_error", QSize(10, 10));
         }
         px = pxError;
+    }
+    else if (currentStatus & Status::Warning) {
+        static QPixmap pxWarning;
+        if (pxWarning.isNull()) {
+            pxWarning = Gui::BitmapFactory().pixmapFromSvg("Warning", QSize(10, 10));
+        }
+        px = pxWarning;
     }
     else if (currentStatus & Status::Recompute) {
         static QPixmap pxRecompute;
@@ -7085,6 +7101,9 @@ void DocumentObjectItem::testStatus(bool resetStatus, QIcon& icon1, QIcon& icon2
     int currentStatus = ((freezed ? 1 : 0) << 5) | ((external ? 1 : 0) << 4)
         | ((object()->showInTree() ? 0 : 1) << 3) | ((pObject->isError() ? 1 : 0) << 2)
         | ((pObject->isTouched() || pObject->mustExecute() == 1 ? 1 : 0) << 1) | (visible ? 1 : 0);
+    if (!pObject->isError() && !App::getReferenceWarnings(pObject).empty()) {
+        currentStatus |= Status::Warning;
+    }
 
     if (auto* owner = folderOwnerOf(pObject, getTree()->ObjectTable)) {
         currentStatus |= Status::FolderBody;

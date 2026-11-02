@@ -85,6 +85,13 @@ public:
     /// Re-reads icon, label and error state from the document object.
     void refresh();
 
+    /// Whether the feature built but one of its references was found again by its
+    /// geometry, or has gone. A failure takes precedence and clears it.
+    bool hasWarning() const
+    {
+        return warning;
+    }
+
 Q_SIGNALS:
     /// All three carry the internal name of the feature rather than the marker,
     /// so that a handler which outlives the marker has nothing to dangle on.
@@ -108,6 +115,7 @@ private:
     State markerState {State::Normal};
     bool tip {false};
     bool error {false};
+    bool warning {false};
     bool suppressed {false};
 
     Q_DISABLE_COPY(TimelineMarker)

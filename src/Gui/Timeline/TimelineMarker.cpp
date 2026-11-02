@@ -30,10 +30,12 @@
 #include <QSize>
 #include <QStyle>
 #include <QStyleOption>
+#include <QStringList>
 
 #include <App/Application.h>
 #include <App/Document.h>
 #include <App/DocumentObject.h>
+#include <App/ReferenceWarnings.h>
 #include <App/SuppressibleExtension.h>
 #include <Gui/Application.h>
 #include <Gui/BitmapFactory.h>
@@ -71,6 +73,13 @@ const QPixmap& errorBadge()
 {
     static const QPixmap badge
         = Gui::BitmapFactory().pixmapFromSvg("overlay_error", QSizeF(badgeExtent, badgeExtent));
+    return badge;
+}
+
+const QPixmap& warningBadge()
+{
+    static const QPixmap badge
+        = Gui::BitmapFactory().pixmapFromSvg("Warning", QSizeF(badgeExtent, badgeExtent));
     return badge;
 }
 }  // namespace
@@ -141,6 +150,11 @@ void TimelineMarker::refresh()
         error = obj->isError();
         auto* suppressible = obj->getExtensionByType<App::SuppressibleExtension>(true);
         suppressed = suppressible && suppressible->Suppressed.getValue();
+        // A failure, or a feature left out of the shape, says all there is to say
+        const std::vector<std::string> warnings = error || suppressed
+            ? std::vector<std::string>()
+            : App::getReferenceWarnings(obj);
+        warning = !warnings.empty();
 
         Gui::ViewProvider* provider = Gui::Application::Instance
             ? Gui::Application::Instance->getViewProvider(obj)
@@ -149,8 +163,14 @@ void TimelineMarker::refresh()
             featureIcon = provider->getIcon();
         }
 
-        const QString status = suppressed ? tr("Suppressed")
-                                          : QString::fromUtf8(obj->getStatusString());
+        QString status = suppressed ? tr("Suppressed") : QString::fromUtf8(obj->getStatusString());
+        if (warning) {
+            QStringList lines;
+            for (const std::string& line : warnings) {
+                lines.append(QString::fromStdString(line));
+            }
+            status = lines.join(QLatin1Char('\n'));
+        }
         setToolTip(status.isEmpty() ? caption : QStringLiteral("%1\n%2").arg(caption, status));
     }
 
@@ -162,6 +182,7 @@ void TimelineMarker::restyle()
     setProperty("timelineState", stateName(markerState));
     setProperty("timelineTip", tip);
     setProperty("timelineError", error);
+    setProperty("timelineWarning", warning);
     setProperty("timelineSuppressed", suppressed);
 
     style()->unpolish(this);
@@ -197,8 +218,8 @@ void TimelineMarker::paintEvent(QPaintEvent* event)
         painter.drawLine(iconRect.bottomLeft(), iconRect.topRight());
     }
 
-    if (error) {
-        const QPixmap& badge = errorBadge();
+    if (error || warning) {
+        const QPixmap& badge = error ? errorBadge() : warningBadge();
         if (!badge.isNull()) {
             painter.drawPixmap(iconRect.right() - badgeExtent / 2, iconRect.top(), badge);
         }
