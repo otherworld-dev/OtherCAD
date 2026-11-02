@@ -945,8 +945,20 @@ class TestActiveBodyIndicator(TreeFoldersBase):
         self.assertEqual(self._active().Name, self.body.Name)
 
     def _centre_is_filled(self, item):
-        """Whether the middle of the ring differs from the row's background at its corner."""
-        image = self.tree.viewport().grab(self._indicator_rect(item)).toImage()
+        """Whether the middle of the ring differs from the row's background at its corner.
+
+        The viewport is rendered into an image cleared first, not grab()bed. The tree has a
+        translucent background, so nothing paints behind the rows, and grab() leaves those
+        pixels as whatever memory the pixmap got (it did on Linux): a random corner.
+        """
+        rect = self._indicator_rect(item)
+        viewport = self.tree.viewport()
+        ratio = viewport.devicePixelRatioF()
+        size = QtCore.QSize(round(rect.width() * ratio), round(rect.height() * ratio))
+        image = QtGui.QImage(size, QtGui.QImage.Format_ARGB32_Premultiplied)
+        image.setDevicePixelRatio(ratio)
+        image.fill(QtCore.Qt.transparent)
+        viewport.render(image, QtCore.QPoint(), QtGui.QRegion(rect))
         centre = image.pixelColor(image.width() // 2, image.height() // 2)
         return centre != image.pixelColor(0, 0)
 
