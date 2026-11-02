@@ -23,6 +23,9 @@
  ***************************************************************************/
 
 
+#include <algorithm>
+#include <cctype>
+
 #include <QMessageBox>
 #include <gp_Pln.hxx>
 #include <Precision.hxx>
@@ -35,6 +38,7 @@
 #include <Gui/CommandT.h>
 #include <Gui/MainWindow.h>
 #include <Gui/MDIView.h>
+#include <Gui/Selection/Selection.h>
 #include <Mod/PartDesign/App/Body.h>
 #include <Mod/PartDesign/App/Feature.h>
 #include <Mod/PartDesign/App/FeatureSketchBased.h>
@@ -44,6 +48,7 @@
 #include "Utils.h"
 #include "DlgActiveBody.h"
 #include "ReferenceSelection.h"
+#include "TaskFeaturePick.h"
 #include "WorkflowManager.h"
 
 
@@ -144,6 +149,30 @@ PartDesign::Body* getBody(
                     activeBody = makeBodyActive(body, doc, topParent, subname);
                 }
             }
+            if (!activeBody && messageIfNot && doc->countObjectsOfType<PartDesign::Body>() == 0) {
+                // Fusion has no "make a body first" step: the first feature brings its
+                // body along. The transaction is a temporary one, so the command's own
+                // takes it over and one undo (or a Cancel) removes the body with the feature.
+                if (doc->getBookedTransactionID() == App::NullTransaction) {
+                    doc->setActiveTransaction(
+                        App::TransactionName {
+                            .name = QT_TRANSLATE_NOOP("Command", "Create body"),
+                            .temporary = true
+                        }
+                    );
+                }
+                activeBody = makeBody(doc);
+                if (activeBody) {
+                    if (App::Part* part = getActivePart()) {
+                        part->addObject(activeBody);
+                    }
+                    activeBody = activeView->getActiveObject<PartDesign::Body*>(
+                        PDBODYKEY,
+                        topParent,
+                        subname
+                    );
+                }
+            }
             if (!activeBody && messageIfNot) {
                 DlgActiveBody dia(
                     Gui::getMainWindow(),
@@ -240,6 +269,78 @@ PartDesign::Body* makeBody(App::Document* doc)
         makeBodyActive(body, doc);
     }
     return body;
+}
+
+PartDesign::Body* getBodyOfSelection()
+{
+    App::Document* doc = App::GetApplication().getActiveDocument();
+    if (!doc) {
+        return nullptr;
+    }
+
+    PartDesign::Body* found = nullptr;
+    for (auto& selection : Gui::Selection().getSelectionEx(doc->getName())) {
+        App::DocumentObject* obj = selection.getObject();
+        // A face picked on a body showing its tip can come back as the body itself
+        auto* body = dynamic_cast<PartDesign::Body*>(obj);
+        if (!body) {
+            body = PartDesign::Body::findBodyOf(obj);
+        }
+        if (!body || (found && found != body)) {
+            return nullptr;
+        }
+        found = body;
+    }
+    return found;
+}
+
+PartDesign::Body* activateBodyOfSelection()
+{
+    PartDesign::Body* body = getBodyOfSelection();
+    if (!body) {
+        return nullptr;
+    }
+    if (getBody(/*messageIfNot =*/false, /*autoActivate =*/false) == body) {
+        return body;
+    }
+    return makeBodyActive(body, body->getDocument());
+}
+
+PartDesign::Body* getBodyForNewFeature(bool selectionWins)
+{
+    if (selectionWins || !getBody(/*messageIfNot =*/false, /*autoActivate =*/false)) {
+        activateBodyOfSelection();
+    }
+    return getBody(/*messageIfNot =*/true);
+}
+
+App::DocumentObject* bindIntoBody(
+    App::DocumentObject* feature,
+    App::DocumentObject* selObj,
+    std::string& subname
+)
+{
+    PartDesign::Body* body = feature ? PartDesign::Body::findBodyOf(feature) : nullptr;
+    if (!body || !selObj || body->hasObject(selObj) || selObj == body
+        || selObj->isDerivedFrom<App::DatumElement>()) {
+        return nullptr;
+    }
+
+    App::DocumentObject* copy = TaskFeaturePick::makeCopy(selObj, subname, /*independent =*/false);
+    if (!copy) {
+        return nullptr;
+    }
+    body->insertObject(copy, feature, /*after =*/false);
+    // The feature is recomputed on its own while its panel is open, so its new input
+    // has to have a shape before then
+    copy->recomputeFeature();
+
+    // The binder holds the one element alone, so it is the first of its kind
+    subname.erase(std::remove_if(subname.begin(), subname.end(), ::isdigit), subname.end());
+    if (!subname.empty()) {
+        subname.append("1");
+    }
+    return copy;
 }
 
 PartDesign::Body* getBodyFor(

@@ -45,6 +45,7 @@ SET(Test_SRCS
     TestFusionShortcuts.py
     TestExtrudeFlip.py
     TestNewBodyGui.py
+    TestActiveBodyRule.py
     TestSelectOther.py
     TestProfileRegions.py
     TestMoveFeatureGui.py

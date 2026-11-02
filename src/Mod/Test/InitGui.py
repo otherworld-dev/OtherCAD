@@ -114,6 +114,7 @@ FreeCAD.__unit_test__ += [
     "TestFusionShortcuts",
     "TestExtrudeFlip",
     "TestNewBodyGui",
+    "TestActiveBodyRule",
     "TestSelectOther",
     "TestProfileRegions",
     "TestMoveFeatureGui",

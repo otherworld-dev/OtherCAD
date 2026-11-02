@@ -60,6 +60,7 @@
 
 #include "TaskSketchBasedParameters.h"
 #include "ReferenceSelection.h"
+#include "Utils.h"
 
 using namespace PartDesignGui;
 using namespace Gui;
@@ -609,6 +610,11 @@ const QString TaskSketchBasedParameters::onAddSelection(
 
     std::string subname = msg.pSubName;
     QString refStr;
+
+    // A face of another body comes in as a shape binder, not as a link out of the body
+    if (App::DocumentObject* binder = bindIntoBody(sketchBased, selObj, subname)) {
+        selObj = binder;
+    }
 
     if (PartDesign::Feature::isDatum(selObj)) {
         // Check if it's a plane within a LCS

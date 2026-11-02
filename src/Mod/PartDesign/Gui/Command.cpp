@@ -136,7 +136,9 @@ void UnifiedDatumCommand(Gui::Command& cmd, Base::Type type, std::string name)
             }
         }
 
-        PartDesign::Body* pcActiveBody = PartDesignGui::getBody(/*messageIfNot = */ true);
+        PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature(
+            /*selectionWins = */ false
+        );
 
         if (bEditSelected) {
             pcActiveBody->getDocument()->openTransaction(
@@ -1459,7 +1461,7 @@ void prepareProfileBased(
     const char* label = nullptr
 )
 {
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(true);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature();
 
     if (!pcActiveBody) {
         return;
@@ -1608,7 +1610,7 @@ void CmdPartDesignHole::activated(int iMsg)
 {
     Q_UNUSED(iMsg);
 
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(true);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature();
 
     if (!pcActiveBody) {
         return;
@@ -1656,7 +1658,7 @@ void CmdPartDesignRevolve::activated(int iMsg)
 {
     Q_UNUSED(iMsg);
 
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(true);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature();
 
     if (!pcActiveBody) {
         return;
@@ -1720,7 +1722,7 @@ void CmdPartDesignRevolution::activated(int iMsg)
 {
     Q_UNUSED(iMsg);
 
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(true);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature();
 
     if (!pcActiveBody) {
         return;
@@ -1782,7 +1784,7 @@ void CmdPartDesignGroove::activated(int iMsg)
 {
     Q_UNUSED(iMsg);
 
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(true);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature();
 
     if (!pcActiveBody) {
         return;
@@ -1851,7 +1853,7 @@ void CmdPartDesignSweep::activated(int iMsg)
 {
     Q_UNUSED(iMsg);
 
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(true);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature();
 
     if (!pcActiveBody) {
         return;
@@ -1901,7 +1903,7 @@ void CmdPartDesignAdditivePipe::activated(int iMsg)
 {
     Q_UNUSED(iMsg);
 
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(true);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature();
 
     if (!pcActiveBody) {
         return;
@@ -1951,7 +1953,7 @@ void CmdPartDesignSubtractivePipe::activated(int iMsg)
 {
     Q_UNUSED(iMsg);
 
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(true);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature();
 
     if (!pcActiveBody) {
         return;
@@ -2000,7 +2002,7 @@ void CmdPartDesignLoft::activated(int iMsg)
 {
     Q_UNUSED(iMsg);
 
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(true);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature();
 
     if (!pcActiveBody) {
         return;
@@ -2050,7 +2052,7 @@ void CmdPartDesignAdditiveLoft::activated(int iMsg)
 {
     Q_UNUSED(iMsg);
 
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(true);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature();
 
     if (!pcActiveBody) {
         return;
@@ -2099,7 +2101,7 @@ void CmdPartDesignSubtractiveLoft::activated(int iMsg)
 {
     Q_UNUSED(iMsg);
 
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(true);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature();
 
     if (!pcActiveBody) {
         return;
@@ -2147,7 +2149,7 @@ void CmdPartDesignCoil::activated(int iMsg)
 {
     Q_UNUSED(iMsg);
 
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(true);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature();
 
     if (!pcActiveBody) {
         return;
@@ -2231,7 +2233,7 @@ void CmdPartDesignAdditiveHelix::activated(int iMsg)
 {
     Q_UNUSED(iMsg);
 
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(true);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature();
 
     if (!pcActiveBody) {
         return;
@@ -2315,7 +2317,7 @@ void CmdPartDesignSubtractiveHelix::activated(int iMsg)
 {
     Q_UNUSED(iMsg);
 
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(true);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature();
 
     if (!pcActiveBody) {
         return;
@@ -2363,7 +2365,7 @@ bool dressupGetSelected(
     bool& noSelection
 )
 {
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(true);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature();
 
     if (!pcActiveBody) {
         return false;
@@ -2574,7 +2576,7 @@ bool CmdPartDesignChamfer::isActive()
 
 static void makeDefeaturing(Gui::Command* cmd)
 {
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(true);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature();
     if (!pcActiveBody) {
         return;
     }
@@ -3051,7 +3053,7 @@ void prepareTransformed(
         PartDesign::Feature::getClassTypeId()
     );
 
-    PartDesign::Body* activeBody = PartDesignGui::getBody(true);
+    PartDesign::Body* activeBody = PartDesignGui::getBodyForNewFeature();
     for (auto feature : features) {
         if (activeBody != PartDesignGui::getBodyFor(feature, false)) {
             QMessageBox::warning(
@@ -3125,7 +3127,7 @@ void CmdPartDesignMirrored::activated(int iMsg)
 {
     Q_UNUSED(iMsg);
 
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(true);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature();
 
     if (!pcActiveBody) {
         return;
@@ -3184,7 +3186,7 @@ void CmdPartDesignLinearPattern::activated(int iMsg)
 {
     Q_UNUSED(iMsg);
 
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(true);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature();
 
     if (!pcActiveBody) {
         return;
@@ -3261,7 +3263,7 @@ void CmdPartDesignPolarPattern::activated(int iMsg)
 {
     Q_UNUSED(iMsg);
 
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(true);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature();
 
     if (!pcActiveBody) {
         return;
@@ -3321,7 +3323,7 @@ void CmdPartDesignScaled::activated(int iMsg)
 {
     Q_UNUSED(iMsg);
 
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(true);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature();
 
     if (!pcActiveBody) {
         return;
@@ -3365,7 +3367,7 @@ CmdPartDesignMultiTransform::CmdPartDesignMultiTransform()
 void CmdPartDesignMultiTransform::activated(int iMsg)
 {
     Q_UNUSED(iMsg);
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(true);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBodyForNewFeature();
 
     if (!pcActiveBody) {
         return;

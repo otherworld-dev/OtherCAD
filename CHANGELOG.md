@@ -124,6 +124,15 @@ done in this fork.
 
 ### Changed
 
+- A new feature goes into the body of what it is made from, as in Fusion. Sketching on a
+  face, extruding a sketch or face, or filleting an edge of a body other than the active
+  one makes that body active and works there, instead of refusing or asking about a copy.
+  With no body active the selection's body is used, and a document without a body gets one
+  silently with the first feature (one undo takes both back). The body picker is left
+  only for a document with several bodies, none active and nothing selected. A new
+  document still starts empty.
+- An up-to face, axis, direction or other reference on another body comes into the
+  feature's own body as a shape binder, without the copy/cross-reference question.
 - Dragging the timeline's playhead rolls the model back and forward as it goes, as in
   Fusion, instead of only when it is let go. A whole drag is one undo step, however
   many features it passes.
