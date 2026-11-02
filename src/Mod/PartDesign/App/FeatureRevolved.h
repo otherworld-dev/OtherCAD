@@ -65,6 +65,12 @@ public:
     /** @name methods override feature */
     //@{
     short mustExecute() const override;
+
+    /// Extra profiles are revolved about the same axis, under the rules Profile follows
+    bool supportsExtraProfiles() const override
+    {
+        return true;
+    }
     void onChanged(const App::Property* prop) override;
     //@}
 
@@ -131,7 +137,7 @@ private:
         const TopLoc_Location& invObjLoc,
         Part::RevolMode revolMode
     );
-    void setResult(const TopoShape& base, const TopoShape& revolved, bool combineWithBase);
+    void setResult(const TopoShape& base, const TopoShape& revolved);
 
     /// Applies the boolean selected by the Operation property against the base
     TopoShape combineShapes(const TopoShape& base, const TopoShape& revolved) const;

@@ -39,7 +39,6 @@
 #include "Utils.h"
 #include "ViewProviderBody.h"
 #include "WorkflowManager.h"
-#include "ui_DlgReference.h"
 #include <Mod/PartDesign/App/Body.h>
 #include <Mod/PartDesign/App/DatumPlane.h>
 #include <Mod/PartDesign/App/ShapeBinder.h>
@@ -258,6 +257,7 @@ public:
 
         if (faceFilter.match()) {
             Gui::SelectionObject faceSelObject = faceFilter.Result[0][0];
+            useBodyOfFace(faceSelObject.getObject());
             SupportFaceValidator validator {faceSelObject};
             validator.handleSelectedBody(activeBody);
             validator.throwIfInvalid();
@@ -321,6 +321,21 @@ public:
     }
 
 private:
+    /// Fusion puts a sketch on a face into the face's own component, so a face of another
+    /// body makes that body the active one rather than being brought across to this one
+    void useBodyOfFace(App::DocumentObject* object)
+    {
+        auto* body = dynamic_cast<PartDesign::Body*>(object);
+        if (!body) {
+            body = PartDesign::Body::findBodyOf(object);
+        }
+        if (body && body != activeBody) {
+            if (auto* active = PartDesignGui::makeBodyActive(body, body->getDocument())) {
+                activeBody = active;
+            }
+        }
+    }
+
     void createBodyOrThrow()
     {
         if (!activeBody) {
@@ -346,26 +361,14 @@ private:
     {
         if (!activeBody->hasObject(selectedObject)) {
             if (!selectedObject->isDerivedFrom(App::Plane::getClassTypeId())) {
-                // TODO check here if the plane associated with right part/body (2015-09-01, Fat-Zer)
-
-                // check the prerequisites for the selected objects
-                // the user has to decide which option we should take if external references are used
-                //  TODO share this with UnifiedDatumCommand() (2015-10-20, Fat-Zer)
-                QDialog dia(Gui::getMainWindow());
-                PartDesignGui::Ui_DlgReference dlg;
-                dlg.setupUi(&dia);
-                dia.setModal(true);
-                int result = dia.exec();
-                if (result == QDialog::Rejected) {
-                    throw RejectException();
+                // Geometry outside any body (a face of another body has switched bodies
+                // by now) comes in as a dependent shape binder, without asking. It joins
+                // the sketch's command, so one undo takes both away.
+                if (!guidocument->hasPendingCommand()) {
+                    guidocument->openCommand(QT_TRANSLATE_NOOP("Command", "Sketch on Face"));
                 }
-
-                if (!dlg.radioXRef->isChecked()) {
-                    guidocument->openCommand(QT_TRANSLATE_NOOP("Command", "Make copy"));
-                    auto copy = makeCopy(selectedObject, dlg.radioIndependent->isChecked());
-                    supportString = supportFromCopy(copy);
-                    guidocument->commitCommand();
-                }
+                auto copy = makeCopy(selectedObject, /*independent =*/false);
+                supportString = supportFromCopy(copy);
             }
         }
     }
@@ -739,7 +742,8 @@ private:
             }
             if (sketch) {
                 document->commitCommand();
-                PartDesignGui::setEdit(sketch, body);
+                // A face of another body puts the sketch there, not in the body picked for
+                PartDesignGui::setEdit(sketch, PartDesign::Body::findBodyOf(sketch));
             }
             else if (document->hasPendingCommand()) {
                 document->abortCommand();
@@ -1033,6 +1037,8 @@ std::tuple<bool, PartDesign::Body*> SketchWorkflow::shouldCreateBody()
     // We need either an active Body, or for there to be no Body
     // objects (in which case, just make one) to make a new sketch.
     // If we are inside a link, we need to use its placement.
+    // A sketch goes into the body of the face, plane or sketch it is put on
+    PartDesignGui::activateBodyOfSelection();
     App::DocumentObject* topParent;
     PartDesign::Body* pdBody
         = PartDesignGui::getBody(/* messageIfNot = */ false, true, true, &topParent);

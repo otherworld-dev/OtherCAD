@@ -27,6 +27,7 @@
 #include <unordered_set>
 
 #include <QAction>
+#include <QApplication>
 #include <QCursor>
 #include <QEvent>
 #include <QFrame>
@@ -38,6 +39,7 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMouseEvent>
+#include <QPalette>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSize>
@@ -63,6 +65,7 @@
 #include <Gui/Application.h>
 #include <Gui/Command.h>
 #include <Gui/Document.h>
+#include <Gui/MainWindow.h>
 #include <Gui/MDIView.h>
 #include <Gui/ViewProvider.h>
 #include <Gui/ViewProviderDocumentObject.h>
@@ -85,9 +88,65 @@ constexpr int scrollBarThickness = 8;
 // a single update, short enough to feel immediate.
 constexpr int updateDelay = 120;
 
+constexpr int dropIndicatorWidth = 3;
+// Between the fields of a stored group, which never occurs in a name or a number
+constexpr char groupFieldSeparator = '\t';
+// Long enough to read why a drop was refused
+constexpr int refusalMessageTimeout = 6000;
+
 const char* const bodyTypeName = "PartDesign::Body";
 const char* const solidTypeName = "PartDesign::Feature";
 const char* const partFeatureTypeName = "Part::Feature";
+
+/// A feature and the steps of its own a MultiTransform keeps in the body's Group, which
+/// are not on the strip and go wherever the MultiTransform goes
+std::vector<App::DocumentObject*> withSteps(App::DocumentObject* obj)
+{
+    std::vector<App::DocumentObject*> result {obj};
+    auto* steps = freecad_cast<App::PropertyLinkList*>(obj->getPropertyByName("Transformations"));
+    if (steps) {
+        for (App::DocumentObject* step : steps->getValues()) {
+            if (step) {
+                result.push_back(step);
+            }
+        }
+    }
+    return result;
+}
+
+/// Everything obj is built on, through every link but the two the body keeps up itself:
+/// BaseFeature, which the body rewires whenever its order changes, and _Body, which leads
+/// back to the body and from there to every feature in it.
+void collectDependencies(
+    const App::DocumentObject* obj,
+    const App::DocumentObject* body,
+    std::unordered_set<const App::DocumentObject*>& result
+)
+{
+    std::vector<const App::DocumentObject*> pending {obj};
+    while (!pending.empty()) {
+        const App::DocumentObject* current = pending.back();
+        pending.pop_back();
+
+        std::vector<App::Property*> props;
+        current->getPropertyList(props);
+        for (App::Property* prop : props) {
+            const char* name = prop->getName();
+            auto* link = freecad_cast<App::PropertyLinkBase*>(prop);
+            if (!link || !name || std::strcmp(name, "BaseFeature") == 0
+                || std::strcmp(name, "_Body") == 0) {
+                continue;
+            }
+            std::vector<App::DocumentObject*> linked;
+            link->getLinks(linked);
+            for (App::DocumentObject* target : linked) {
+                if (target && target != body && target != obj && result.insert(target).second) {
+                    pending.push_back(target);
+                }
+            }
+        }
+    }
+}
 }  // namespace
 
 
@@ -189,12 +248,22 @@ void TimelineWidget::setupUi()
     playhead->installEventFilter(this);
     playhead->hide();
 
+    // Laid over the strip rather than in its layout, so showing it moves no marker
+    dropIndicator = new QWidget(strip);
+    dropIndicator->setObjectName(QStringLiteral("TimelineDropIndicator"));
+    dropIndicator->setAttribute(Qt::WA_StyledBackground, true);
+    dropIndicator->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    dropIndicator->hide();
+
     emptyLabel = new QLabel(tr("No feature history"), strip);
     emptyLabel->setObjectName(QStringLiteral("TimelineEmptyLabel"));
     emptyLabel->hide();
 
     bodyLabel = new QLabel(this);
     bodyLabel->setObjectName(QStringLiteral("TimelineBodyLabel"));
+    // A click makes the body on the strip the active one, as the tree's indicator does
+    bodyLabel->setCursor(Qt::PointingHandCursor);
+    bodyLabel->installEventFilter(this);
     bodyLabel->hide();
 
     outerLayout->addWidget(bodyLabel, 0, Qt::AlignVCenter);
@@ -233,6 +302,11 @@ void TimelineWidget::connectDocumentSignals()
             followedBodyName.clear();
             followedDocumentName.clear();
         }
+        // Nor the groups that were unfolded in it
+        const std::string prefix = std::string(doc.getDocument()->getName()) + "/";
+        std::erase_if(expandedGroups, [&prefix](const std::string& key) {
+            return key.starts_with(prefix);
+        });
         scheduleRebuild();
     });
     connNewObject = app->signalNewObject.connect([this](const Gui::ViewProvider&) {
@@ -246,6 +320,7 @@ void TimelineWidget::connectDocumentSignals()
             const char* name = prop.getName();
             const bool structural = name != nullptr
                 && (std::strcmp(name, "Group") == 0 || std::strcmp(name, "Tip") == 0
+                    || std::strcmp(name, "TimelineGroups") == 0
                     || std::strcmp(name, "BaseFeature") == 0
                     || std::strcmp(name, "Transformations") == 0);
             if (structural) {
@@ -317,6 +392,12 @@ void TimelineWidget::scheduleRefresh()
 
 void TimelineWidget::onTimeout()
 {
+    // Rebuilding deletes the markers, the one being dragged among them, so it waits
+    if (dragInProgress()) {
+        updateTimer->start();
+        return;
+    }
+
     if (pendingRebuild) {
         pendingRebuild = false;
         rebuild();
@@ -344,8 +425,15 @@ void TimelineWidget::rebuild()
         marker->deleteLater();
     }
     markers.clear();
+    for (const ShownGroup& group : shownGroups) {
+        group.marker->deleteLater();
+    }
+    shownGroups.clear();
+    featureGroup.clear();
+    stripItems.clear();
     featureNames.clear();
     solidIndices.clear();
+    hasBaseFeature = false;
     documentName.clear();
     bodyName.clear();
     tipIndex = -1;
@@ -415,6 +503,9 @@ void TimelineWidget::rebuild()
         if (obj == tip) {
             tipIndex = static_cast<int>(i);
         }
+        if (i == 0 && obj == baseFeature) {
+            hasBaseFeature = true;
+        }
     }
 
     // Outside a body there is no tip to roll to, so the whole strip counts as applied.
@@ -431,9 +522,93 @@ void TimelineWidget::rebuild()
     }
     requestedPlayhead = noPlayheadRequest;
 
+    // Each group is shown as the run of members side by side from its first one. Members
+    // something else has since been moved in between (by the tree, say) show on their own.
+    featureGroup.assign(static_cast<std::size_t>(count), -1);
+    std::vector<long> ids(static_cast<std::size_t>(count), -1);
     for (int i = 0; i < count; ++i) {
+        if (App::DocumentObject* obj = markers[i]->object()) {
+            ids[static_cast<std::size_t>(i)] = obj->getID();
+        }
+    }
+    for (const FeatureGroup& group : readGroups()) {
+        const auto isMember = [&](int i) {
+            return featureGroup[static_cast<std::size_t>(i)] < 0
+                && std::find(
+                       group.members.begin(),
+                       group.members.end(),
+                       ids[static_cast<std::size_t>(i)]
+                   )
+                != group.members.end();
+        };
+        int first = 0;
+        while (first < count && !isMember(first)) {
+            ++first;
+        }
+        if (first == count) {
+            continue;
+        }
+        int last = first;
+        while (last + 1 < count && isMember(last + 1)) {
+            ++last;
+        }
+
+        ShownGroup shown;
+        shown.key = group.key;
+        shown.first = first;
+        shown.last = last;
+        // A playhead between two members has to be seen there, so that group stays open
+        shown.expanded = expandedGroups.count(groupStateKey(group.key)) > 0
+            || (playheadIndex >= first && playheadIndex < last);
+        shown.marker = new TimelineGroupMarker(QString::fromStdString(group.key), strip);
+        connect(shown.marker, &TimelineGroupMarker::selectRequested, this, &TimelineWidget::onGroupSelect);
+        connect(shown.marker, &TimelineGroupMarker::toggleRequested, this, &TimelineWidget::onGroupToggle);
+        connect(
+            shown.marker,
+            &TimelineGroupMarker::menuRequested,
+            this,
+            &TimelineWidget::onGroupMenu,
+            Qt::QueuedConnection
+        );
+        shown.marker->installEventFilter(this);
+
+        bool error = false;
+        bool warning = false;
+        for (int i = first; i <= last; ++i) {
+            featureGroup[static_cast<std::size_t>(i)] = static_cast<int>(shownGroups.size());
+            App::DocumentObject* obj = markers[i]->object();
+            error = error || (obj && obj->isError());
+            warning = warning || markers[i]->hasWarning();
+        }
+        shown.marker->setGroup(
+            QString::fromUtf8(group.label.c_str()),
+            last - first + 1,
+            shown.expanded,
+            error,
+            warning
+        );
+        shownGroups.push_back(shown);
+    }
+
+    for (int i = 0; i < count; ++i) {
+        const int group = featureGroup[static_cast<std::size_t>(i)];
+        if (group >= 0 && shownGroups[static_cast<std::size_t>(group)].first == i) {
+            const ShownGroup& shown = shownGroups[static_cast<std::size_t>(group)];
+            stripLayout->addWidget(shown.marker);
+            shown.marker->show();
+            stripItems.push_back({shown.first, shown.last, shown.marker, shown.expanded});
+            if (!shown.expanded) {
+                // Folded: the group's marker stands in for every member
+                for (int member = shown.first; member <= shown.last; ++member) {
+                    markers[member]->hide();
+                }
+                i = shown.last;
+                continue;
+            }
+        }
         stripLayout->addWidget(markers[i]);
         markers[i]->show();
+        stripItems.push_back({i, i, markers[i]});
     }
 
     if (count == 0) {
@@ -451,16 +626,28 @@ void TimelineWidget::rebuild()
 
 void TimelineWidget::updateBodyLabel()
 {
-    // The strip can show a body other than the one new features go into, and has to say so
+    // The strip names its body and says whether new features go into it, as it can show a
+    // body other than the active one. The marks match the tree's active-body indicator.
     App::DocumentObject* body = currentBody();
     Gui::Application* app = Gui::Application::Instance;
-    if (body && app && body != activeBody(app->activeDocument())) {
-        bodyLabel->setText(tr("%1 (inactive)").arg(QString::fromUtf8(body->Label.getValue())));
-        bodyLabel->show();
+    if (!body || !app) {
+        bodyLabel->hide();
+        return;
+    }
+    const QString name = QString::fromUtf8(body->Label.getValue());
+    const bool active = body == activeBody(app->activeDocument());
+    QFont font = bodyLabel->font();
+    font.setBold(active);
+    bodyLabel->setFont(font);
+    if (active) {
+        bodyLabel->setText(QString(QChar(0x25C9)) + QLatin1Char(' ') + name);
+        bodyLabel->setToolTip(tr("The active body: new features go into it"));
     }
     else {
-        bodyLabel->hide();
+        bodyLabel->setText(QString(QChar(0x25CB)) + QLatin1Char(' ') + tr("%1 (inactive)").arg(name));
+        bodyLabel->setToolTip(tr("Click to make this body the active one"));
     }
+    bodyLabel->show();
 }
 
 void TimelineWidget::positionPlayhead()
@@ -473,10 +660,14 @@ void TimelineWidget::positionPlayhead()
         return;
     }
 
-    // The markers occupy the first positions of the layout and the stretch trails them, so
-    // the slot in front of the marker after the playhead is the playhead's own.
+    // The items occupy the first positions of the layout and the stretch trails them, so
+    // the slot in front of the first item the playhead has not reached is its own.
+    const auto reached
+        = std::count_if(stripItems.cbegin(), stripItems.cend(), [this](const StripItem& item) {
+              return item.first <= playheadIndex;
+          });
     stripLayout->removeWidget(playhead);
-    stripLayout->insertWidget(playheadIndex + 1, playhead);
+    stripLayout->insertWidget(static_cast<int>(reached), playhead);
     playhead->show();
 }
 
@@ -510,6 +701,24 @@ void TimelineWidget::applyStates()
         }
 
         marker->setTip(i == tipIndex);
+    }
+
+    for (const ShownGroup& group : shownGroups) {
+        bool selected = false;
+        for (int i = group.first; i <= group.last && !selected; ++i) {
+            App::DocumentObject* obj = markers[i]->object();
+            selected = obj != nullptr && Gui::Selection().isSelected(obj);
+        }
+        if (selected) {
+            group.marker->setState(TimelineMarker::State::Selected);
+        }
+        else if (group.first > playheadIndex) {
+            group.marker->setState(TimelineMarker::State::RolledBack);
+        }
+        else {
+            group.marker->setState(TimelineMarker::State::Normal);
+        }
+        group.marker->setTip(!group.expanded && tipIndex >= group.first && tipIndex <= group.last);
     }
 
     const bool hasBody = !bodyName.empty();
@@ -748,14 +957,25 @@ void TimelineWidget::collectDocumentFeatures(
 int TimelineWidget::markerIndexAt(const QPoint& stripPos) const
 {
     int index = -1;
-    const int count = static_cast<int>(markers.size());
-    for (int i = 0; i < count; ++i) {
-        if (markers[i]->geometry().center().x() <= stripPos.x()) {
-            index = i;
+    for (const StripItem& item : stripItems) {
+        if (item.widget->geometry().center().x() <= stripPos.x()) {
+            index = item.header ? item.first - 1 : item.last;
         }
     }
 
     return index;
+}
+
+int TimelineWidget::itemIndexOf(const QObject* widget) const
+{
+    const int count = static_cast<int>(stripItems.size());
+    for (int i = 0; i < count; ++i) {
+        if (stripItems[static_cast<std::size_t>(i)].widget == widget) {
+            return i;
+        }
+    }
+
+    return -1;
 }
 
 int TimelineWidget::indexOfFeature(const std::string& name) const
@@ -938,6 +1158,12 @@ bool TimelineWidget::event(QEvent* event)
 
 bool TimelineWidget::eventFilter(QObject* watched, QEvent* event)
 {
+    if (watched == bodyLabel && event->type() == QEvent::MouseButtonRelease
+        && static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) {
+        activateShownBody();
+        updateBodyLabel();
+        return true;
+    }
     // A focused marker or step button is offered the key before the strip is, so the
     // claim has to be made here as well as in event() above.
     if (event->type() == QEvent::ShortcutOverride && keyAction(static_cast<QKeyEvent*>(event))) {
@@ -949,6 +1175,57 @@ bool TimelineWidget::eventFilter(QObject* watched, QEvent* event)
         return true;
     }
 
+    // A marker dragged along the strip moves its feature. The press is still the marker's
+    // own, which selects the feature; only a move past the drag distance starts a drag.
+    if (watched != playhead && !bodyName.empty() && itemIndexOf(watched) >= 0) {
+        switch (event->type()) {
+            case QEvent::MouseButtonPress: {
+                auto* mouse = static_cast<QMouseEvent*>(event);
+                if (mouse->button() == Qt::LeftButton) {
+                    endMarkerDrag();
+                    pressedItem = static_cast<QWidget*>(watched);
+                    pressPos = mouse->globalPosition().toPoint();
+                }
+                break;
+            }
+            case QEvent::MouseMove: {
+                auto* mouse = static_cast<QMouseEvent*>(event);
+                if (pressedItem.data() != watched || !(mouse->buttons() & Qt::LeftButton)) {
+                    break;
+                }
+                const QPoint globalPos = mouse->globalPosition().toPoint();
+                if (!draggingMarker
+                    && (globalPos - pressPos).manhattanLength() >= QApplication::startDragDistance()) {
+                    const StripItem& item = stripItems[static_cast<std::size_t>(itemIndexOf(watched))];
+                    draggingMarker = true;
+                    dragFirst = item.first;
+                    dragLast = item.last;
+                    dragWholeGroup = qobject_cast<TimelineGroupMarker*>(item.widget) != nullptr;
+                    dragDependencies.clear();
+                }
+                if (draggingMarker) {
+                    updateMarkerDrag(globalPos);
+                    return true;
+                }
+                break;
+            }
+            case QEvent::MouseButtonRelease: {
+                auto* mouse = static_cast<QMouseEvent*>(event);
+                if (mouse->button() != Qt::LeftButton || pressedItem.data() != watched) {
+                    break;
+                }
+                if (draggingMarker) {
+                    finishMarkerDrag(mouse->globalPosition().toPoint());
+                    return true;
+                }
+                endMarkerDrag();
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
     if (watched != playhead) {
         return QWidget::eventFilter(watched, event);
     }
@@ -956,18 +1233,25 @@ bool TimelineWidget::eventFilter(QObject* watched, QEvent* event)
     switch (event->type()) {
         case QEvent::MouseButtonPress:
             if (static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) {
+                endScrub();
                 draggingPlayhead = true;
                 return true;
             }
             return false;
         case QEvent::MouseMove:
+            // The model follows the playhead while it is dragged, as in Fusion
+            if (draggingPlayhead) {
+                const QPoint globalPos = static_cast<QMouseEvent*>(event)->globalPosition().toPoint();
+                scrubTo(markerIndexAt(strip->mapFromGlobal(globalPos)));
+            }
             return draggingPlayhead;
         case QEvent::MouseButtonRelease: {
             if (!draggingPlayhead) {
                 return false;
             }
-            draggingPlayhead = false;
-            moveTo(markerIndexAt(strip->mapFromGlobal(QCursor::pos())));
+            const QPoint globalPos = static_cast<QMouseEvent*>(event)->globalPosition().toPoint();
+            scrubTo(markerIndexAt(strip->mapFromGlobal(globalPos)));
+            endScrub();
             return true;
         }
         default:
@@ -1000,8 +1284,14 @@ void TimelineWidget::onMarkerMenu(const QString& feature, const QPoint& globalPo
 
     const int index = indexOfFeature(name);
 
+    // A feature in yellow is opened to check or reselect the reference that moved
+    const bool warned = std::any_of(markers.cbegin(), markers.cend(), [&](TimelineMarker* marker) {
+        App::DocumentObject* obj = marker->object();
+        return obj && name == obj->getNameInDocument() && marker->hasWarning();
+    });
+
     QMenu menu(this);
-    QAction* editAction = menu.addAction(tr("Edit"));
+    QAction* editAction = menu.addAction(warned ? tr("Edit to Reselect") : tr("Edit"));
     QAction* renameAction = menu.addAction(tr("Rename"));
     QAction* deleteAction = menu.addAction(tr("Delete"));
     QAction* suppressAction = nullptr;
@@ -1010,6 +1300,20 @@ void TimelineWidget::onMarkerMenu(const QString& feature, const QPoint& globalPo
         suppressAction = menu.addAction(tr("Suppress"));
         suppressAction->setCheckable(true);
         suppressAction->setChecked(suppressible->Suppressed.getValue());
+    }
+    // Names rather than indices: the menu's event loop may rebuild the strip
+    QAction* groupAction = nullptr;
+    std::string groupFirst;
+    std::string groupLast;
+    if (!bodyName.empty() && index >= 0) {
+        int first = -1;
+        int last = -1;
+        groupAction = menu.addAction(tr("Group"));
+        groupAction->setEnabled(groupCandidates(index, first, last));
+        if (groupAction->isEnabled()) {
+            groupFirst = featureNames[static_cast<std::size_t>(first)];
+            groupLast = featureNames[static_cast<std::size_t>(last)];
+        }
     }
     QAction* rollAction = nullptr;
     if (!bodyName.empty() && index >= 0) {
@@ -1039,6 +1343,323 @@ void TimelineWidget::onMarkerMenu(const QString& feature, const QPoint& globalPo
     else if (chosen == rollAction) {
         moveTo(index);
     }
+    else if (chosen == groupAction) {
+        const int first = indexOfFeature(groupFirst);
+        const int last = indexOfFeature(groupLast);
+        if (first >= 0 && last >= first) {
+            createGroup(first, last);
+        }
+    }
+}
+
+void TimelineWidget::onGroupSelect(const QString& key)
+{
+    const int index = shownGroupIndex(key.toStdString());
+    if (index < 0) {
+        return;
+    }
+
+    // Picking the group picks what is in it, as a click on a folder row would
+    const ShownGroup& group = shownGroups[static_cast<std::size_t>(index)];
+    std::vector<App::DocumentObject*> members;
+    for (int i = group.first; i <= group.last; ++i) {
+        if (App::DocumentObject* obj = markers[i]->object()) {
+            members.push_back(obj);
+        }
+    }
+    Gui::Selection().clearSelection();
+    for (App::DocumentObject* obj : members) {
+        Gui::Selection().addSelection(obj->getDocument()->getName(), obj->getNameInDocument());
+    }
+}
+
+void TimelineWidget::onGroupToggle(const QString& key)
+{
+    const int index = shownGroupIndex(key.toStdString());
+    if (index < 0) {
+        return;
+    }
+
+    const std::string state = groupStateKey(key.toStdString());
+    if (shownGroups[static_cast<std::size_t>(index)].expanded) {
+        expandedGroups.erase(state);
+    }
+    else {
+        expandedGroups.insert(state);
+    }
+    scheduleRebuild();
+}
+
+void TimelineWidget::onGroupMenu(const QString& key, const QPoint& globalPos)
+{
+    const int index = shownGroupIndex(key.toStdString());
+    if (index < 0) {
+        return;
+    }
+
+    const ShownGroup group = shownGroups[static_cast<std::size_t>(index)];
+    const std::string lastMember = featureNames[static_cast<std::size_t>(group.last)];
+
+    QMenu menu(this);
+    QAction* toggleAction = menu.addAction(group.expanded ? tr("Collapse") : tr("Expand"));
+    QAction* renameAction = menu.addAction(tr("Rename Group"));
+    QAction* ungroupAction = menu.addAction(tr("Ungroup"));
+    QAction* rollAction = nullptr;
+    if (!bodyName.empty()) {
+        menu.addSeparator();
+        rollAction = menu.addAction(tr("Roll History Here"));
+    }
+
+    QAction* chosen = menu.exec(globalPos);
+    if (!chosen) {
+        return;
+    }
+
+    if (chosen == toggleAction) {
+        onGroupToggle(key);
+    }
+    else if (chosen == renameAction) {
+        renameGroup(group.key);
+    }
+    else if (chosen == ungroupAction) {
+        ungroup(group.key);
+    }
+    else if (chosen == rollAction) {
+        const int last = indexOfFeature(lastMember);
+        if (last >= 0) {
+            moveTo(last);
+        }
+    }
+}
+
+App::PropertyStringList* TimelineWidget::groupsProperty() const
+{
+    App::DocumentObject* body = currentBody();
+    Gui::Application* app = Gui::Application::Instance;
+    Gui::ViewProvider* provider = body && app ? app->getViewProvider(body) : nullptr;
+    return provider
+        ? freecad_cast<App::PropertyStringList*>(provider->getPropertyByName("TimelineGroups"))
+        : nullptr;
+}
+
+std::vector<TimelineWidget::FeatureGroup> TimelineWidget::readGroups() const
+{
+    std::vector<FeatureGroup> groups;
+    const App::PropertyStringList* prop = groupsProperty();
+    if (!prop) {
+        return groups;
+    }
+
+    for (const std::string& entry : prop->getValues()) {
+        const QStringList fields
+            = QString::fromUtf8(entry.c_str()).split(QLatin1Char(groupFieldSeparator));
+        if (fields.size() < 2) {
+            continue;
+        }
+        FeatureGroup group;
+        group.key = fields[0].toStdString();
+        group.label = fields[1].toStdString();
+        for (qsizetype i = 2; i < fields.size(); ++i) {
+            bool ok = false;
+            const long id = fields[i].toLong(&ok);
+            if (ok) {
+                group.members.push_back(id);
+            }
+        }
+        groups.push_back(std::move(group));
+    }
+
+    return groups;
+}
+
+void TimelineWidget::writeGroups(std::vector<FeatureGroup> groups)
+{
+    App::PropertyStringList* prop = groupsProperty();
+    App::Document* doc = currentDocument();
+    if (!prop || !doc) {
+        return;
+    }
+
+    std::vector<std::string> values;
+    for (FeatureGroup& group : groups) {
+        std::erase_if(group.members, [doc](long id) { return doc->getObjectByID(id) == nullptr; });
+        if (group.members.empty()) {
+            continue;
+        }
+        std::string entry = group.key + groupFieldSeparator + group.label;
+        for (long id : group.members) {
+            entry += groupFieldSeparator + std::to_string(id);
+        }
+        values.push_back(std::move(entry));
+    }
+
+    if (values != prop->getValues()) {
+        prop->setValues(values);
+    }
+}
+
+std::string TimelineWidget::groupStateKey(const std::string& key) const
+{
+    return documentName + "/" + bodyName + "/" + key;
+}
+
+int TimelineWidget::shownGroupIndex(const std::string& key) const
+{
+    const int count = static_cast<int>(shownGroups.size());
+    for (int i = 0; i < count; ++i) {
+        if (shownGroups[static_cast<std::size_t>(i)].key == key) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+bool TimelineWidget::groupCandidates(int clicked, int& first, int& last) const
+{
+    const int count = static_cast<int>(markers.size());
+    if (clicked < 0 || clicked >= count) {
+        return false;
+    }
+
+    const auto selected = [this](int i) {
+        App::DocumentObject* obj = markers[i]->object();
+        return obj != nullptr && Gui::Selection().isSelected(obj);
+    };
+    std::vector<int> chosen;
+    if (selected(clicked)) {
+        for (int i = 0; i < count; ++i) {
+            if (selected(i)) {
+                chosen.push_back(i);
+            }
+        }
+    }
+    else {
+        chosen.push_back(clicked);
+    }
+
+    first = chosen.front();
+    last = chosen.back();
+    if (last - first + 1 != static_cast<int>(chosen.size())) {
+        return false;
+    }
+    return std::none_of(chosen.begin(), chosen.end(), [this](int i) {
+        return featureGroup[static_cast<std::size_t>(i)] >= 0;
+    });
+}
+
+void TimelineWidget::createGroup(int first, int last)
+{
+    if (!groupsProperty()) {
+        return;
+    }
+
+    std::vector<FeatureGroup> groups = readGroups();
+    const auto keyTaken = [&groups](const std::string& key) {
+        return std::any_of(groups.begin(), groups.end(), [&key](const FeatureGroup& group) {
+            return group.key == key;
+        });
+    };
+    const auto labelTaken = [&groups](const std::string& label) {
+        return std::any_of(groups.begin(), groups.end(), [&label](const FeatureGroup& group) {
+            return group.label == label;
+        });
+    };
+
+    FeatureGroup group;
+    int number = 1;
+    while (keyTaken(std::to_string(number))) {
+        ++number;
+    }
+    group.key = std::to_string(number);
+    number = 1;
+    while (labelTaken(tr("Group %1").arg(number).toStdString())) {
+        ++number;
+    }
+    group.label = tr("Group %1").arg(number).toStdString();
+    for (int i = first; i <= last; ++i) {
+        if (App::DocumentObject* obj = markers[i]->object()) {
+            group.members.push_back(obj->getID());
+        }
+    }
+    groups.push_back(std::move(group));
+
+    // Groups are a view of the history rather than part of the model, but they are
+    // undone like any other change
+    const int transaction = Gui::Command::openActiveDocumentCommand(
+        std::string(QT_TRANSLATE_NOOP("Command", "Group timeline features"))
+    );
+    writeGroups(std::move(groups));
+    Gui::Command::commitCommand(transaction);
+    scheduleRebuild();
+}
+
+void TimelineWidget::ungroup(const std::string& key)
+{
+    std::vector<FeatureGroup> groups = readGroups();
+    std::erase_if(groups, [&key](const FeatureGroup& group) { return group.key == key; });
+
+    const int transaction = Gui::Command::openActiveDocumentCommand(
+        std::string(QT_TRANSLATE_NOOP("Command", "Ungroup timeline features"))
+    );
+    writeGroups(std::move(groups));
+    Gui::Command::commitCommand(transaction);
+    expandedGroups.erase(groupStateKey(key));
+    scheduleRebuild();
+}
+
+void TimelineWidget::renameGroup(const std::string& key)
+{
+    const auto byKey = [&key](const FeatureGroup& group) {
+        return group.key == key;
+    };
+    std::vector<FeatureGroup> groups = readGroups();
+    auto found = std::find_if(groups.begin(), groups.end(), byKey);
+    if (found == groups.end()) {
+        return;
+    }
+
+    const QString current = QString::fromUtf8(found->label.c_str());
+    bool accepted = false;
+    const QString typed = QInputDialog::getText(
+        this,
+        tr("Rename Group"),
+        tr("New name:"),
+        QLineEdit::Normal,
+        current,
+        &accepted
+    );
+    // Simplified, since a tab would split the stored entry
+    const QString label = typed.simplified();
+    if (!accepted || label.isEmpty() || label == current) {
+        return;
+    }
+
+    // Read again, as the dialog ran an event loop of its own
+    groups = readGroups();
+    found = std::find_if(groups.begin(), groups.end(), byKey);
+    if (found == groups.end()) {
+        return;
+    }
+    found->label = label.toStdString();
+
+    const int transaction = Gui::Command::openActiveDocumentCommand(
+        std::string(QT_TRANSLATE_NOOP("Command", "Rename timeline group"))
+    );
+    writeGroups(std::move(groups));
+    Gui::Command::commitCommand(transaction);
+    scheduleRebuild();
+}
+
+int TimelineWidget::skipFoldedGroups(int index, int direction) const
+{
+    for (const ShownGroup& group : shownGroups) {
+        if (!group.expanded && index >= group.first && index < group.last) {
+            return direction < 0 ? group.first - 1 : group.last;
+        }
+    }
+
+    return index;
 }
 
 void TimelineWidget::editFeature(const std::string& name)
@@ -1184,6 +1805,63 @@ void TimelineWidget::moveTo(int index)
         return;
     }
 
+    // One step is one undo entry
+    const int transaction = Gui::Command::openActiveDocumentCommand(
+        std::string(QT_TRANSLATE_NOOP("Command", "Roll history"))
+    );
+
+    if (rollStep(index)) {
+        Gui::Command::commitCommand(transaction);
+        return;
+    }
+
+    // The roll never happened, so neither should the half of it that may already have been
+    // written; the rebuild puts the strip back in step with the document as it really is.
+    Gui::Command::abortCommand(transaction);
+    scheduleRebuild();
+}
+
+void TimelineWidget::scrubTo(int index)
+{
+    const int count = static_cast<int>(markers.size());
+    index = std::clamp(index, -1, count - 1);
+    if (index == playheadIndex) {
+        return;
+    }
+
+    // Opened on the first step rather than on the press, so a click on the playhead that
+    // moves nothing leaves no empty entry behind
+    if (!scrubbing) {
+        if (!activateShownBody() && !bodyName.empty()) {
+            draggingPlayhead = false;
+            return;
+        }
+        scrubTransaction = Gui::Command::openActiveDocumentCommand(
+            std::string(QT_TRANSLATE_NOOP("Command", "Roll history"))
+        );
+        scrubbing = true;
+    }
+
+    if (!rollStep(index)) {
+        // A step that failed takes the whole drag back to where it started
+        Gui::Command::abortCommand(scrubTransaction);
+        scrubbing = false;
+        draggingPlayhead = false;
+        scheduleRebuild();
+    }
+}
+
+void TimelineWidget::endScrub()
+{
+    draggingPlayhead = false;
+    if (scrubbing) {
+        scrubbing = false;
+        Gui::Command::commitCommand(scrubTransaction);
+    }
+}
+
+bool TimelineWidget::rollStep(int index)
+{
     // Only a solid feature can carry the tip, so a step onto a sketch or a datum lands on
     // the same model state and the document is left alone; the strip moves either way.
     const bool tipMoves = solidAtOrBefore(index) != tipIndex;
@@ -1196,23 +1874,19 @@ void TimelineWidget::moveTo(int index)
     positionPlayhead();
     applyStates();
 
-    // One step is one undo entry. The tip goes first on purpose: Visibility is a NoModify
-    // property, which never opens a transaction of its own and is only recorded once one
-    // is already running, so the writes that do open one have to come before it.
-    const int transaction = Gui::Command::openActiveDocumentCommand(
-        std::string(QT_TRANSLATE_NOOP("Command", "Roll history"))
-    );
-
-    if (!tipMoves || rollTo(index)) {
-        applyRollbackVisibility();
-        Gui::Command::commitCommand(transaction);
-        return;
+    // The tip goes first on purpose: Visibility is a NoModify property, which never opens
+    // a transaction of its own and is only recorded once one is already running, so the
+    // writes that do open one have to come before it.
+    if (tipMoves && !rollTo(index)) {
+        return false;
     }
 
-    // The roll never happened, so neither should the half of it that may already have been
-    // written; the rebuild puts the strip back in step with the document as it really is.
-    Gui::Command::abortCommand(transaction);
-    scheduleRebuild();
+    // A drag holds off the rebuild that would read the new tip back, and its next step
+    // has to know where this one left it
+    tipIndex = solidAtOrBefore(index);
+    applyRollbackVisibility();
+    applyStates();
+    return true;
 }
 
 bool TimelineWidget::rollTo(int index)
@@ -1286,12 +1960,12 @@ bool TimelineWidget::rollTo(int index)
 
 void TimelineWidget::stepBack()
 {
-    moveTo(playheadIndex - 1);
+    moveTo(skipFoldedGroups(playheadIndex - 1, -1));
 }
 
 void TimelineWidget::stepForward()
 {
-    moveTo(playheadIndex + 1);
+    moveTo(skipFoldedGroups(playheadIndex + 1, 1));
 }
 
 void TimelineWidget::rollToStart()
@@ -1302,6 +1976,326 @@ void TimelineWidget::rollToStart()
 void TimelineWidget::rollToEnd()
 {
     moveTo(static_cast<int>(markers.size()) - 1);
+}
+
+bool TimelineWidget::dragInProgress() const
+{
+    return draggingPlayhead || !pressedItem.isNull();
+}
+
+int TimelineWidget::dropBoundaryAt(const QPoint& stripPos) const
+{
+    for (const StripItem& item : stripItems) {
+        if (item.first >= dragFirst && item.last <= dragLast) {
+            continue;
+        }
+        if (item.widget->geometry().center().x() > stripPos.x()) {
+            return item.first;
+        }
+    }
+
+    return static_cast<int>(featureNames.size());
+}
+
+TimelineWidget::MovePlan TimelineWidget::planMove(int first, int last, int boundary, bool wholeGroup)
+{
+    MovePlan plan;
+    const int count = static_cast<int>(featureNames.size());
+    if (first < 0 || last < first || last >= count || boundary < 0 || boundary > count
+        || (boundary >= first && boundary <= last + 1)) {
+        plan.unchanged = true;
+        return plan;
+    }
+
+    App::DocumentObject* body = currentBody();
+    auto* groupProp = body ? freecad_cast<App::PropertyLinkList*>(body->getPropertyByName("Group"))
+                           : nullptr;
+    if (!groupProp) {
+        plan.unchanged = true;
+        return plan;
+    }
+
+    // The base feature is what the body starts from, and it is not part of the Group at all
+    if (hasBaseFeature && first == 0) {
+        plan.refusal = tr("The base feature of a body cannot be moved");
+        return plan;
+    }
+    if (hasBaseFeature && boundary == 0) {
+        plan.refusal = tr("Nothing can move in front of the base feature of a body");
+        return plan;
+    }
+    // One level of grouping only
+    if (wholeGroup && boundary > 0 && boundary < count) {
+        const int before = featureGroup[static_cast<std::size_t>(boundary - 1)];
+        if (before >= 0 && before == featureGroup[static_cast<std::size_t>(boundary)]) {
+            plan.refusal = tr("A group cannot go inside another group");
+            return plan;
+        }
+    }
+
+    std::unordered_set<const App::DocumentObject*> moving;
+    for (int i = first; i <= last; ++i) {
+        App::DocumentObject* obj = resolve(featureNames[static_cast<std::size_t>(i)]);
+        if (!obj) {
+            plan.unchanged = true;
+            return plan;
+        }
+        for (App::DocumentObject* member : withSteps(obj)) {
+            moving.insert(member);
+        }
+    }
+
+    const std::vector<App::DocumentObject*> group = groupProp->getValues();
+    std::vector<App::DocumentObject*> remaining;
+    for (App::DocumentObject* obj : group) {
+        if (moving.count(obj) > 0) {
+            plan.moving.push_back(obj);
+        }
+        else {
+            remaining.push_back(obj);
+        }
+    }
+    if (plan.moving.size() != moving.size()) {
+        plan.unchanged = true;
+        return plan;
+    }
+
+    // In front of the feature after the drop, and in front of any steps of its own the
+    // Group holds before it, so a MultiTransform keeps its steps together
+    std::size_t insertAt = remaining.size();
+    if (boundary < count) {
+        App::DocumentObject* next = resolve(featureNames[static_cast<std::size_t>(boundary)]);
+        if (!next) {
+            plan.unchanged = true;
+            return plan;
+        }
+        for (App::DocumentObject* member : withSteps(next)) {
+            const auto found = std::find(remaining.begin(), remaining.end(), member);
+            if (found != remaining.end()) {
+                insertAt = std::min(insertAt, static_cast<std::size_t>(found - remaining.begin()));
+            }
+        }
+        if (insertAt == remaining.size()) {
+            plan.unchanged = true;
+            return plan;
+        }
+        plan.before = remaining[insertAt];
+    }
+
+    std::vector<App::DocumentObject*> order = remaining;
+    order.insert(
+        order.begin() + static_cast<std::ptrdiff_t>(insertAt),
+        plan.moving.begin(),
+        plan.moving.end()
+    );
+
+    if (dragDependencies.empty()) {
+        for (App::DocumentObject* obj : group) {
+            collectDependencies(obj, body, dragDependencies[obj]);
+        }
+    }
+
+    std::unordered_map<const App::DocumentObject*, std::size_t> position;
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        position[order[i]] = i;
+    }
+
+    // Only a pair the move turns round can break, so pairs on the same side are skipped
+    const auto label = [](const App::DocumentObject* obj) {
+        return QString::fromUtf8(obj->Label.getValue());
+    };
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        const App::DocumentObject* obj = order[i];
+        const auto found = dragDependencies.find(obj);
+        if (found == dragDependencies.end()) {
+            continue;
+        }
+        const bool objMoves = moving.count(obj) > 0;
+        for (const App::DocumentObject* dependency : found->second) {
+            const auto at = position.find(dependency);
+            if (at == position.end() || (moving.count(dependency) > 0) == objMoves || at->second < i) {
+                continue;
+            }
+            plan.refusal = objMoves
+                ? tr("%1 cannot move in front of %2, which it is built on")
+                      .arg(label(obj), label(dependency))
+                : tr("%1 cannot move past %2, which is built on it").arg(label(dependency), label(obj));
+            return plan;
+        }
+    }
+
+    return plan;
+}
+
+void TimelineWidget::moveFeatures(int first, int last, int boundary, bool wholeGroup)
+{
+    const MovePlan plan = planMove(first, last, boundary, wholeGroup);
+    if (plan.unchanged) {
+        return;
+    }
+    if (!plan.refusal.isEmpty()) {
+        if (Gui::MainWindow* window = Gui::getMainWindow()) {
+            window->showMessage(plan.refusal, refusalMessageTimeout);
+        }
+        return;
+    }
+
+    if (!activateShownBody()) {
+        return;
+    }
+    App::DocumentObject* body = currentBody();
+    if (!body) {
+        return;
+    }
+
+    // The playhead stays behind the feature it was behind, so what was rolled back stays
+    // rolled back. One at the end stays at the end, taking the moved features in with it.
+    const int count = static_cast<int>(featureNames.size());
+    const bool atEnd = playheadIndex >= count - 1;
+    std::string anchor;
+    for (int i = playheadIndex; i >= 0; --i) {
+        if (i < first || i > last) {
+            anchor = featureNames[static_cast<std::size_t>(i)];
+            break;
+        }
+    }
+
+    // What PartDesign_MoveFeatureInTree does: out of the Group and back in at the new
+    // place, which has the body rewire the BaseFeature of every solid on the way
+    const int transaction = Gui::Command::openActiveDocumentCommand(
+        std::string(QT_TRANSLATE_NOOP("Command", "Move feature in timeline"))
+    );
+    try {
+        for (App::DocumentObject* obj : plan.moving) {
+            FCMD_OBJ_CMD(body, "removeObject(" << Gui::Command::getObjectCmd(obj) << ")");
+        }
+        App::DocumentObject* previous = nullptr;
+        for (App::DocumentObject* obj : plan.moving) {
+            const std::string moved = Gui::Command::getObjectCmd(obj);
+            const std::string after = previous ? Gui::Command::getObjectCmd(previous) : std::string();
+            const std::string before = plan.before ? Gui::Command::getObjectCmd(plan.before)
+                                                   : std::string("None");
+            if (previous) {
+                FCMD_OBJ_CMD(body, "insertObject(" << moved << ", " << after << ", True)");
+            }
+            else {
+                FCMD_OBJ_CMD(body, "insertObject(" << moved << ", " << before << ", False)");
+            }
+            previous = obj;
+        }
+
+        // A feature dropped between two members of an unfolded group joins it, and one
+        // dropped anywhere else leaves the group it was in. Read off the strip as it was.
+        if (!wholeGroup && first == last) {
+            int joined = -1;
+            if (boundary > 0 && boundary < count) {
+                const int before = featureGroup[static_cast<std::size_t>(boundary - 1)];
+                if (before >= 0 && before == featureGroup[static_cast<std::size_t>(boundary)]) {
+                    joined = before;
+                }
+            }
+            App::DocumentObject* obj = resolve(featureNames[static_cast<std::size_t>(first)]);
+            if (obj && joined != featureGroup[static_cast<std::size_t>(first)]) {
+                std::vector<FeatureGroup> groups = readGroups();
+                for (FeatureGroup& group : groups) {
+                    std::erase(group.members, obj->getID());
+                    if (joined >= 0
+                        && group.key == shownGroups[static_cast<std::size_t>(joined)].key) {
+                        group.members.push_back(obj->getID());
+                    }
+                }
+                writeGroups(std::move(groups));
+            }
+        }
+
+        // Read back now, inside the step, so the tip can be put where the playhead goes
+        rebuild();
+        const int target = atEnd ? static_cast<int>(featureNames.size()) - 1
+                                 : (anchor.empty() ? -1 : indexOfFeature(anchor));
+        const bool tipMoves = solidAtOrBefore(target) != tipIndex;
+        playheadIndex = target;
+        requestedPlayhead = target;
+        if (!tipMoves || !rollTo(target)) {
+            FCMD_DOC_CMD(body->getDocument(), "recompute()");
+        }
+        tipIndex = solidAtOrBefore(target);
+
+        positionPlayhead();
+        applyRollbackVisibility();
+        applyStates();
+        Gui::Command::commitCommand(transaction);
+    }
+    catch (const Base::Exception& e) {
+        Gui::Command::abortCommand(transaction);
+        e.reportException();
+    }
+
+    scheduleRebuild();
+}
+
+void TimelineWidget::updateMarkerDrag(const QPoint& globalPos)
+{
+    dropBoundary = dropBoundaryAt(strip->mapFromGlobal(globalPos));
+    const MovePlan plan = planMove(dragFirst, dragLast, dropBoundary, dragWholeGroup);
+    if (plan.unchanged || stripItems.empty()) {
+        dropIndicator->hide();
+        if (pressedItem) {
+            pressedItem->setCursor(Qt::ClosedHandCursor);
+        }
+        return;
+    }
+
+    // In front of the item the drop lands before, or after the last one
+    int x = 0;
+    for (const StripItem& item : stripItems) {
+        if (item.first >= dragFirst && item.last <= dragLast) {
+            continue;
+        }
+        if (item.first >= dropBoundary) {
+            x = item.widget->geometry().left() - markerSpacing;
+            break;
+        }
+        x = item.widget->geometry().right() + markerSpacing;
+    }
+
+    const bool valid = plan.refusal.isEmpty();
+    dropIndicator->setProperty("dropValid", valid);
+    dropIndicator->setToolTip(plan.refusal);
+    dropIndicator->setStyleSheet(
+        QStringLiteral("background-color: %1;")
+            .arg(valid ? palette().color(QPalette::Highlight).name() : QStringLiteral("#d93025"))
+    );
+    dropIndicator->setGeometry(x - dropIndicatorWidth / 2, 0, dropIndicatorWidth, strip->height());
+    dropIndicator->show();
+    dropIndicator->raise();
+    if (pressedItem) {
+        pressedItem->setCursor(valid ? Qt::ClosedHandCursor : Qt::ForbiddenCursor);
+    }
+}
+
+void TimelineWidget::finishMarkerDrag(const QPoint& globalPos)
+{
+    const int first = dragFirst;
+    const int last = dragLast;
+    const bool wholeGroup = dragWholeGroup;
+    const int boundary = dropBoundaryAt(strip->mapFromGlobal(globalPos));
+    endMarkerDrag();
+    moveFeatures(first, last, boundary, wholeGroup);
+    dragDependencies.clear();
+}
+
+void TimelineWidget::endMarkerDrag()
+{
+    if (pressedItem) {
+        pressedItem->unsetCursor();
+    }
+    pressedItem = nullptr;
+    draggingMarker = false;
+    dragFirst = -1;
+    dragLast = -1;
+    dropBoundary = -1;
+    dragWholeGroup = false;
+    dropIndicator->hide();
 }
 
 int TimelineWidget::defaultPlayhead() const

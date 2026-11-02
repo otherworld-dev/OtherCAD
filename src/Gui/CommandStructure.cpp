@@ -28,7 +28,10 @@
 #include "Command.h"
 #include "ActiveObjectList.h"
 #include "Application.h"
+#include "Control.h"
+#include "Dialogs/DlgChangeParameters.h"
 #include "Document.h"
+#include "MainWindow.h"
 #include "MDIView.h"
 #include "ViewProviderDocumentObject.h"
 #include "Selection.h"
@@ -250,6 +253,44 @@ bool StdCmdVarSet::isActive()
     return hasActiveDocument();
 }
 
+//===========================================================================
+// Std_ChangeParameters
+//===========================================================================
+DEF_STD_CMD_A(StdCmdChangeParameters)
+
+StdCmdChangeParameters::StdCmdChangeParameters()
+    : Command("Std_ChangeParameters")
+{
+    sGroup = "Structure";
+    sMenuText = QT_TR_NOOP("Change &Parameters");
+    sToolTipText = QT_TR_NOOP(
+        "Lists the document's user parameters and the model's dimensions, to add, rename, "
+        "edit and delete parameters and to edit dimensions in one place"
+    );
+    sWhatsThis = "Std_ChangeParameters";
+    sStatusTip = sToolTipText;
+    sPixmap = "bound-expression";
+    // The dialog makes its own undo steps
+    eType = NoTransaction;
+}
+
+void StdCmdChangeParameters::activated(int iMsg)
+{
+    Q_UNUSED(iMsg);
+    App::Document* doc = getActiveGuiDocument()->getDocument();
+    auto* dialog = new Dialog::DlgChangeParameters(doc, getMainWindow());
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    // Modal, so the document cannot change or close under it
+    dialog->open();
+}
+
+bool StdCmdChangeParameters::isActive()
+{
+    // As in Fusion, not while a feature or sketch is being edited, whose own transaction
+    // the dialog's edits would land in
+    return hasActiveDocument() && !Control().activeDialog();
+}
+
 namespace Gui
 {
 
@@ -260,6 +301,7 @@ void CreateStructureCommands()
     rcCmdMgr.addCommand(new StdCmdPart());
     rcCmdMgr.addCommand(new StdCmdGroup());
     rcCmdMgr.addCommand(new StdCmdVarSet());
+    rcCmdMgr.addCommand(new StdCmdChangeParameters());
 }
 
 }  // namespace Gui

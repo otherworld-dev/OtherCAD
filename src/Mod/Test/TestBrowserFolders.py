@@ -887,6 +887,78 @@ class TestFolderEyeAndExpansion(TreeFoldersBase):
         self.assertFalse(self._folder("History").isExpanded())
 
 
+class TestActiveBodyIndicator(TreeFoldersBase):
+    """Fusion's radio button on a body row: filled on the active body, a click activates (#753)."""
+
+    def setUp(self):
+        super().setUp()
+        self.other = self.doc.addObject("PartDesign::Body", "Body001")
+        self.doc.recompute()
+        self._view().setActiveObject("pdbody", self.body)
+        _process_events(200)
+
+    def _view(self):
+        return FreeCADGui.getDocument(self.doc.Name).ActiveView
+
+    def _active(self):
+        return self._view().getActiveObject("pdbody")
+
+    def _indicator_rect(self, item):
+        """The indicator, as the tree draws and hit-tests it: the right end of the row's
+        first-column cell, kept on screen. Or a skip."""
+        if QtTest is None:
+            self.skipTest("QtTest is not available in this build")
+        self.tree.scrollToItem(item)
+        _process_events()
+        row = self.tree.visualItemRect(item)
+        header = self.tree.header()
+        right = header.sectionViewportPosition(0) + header.sectionSize(0) - 1
+        right = min(right, self.tree.viewport().width() - 1) - 3
+        size = self.tree.iconSize().height()
+        if size <= 0:
+            size = self.tree.style().pixelMetric(QtWidgets.QStyle.PM_SmallIconSize)
+        size = min(size, row.height())
+        rect = QtCore.QRect(right - size + 1, row.center().y() - size // 2, size, size)
+        hit = self._hold(self.tree.itemAt(rect.center())) if self.tree.isVisible() else None
+        if hit is None or hit.type() != item.type() or hit.text(0) != item.text(0):
+            self.skipTest("The row is not on screen in this test environment")
+        return rect
+
+    def _click_indicator(self, item):
+        rect = self._indicator_rect(item)
+        QtTest.QTest.mouseClick(
+            self.tree.viewport(), QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, rect.center()
+        )
+        _process_events(200)
+
+    def test_clicking_the_indicator_activates_the_body(self):
+        self._click_indicator(self._item_of(self.other))
+        self.assertEqual(self._active().Name, self.other.Name)
+
+    def test_the_click_is_the_indicators_not_a_selection(self):
+        FreeCADGui.Selection.clearSelection()
+        self._click_indicator(self._item_of(self.other))
+        self.assertFalse(FreeCADGui.Selection.isSelected(self.other))
+
+    def test_clicking_the_active_bodys_indicator_keeps_it_active(self):
+        self._click_indicator(self._item_of(self.body))
+        self.assertEqual(self._active().Name, self.body.Name)
+
+    def _centre_is_filled(self, item):
+        """Whether the middle of the ring differs from the row's background at its corner."""
+        image = self.tree.viewport().grab(self._indicator_rect(item)).toImage()
+        centre = image.pixelColor(image.width() // 2, image.height() // 2)
+        return centre != image.pixelColor(0, 0)
+
+    def test_only_the_active_bodys_indicator_is_filled(self):
+        self.assertTrue(self._centre_is_filled(self._item_of(self.body)))
+        self.assertFalse(self._centre_is_filled(self._item_of(self.other)))
+        self._view().setActiveObject("pdbody", self.other)
+        _process_events(200)
+        self.assertFalse(self._centre_is_filled(self._item_of(self.body)))
+        self.assertTrue(self._centre_is_filled(self._item_of(self.other)))
+
+
 class TestOriginNames(TreeFoldersBase):
     """A body's Origin row and its features read by role while folders are shown."""
 

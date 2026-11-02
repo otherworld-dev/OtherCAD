@@ -53,6 +53,7 @@ public:
 
 protected:
     gp_Vec displacement(const TopoDS_Face& face) const override;
+    std::optional<double> normalOffset() const override;
 };
 
 }  // namespace PartDesign

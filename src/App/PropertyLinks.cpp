@@ -23,6 +23,7 @@
  ***************************************************************************/
 
 #include <algorithm>
+#include <cstring>
 
 #include <QDir>
 #include <QFileInfo>
@@ -35,6 +36,7 @@
 #include <Base/Tools.h>
 
 #include "PropertyLinks.h"
+#include "ReferenceWarnings.h"
 #include "Application.h"
 #include "Document.h"
 #include "DocumentObject.h"
@@ -65,12 +67,77 @@ static std::unordered_map<std::string, std::set<PropertyLinkBase*>> _LabelMap;
 static std::unordered_map<App::DocumentObject*, std::unordered_set<PropertyLinkBase*>> _ElementRefMap;
 // clang-format on
 
+namespace
+{
+/// A reference moved onto another element because the name it was kept by had gone
+struct RematchedReference
+{
+    /// The mapped name the link was moved to, without the index name after it
+    std::string mapped;
+    std::string message;
+};
+
+using RematchedReferences =
+    std::unordered_map<const PropertyLinkBase*, std::vector<RematchedReference>>;
+
+RematchedReferences& rematchedReferences()
+{
+    // Never destroyed, so that a property going away at shutdown still finds it
+    static auto* references = new RematchedReferences;
+    return *references;
+}
+
+void forgetRematchedReferences(const PropertyLinkBase* prop)
+{
+    rematchedReferences().erase(prop);
+}
+
+/// The mapped part of a subname, which is what identifies the element. The index name
+/// that trails it ("Edge5") changes whenever an earlier edit renumbers the shape.
+std::string mappedPart(const std::string& sub)
+{
+    if (!Data::hasMappedElementName(sub.c_str())) {
+        return {};
+    }
+    const auto pos = sub.rfind('.');
+    return pos == std::string::npos ? sub : sub.substr(0, pos);
+}
+
+std::string checkAdvice(const PropertyLinkBase* prop, const char* what)
+{
+    auto owner = freecad_cast<DocumentObject*>(prop->getContainer());
+    return owner ? std::string(" Edit ") + owner->Label.getValue() + what : std::string();
+}
+
+std::string rematchMessage(const PropertyLinkBase* prop,
+                           const std::string& oldElement,
+                           const std::string& newElement,
+                           const DocumentObject* linked,
+                           bool sameGeometry)
+{
+    const char* found = Data::findElementName(newElement.c_str());
+    const std::string element = found ? found : newElement;
+    std::string text = oldElement + " of " + (linked ? linked->Label.getValue() : "its base");
+    if (!sameGeometry) {
+        text += " was lost and " + element + ", the nearest match, is used instead.";
+    }
+    else if (element == oldElement) {
+        text += " was lost and found again in the same place.";
+    }
+    else {
+        text += " was lost and " + element + ", in the same place, is used instead.";
+    }
+    return text + checkAdvice(prop, " to check it or pick another.");
+}
+}  // namespace
+
 PropertyLinkBase::PropertyLinkBase() = default;
 
 PropertyLinkBase::~PropertyLinkBase()
 {
     unregisterLabelReferences();
     unregisterElementReference();
+    forgetRematchedReferences(this);
 }
 
 void PropertyLinkBase::setAllowExternal(bool allow)
@@ -471,6 +538,9 @@ bool PropertyLinkBase::_updateElementReference(DocumentObject* feature,
     }
 
     bool missing = GeoFeature::hasMissingElement(elementName.oldName.c_str());
+    // Set when the element had gone and another was picked by its geometry: the
+    // feature will build, but maybe not on what the user picked
+    std::string rematched;
     if (feature == geo && (missing || reverse)) {
         // If the referenced element is missing, or we are generating element
         // map for the first time, or we are re-generating the element map due
@@ -478,11 +548,16 @@ bool PropertyLinkBase::_updateElementReference(DocumentObject* feature,
         const char* oldElement = Data::findElementName(shadow.oldName.c_str());
         if (!Data::hasMissingElement(oldElement)) {
             auto names = geo->searchElementCache(oldElement, Data::SearchOption::CheckGeometry);
+            const bool sameGeometry = !names.empty();
             if (names.empty()) {
                 // try floating point tolerance
                 names = geo->searchElementCache(oldElement, Data::SearchOptions());
             }
             if (names.size()) {
+                // Regenerating the map ('reverse') renames without losing anything
+                if (missing) {
+                    rematched = rematchMessage(this, oldElement, names.front(), ret, sameGeometry);
+                }
                 missing = false;
                 std::string newsub(subname, strlen(subname) - strlen(element));
                 newsub += names.front();
@@ -527,6 +602,17 @@ bool PropertyLinkBase::_updateElementReference(DocumentObject* feature,
         shadow.swap(elementName);
         if (shadow.newName.size() && Data::hasMappedElementName(sub.c_str())) {
             updateSub(shadow.newName);
+        }
+    }
+
+    if (!rematched.empty()) {
+        std::string mapped = mappedPart(shadow.newName);
+        if (!mapped.empty()) {
+            auto& notes = rematchedReferences()[this];
+            std::erase_if(notes, [&](const RematchedReference& note) {
+                return note.mapped == mapped;
+            });
+            notes.push_back({std::move(mapped), std::move(rematched)});
         }
     }
 
@@ -6132,4 +6218,73 @@ void PropertyXLinkContainer::getLinksProp(std::vector<std::pair<std::string, App
             links.push_back(pair);
         }
     }
+}
+
+//**************************************************************************
+// Reference warnings
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+std::vector<std::string> App::getReferenceWarnings(const DocumentObject* obj)
+{
+    std::vector<std::string> warnings;
+    if (!obj || !obj->isAttachedToDocument()) {
+        return warnings;
+    }
+
+    // Links to elements that have gone. A feature that needs them fails and says so, so
+    // this only shows for one that builds without them.
+    std::vector<Property*> props;
+    obj->getPropertyList(props);
+    for (auto prop : props) {
+        auto link = freecad_cast<PropertyLinkBase*>(prop);
+        if (!link) {
+            continue;
+        }
+        std::vector<DocumentObject*> objs;
+        std::vector<std::string> subs;
+        link->getLinks(objs, true, &subs, false);
+        for (std::size_t i = 0; i < subs.size(); ++i) {
+            if (!Data::hasMissingElement(subs[i].c_str())) {
+                continue;
+            }
+            // Old style names end in the element, marked as missing
+            std::string element = subs[i].substr(subs[i].rfind('.') + 1);
+            element.erase(0, std::strlen(Data::MISSING_PREFIX));
+            const DocumentObject* linked = objs.size() == subs.size() ? objs[i]
+                : objs.empty()                                     ? nullptr
+                                                                   : objs.front();
+            warnings.push_back(element + " of "
+                               + (linked ? linked->Label.getValue() : "its base")
+                               + " no longer exists."
+                               + checkAdvice(link, " to remove it or pick another."));
+        }
+    }
+
+    // Links moved onto another element, for as long as they still point at it. Undo, or
+    // picking something else, takes the warning away with the move.
+    for (const auto& [link, notes] : rematchedReferences()) {
+        if (link->getContainer() != obj) {
+            continue;
+        }
+        std::vector<DocumentObject*> objs;
+        std::vector<std::string> subs;
+        link->getLinks(objs, true, &subs, true);
+        std::set<std::string> held;
+        for (const auto& sub : subs) {
+            held.insert(mappedPart(sub));
+        }
+        for (const auto& note : notes) {
+            if (held.count(note.mapped)) {
+                warnings.push_back(note.message);
+            }
+        }
+    }
+    return warnings;
+}
+
+void App::clearReferenceWarnings(const DocumentObject* obj)
+{
+    std::erase_if(rematchedReferences(), [obj](const auto& entry) {
+        return entry.first->getContainer() == obj;
+    });
 }

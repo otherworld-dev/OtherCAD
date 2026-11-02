@@ -30,6 +30,9 @@
 #include <ranges>
 #include <utility>
 #include <BRepAdaptor_Surface.hxx>
+#include <BRepBndLib.hxx>
+#include <BRepPrimAPI_MakeBox.hxx>
+#include <Bnd_Box.hxx>
 #include <gp_Ax2.hxx>
 #include <gp_Lin.hxx>
 #include <gp_Pln.hxx>
@@ -68,6 +71,34 @@ bool usesBRepFeatRevolution(Revolved::RevolMethod method, Part::RevolMode revolM
 {
     return method == Revolved::RevolMethod::ToFirst || method == Revolved::RevolMethod::ToFace
         || (method == Revolved::RevolMethod::ToLast && revolMode == Part::RevolMode::FuseWithBase);
+}
+
+// BRepFeat builds a revolution onto a solid. With nothing before the feature, a small box on
+// the axis past the end of the profile stands in for one: a revolution keeps every point at
+// its place along the axis, so it never reaches the box.
+TopoShape makeStandInBase(const TopoShape& profile, const gp_Ax1& axis)
+{
+    Bnd_Box bounds;
+    BRepBndLib::Add(profile.getShape(), bounds);
+    bounds.SetGap(0.0);
+    double xMin {}, yMin {}, zMin {}, xMax {}, yMax {}, zMax {};
+    bounds.Get(xMin, yMin, zMin, xMax, yMax, zMax);
+
+    const gp_Vec direction(axis.Direction());
+    const gp_Vec origin(axis.Location().XYZ());
+    double farthest = -Precision::Infinite();
+    for (double x : {xMin, xMax}) {
+        for (double y : {yMin, yMax}) {
+            for (double z : {zMin, zMax}) {
+                farthest = std::max(farthest, (gp_Vec(x, y, z) - origin).Dot(direction));
+            }
+        }
+    }
+
+    const double size = std::max(1.0, std::sqrt(bounds.SquareExtent()));
+    const gp_Vec center = origin + direction * (farthest + 2.0 * size);
+    const gp_Vec corner = center - gp_Vec(0.5 * size, 0.5 * size, 0.5 * size);
+    return TopoShape(BRepPrimAPI_MakeBox(gp_Pnt(corner.XYZ()), size, size, size).Shape());
 }
 
 bool isLegacyTwoAngles(const std::string& method)
@@ -301,6 +332,27 @@ App::DocumentObjectExecReturn* Revolved::tryExecuteRevolved()
 
     gp_Dir dir = Base::convertTo<gp_Dir>(v);
     gp_Pnt pnt = Base::convertTo<gp_Pnt>(Base.getValue());
+
+    // Extra profiles follow the rule Profile does: flat, and the axis not along the normal
+    try {
+        for (const TopoShape& extra : getExtraProfileFaces()) {
+            gp_Pln plane;
+            if (!extra.findPlane(plane)
+                || plane.Axis().Direction().IsParallel(dir, Precision::Angular())) {
+                return new App::DocumentObjectExecReturn(QT_TRANSLATE_NOOP(
+                    "Exception",
+                    "Each extra profile must be flat and must not face along the revolve axis"
+                ));
+            }
+        }
+    }
+    catch (const Base::Exception& e) {
+        return new App::DocumentObjectExecReturn(e.what());
+    }
+    catch (const Standard_Failure& e) {
+        return new App::DocumentObjectExecReturn(e.GetMessageString());
+    }
+
     positionByPrevious();
     auto invObjLoc = getLocation().Inverted();
     pnt.Transform(invObjLoc.Transformation());
@@ -341,29 +393,12 @@ App::DocumentObjectExecReturn* Revolved::tryExecuteRevolved()
 
     supportface.move(invObjLoc);
 
-    const OperationType operation = getOperationType();
-    const bool joining = operation == OperationType::Join;
-
     // Upstream passes the mode down from the concrete class. One OtherCAD tool does both,
-    // so the Operation property picks it instead.
-    const Part::RevolMode revolMode = operation == OperationType::Cut
+    // so the Operation property picks it instead. The "up to" methods hand back the
+    // revolution itself for Intersect and New body (see tryToRevolveToFace()).
+    const Part::RevolMode revolMode = getOperationType() == OperationType::Cut
         ? Part::RevolMode::CutFromBase
         : Part::RevolMode::FuseWithBase;
-
-    // The "up to" methods are built with BRepFeat, which can only add to or remove from the base
-    const bool usesBRepFeat = usesBRepFeatRevolution(method, revolMode)
-        || (sideType == "Two sides" && usesBRepFeatRevolution(method2, revolMode));
-
-    if (usesBRepFeat && operation != OperationType::Join && operation != OperationType::Cut) {
-        return new App::DocumentObjectExecReturn(QT_TRANSLATE_NOOP(
-            "Exception",
-            "The Intersect and New body operations require an angle-based revolution type."
-        ));
-    }
-
-    // BRepFeat already applies the boolean itself. Fusing a second time does not change the
-    // geometry and is kept so that element names of documents predating Operation do not shift.
-    const bool combineWithBase = joining || !usesBRepFeat;
 
     std::vector<TopoShape> revolutions;
     auto addRevolution = [&revolutions](TopoShape&& revolution) {
@@ -530,7 +565,7 @@ App::DocumentObjectExecReturn* Revolved::tryExecuteRevolved()
         result.makeElementXor(revolutions, Part::OpCodes::Revolve);
     }
 
-    setResult(base, result, combineWithBase);
+    setResult(base, result);
 
     // eventually disable some settings that are not valid for the current method
     updateProperties();
@@ -561,7 +596,7 @@ TopoShape Revolved::combineShapes(const TopoShape& base, const TopoShape& revolv
     }
 }
 
-void Revolved::setResult(const TopoShape& base, const TopoShape& revolved, bool combineWithBase)
+void Revolved::setResult(const TopoShape& base, const TopoShape& revolved)
 {
     if (revolved.isNull()) {
         throw Base::RuntimeError(QT_TRANSLATE_NOOP("Exception", "Could not revolve the sketch!"));
@@ -576,7 +611,7 @@ void Revolved::setResult(const TopoShape& base, const TopoShape& revolved, bool 
         return;
     }
 
-    if (!base.isNull() && combineWithBase && combinesWithBase()) {
+    if (!base.isNull() && combinesWithBase()) {
         result = combineShapes(base, result);
         if (result.countSubShapes(TopAbs_SOLID) == 0) {
             throw Base::RuntimeError(QT_TRANSLATE_NOOP("Exception", "Resulting shape is empty"));
@@ -609,11 +644,14 @@ TopoShape Revolved::tryToRevolveToFace(
         supportface = TopoDS_Face();
     }
 
+    const TopoShape featureBase = base.isNull() ? makeStandInBase(sketchshape, axis) : base;
+
     auto makeRevolution = [&](Part::RevolMode mode, Standard_Boolean modify) {
         TopoShape revolution(0, getDocument()->getStringHasher());
         revolution.makeElementRevolution(
-            base,
-            TopoDS::Face(sketchshape.getShape()),
+            featureBase,
+            // A face per profile, when there are several (ExtraProfiles)
+            sketchshape.getShape(),
             axis,
             TopoDS::Face(supportface.getShape()),
             TopoDS::Face(upToFace.getShape()),
@@ -628,12 +666,8 @@ TopoShape Revolved::tryToRevolveToFace(
     };
 
     auto makeGeneratedTool = [&](const TopoShape& baseResult) {
-        if (base.isNull()) {
-            return baseResult;
-        }
-
         TopoShape tool(0, getDocument()->getStringHasher());
-        tool.makeElementCut({baseResult, base}, Part::OpCodes::Revolve);
+        tool.makeElementCut({baseResult, featureBase}, Part::OpCodes::Revolve);
         if (tool.isNull() || tool.getShape().IsNull()) {
             throw Base::RuntimeError("Could not extract generated revolution tool!");
         }
@@ -649,6 +683,61 @@ TopoShape Revolved::tryToRevolveToFace(
         return tool;
     };
 
+    // What the revolution adds to the base, outside it
+    auto makeAddedVolume = [&]() {
+        try {
+            return makeGeneratedTool(makeRevolution(Part::RevolMode::None, Standard_False));
+        }
+        catch (const Base::Exception&) {
+            // Some OCCT cases require a feature mode. Falling back keeps up-to-face usable.
+        }
+        catch (const Standard_Failure&) {
+            // Fall through to the feature mode below.
+        }
+
+        try {
+            return makeGeneratedTool(makeRevolution(Part::RevolMode::FuseWithBase, Standard_True));
+        }
+        catch (const Base::Exception&) {
+            throw Base::RuntimeError("Could not revolve the sketch!");
+        }
+        catch (const Standard_Failure&) {
+            throw Base::RuntimeError("Could not revolve the sketch!");
+        }
+    };
+
+    if (base.isNull()) {
+        return makeAddedVolume();
+    }
+
+    const OperationType operation = getOperationType();
+    if (operation == OperationType::Intersect || operation == OperationType::NewBody) {
+        // These need all of the revolution, the part inside the base included. BRepFeat
+        // only ever hands back the part outside it, even without a boolean, so add what a
+        // cut would take away from the base.
+        TopoShape added = makeAddedVolume();
+        TopoShape removed;
+        try {
+            removed = makeRemovedVolume(makeRevolution(Part::RevolMode::CutFromBase, Standard_True));
+        }
+        catch (const Base::Exception&) {
+            // The revolution does not reach into the base
+            return added;
+        }
+        catch (const Standard_Failure&) {
+            return added;
+        }
+        if (removed.countSubShapes(TopAbs_SOLID) == 0) {
+            return added;
+        }
+        if (added.countSubShapes(TopAbs_SOLID) == 0) {
+            return removed;
+        }
+        TopoShape whole(0, getDocument()->getStringHasher());
+        whole.makeElementFuse({added, removed}, Part::OpCodes::Revolve);
+        return whole;
+    }
+
     if (revolMode == Part::RevolMode::CutFromBase) {
         try {
             return makeRemovedVolume(makeRevolution(revolMode, Standard_True));
@@ -662,25 +751,7 @@ TopoShape Revolved::tryToRevolveToFace(
         }
     }
 
-    try {
-        return makeGeneratedTool(makeRevolution(Part::RevolMode::None, Standard_False));
-    }
-    catch (const Base::Exception&) {
-        // Some OCCT cases require a feature mode. Falling back keeps up-to-face usable.
-    }
-    catch (const Standard_Failure&) {
-        // Fall through to the feature mode below.
-    }
-
-    try {
-        return makeGeneratedTool(makeRevolution(Part::RevolMode::FuseWithBase, Standard_True));
-    }
-    catch (const Base::Exception&) {
-        throw Base::RuntimeError("Could not revolve the sketch!");
-    }
-    catch (const Standard_Failure&) {
-        throw Base::RuntimeError("Could not revolve the sketch!");
-    }
+    return makeAddedVolume();
 }
 
 TopoShape Revolved::generateSingleRevolutionSide(

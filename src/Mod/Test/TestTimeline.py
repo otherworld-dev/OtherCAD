@@ -25,13 +25,14 @@ Rolling the history back moves the tip of the body and hides the sketches and
 datums the playhead has not reached yet. Which ones the strip hid is kept on the
 body's view provider, so it travels with the document: saving while rolled back
 and opening the file again still knows what to put back, and so does a switch to
-another body and back. Every step is one undo entry, and undoing it puts the tip
-where it was.
+another body and back. Every step is one undo entry, and so is a whole drag of
+the playhead; undoing it puts the tip where it was.
 
 To run tests:
     FreeCAD -t TestTimeline
 """
 
+import importlib
 import os
 import shutil
 import tempfile
@@ -43,6 +44,15 @@ import FreeCADGui
 import Part
 import Sketcher
 from PySide import QtCore, QtGui, QtWidgets
+
+# FreeCAD's PySide shim does not re-export QtTest (see TestBrowserFolders)
+QtTest = None
+for _binding in ("PySide6.QtTest", "PySide.QtTest"):
+    try:
+        QtTest = importlib.import_module(_binding)
+        break
+    except Exception:  # pragma: no cover - depends on which binding is installed
+        continue
 
 # The strip and the dock that holds it share this object name, so the class name
 # is what tells them apart. Both are set in Gui::Timeline::TimelineWidget.
@@ -296,6 +306,140 @@ class TimelineTestBase(unittest.TestCase):
                 return marker
         return None
 
+    def _markers_in_order(self):
+        found = self.widget.findChildren(QtWidgets.QWidget, MARKER_NAME)
+        return sorted((m for m in found if not m.isHidden()), key=lambda m: m.pos().x())
+
+    def _choose_from_marker_menu(self, label, text):
+        """Right-click a marker and pick an entry of its menu.
+
+        The menu runs an event loop of its own, so the pick is made from a timer that
+        keeps looking until it is open. Returns whether the entry was checked.
+        """
+
+        # A popup of an application in the background can close as soon as it opens
+        self.window.raise_()
+        self.window.activateWindow()
+        # A menu that is still closing would take the right-click for itself
+        deadline = time.monotonic() + 2.0
+        while QtWidgets.QApplication.activePopupWidget() and time.monotonic() < deadline:
+            self._process_events(50)
+
+        # A label names a feature's marker; anything else is the widget itself
+        marker = self._marker_for(label) if isinstance(label, str) else label
+        self.assertIsNotNone(marker, f"Expected a marker for {label}")
+        chosen = []
+        offered = []
+        timer = QtCore.QTimer()
+        timer.setInterval(50)
+        deadline = time.monotonic() + 5.0
+
+        def pick():
+            menu = QtWidgets.QApplication.activePopupWidget()
+            if menu is not None:
+                timer.stop()
+                offered.extend(action.text() for action in menu.actions())
+                for action in menu.actions():
+                    if action.text() == text:
+                        chosen.append(action.isChecked())
+                        self.last_menu_entry_enabled = action.isEnabled()
+                        if not action.isEnabled():
+                            # Enter would leave the menu open, and its event loop with it
+                            menu.close()
+                            break
+                        # Enter on the highlighted entry, as trigger() alone is not
+                        # what exec() hands back
+                        menu.setActiveAction(action)
+                        for kind in (QtCore.QEvent.KeyPress, QtCore.QEvent.KeyRelease):
+                            QtWidgets.QApplication.sendEvent(
+                                menu,
+                                QtGui.QKeyEvent(kind, QtCore.Qt.Key_Return, QtCore.Qt.NoModifier),
+                            )
+                        break
+                else:
+                    menu.close()
+            elif time.monotonic() > deadline:
+                timer.stop()
+
+        timer.timeout.connect(pick)
+        timer.start()
+        centre = marker.rect().center()
+        event = QtGui.QContextMenuEvent(
+            QtGui.QContextMenuEvent.Mouse, centre, marker.mapToGlobal(centre)
+        )
+        QtWidgets.QApplication.instance().sendEvent(marker, event)
+        self._process_events(600)
+        timer.stop()
+        if not offered and QtWidgets.QApplication.activeWindow() is None:
+            self.skipTest(
+                "This machine did not hand the application the foreground, "
+                "so the menu closed as soon as it opened"
+            )
+        self.assertEqual(len(chosen), 1, f"the menu of {label} had no {text} entry: {offered}")
+        return chosen[0]
+
+    @staticmethod
+    def _in_front_of(widget):
+        """A point just inside the left edge of a marker, which a drop puts in front of it."""
+
+        return widget.mapToGlobal(QtCore.QPoint(2, widget.height() // 2))
+
+    @staticmethod
+    def _after(widget):
+        """A point just inside the right edge of a marker, which a drop puts after it."""
+
+        return widget.mapToGlobal(QtCore.QPoint(widget.width() - 3, widget.height() // 2))
+
+    @staticmethod
+    def _send_mouse(widget, kind, globally, buttons):
+        """A left button event at a global point, sent straight to the widget."""
+
+        moving = kind == QtCore.QEvent.MouseMove
+        QtWidgets.QApplication.instance().sendEvent(
+            widget,
+            QtGui.QMouseEvent(
+                kind,
+                QtCore.QPointF(widget.mapFromGlobal(globally)),
+                QtCore.QPointF(globally),
+                QtCore.Qt.NoButton if moving else QtCore.Qt.LeftButton,
+                buttons,
+                QtCore.Qt.NoModifier,
+            ),
+        )
+
+    def _drag(self, source, target):
+        """Press on source, move to the global point target and let go there.
+
+        Every event goes to the source, the way the mouse grab of a real press sends
+        them. What the drop indicator showed just before the release is handed back.
+        """
+
+        self.assertIsNotNone(source, "Expected a widget to drag")
+        app = QtWidgets.QApplication.instance()
+        start = source.mapToGlobal(source.rect().center())
+
+        def send(kind, globally, buttons):
+            self._send_mouse(source, kind, globally, buttons)
+
+        send(QtCore.QEvent.MouseButtonPress, start, QtCore.Qt.LeftButton)
+        steps = 4
+        for step in range(1, steps + 1):
+            point = QtCore.QPoint(
+                start.x() + (target.x() - start.x()) * step // steps,
+                start.y() + (target.y() - start.y()) * step // steps,
+            )
+            send(QtCore.QEvent.MouseMove, point, QtCore.Qt.LeftButton)
+        app.processEvents()
+
+        indicator = self.widget.findChild(QtWidgets.QWidget, "TimelineDropIndicator")
+        shown = {
+            "shown": indicator is not None and indicator.isVisible(),
+            "valid": indicator is not None and bool(indicator.property("dropValid")),
+        }
+        send(QtCore.QEvent.MouseButtonRelease, target, QtCore.Qt.NoButton)
+        self._settle()
+        return shown
+
     @staticmethod
     def _draw_rectangle(sketch, width, height):
         """A closed rectangle, the smallest profile a Pad will accept."""
@@ -408,6 +552,52 @@ class TestTimeline(TimelineTestBase):
 
         self.assertEqual(self.doc.UndoCount, before + 1)
         self.assertIs(self.body.Tip, self.pad)
+
+    def test_dragging_the_playhead_rolls_as_it_goes_in_one_undo_entry(self):
+        """A scrub back and forth is one entry, as in Fusion, not one per marker passed."""
+
+        playhead = self.widget.findChild(QtWidgets.QWidget, "TimelinePlayhead")
+        self.assertIsNotNone(playhead)
+        before = self.doc.UndoCount
+
+        self._send_mouse(
+            playhead,
+            QtCore.QEvent.MouseButtonPress,
+            playhead.mapToGlobal(playhead.rect().center()),
+            QtCore.Qt.LeftButton,
+        )
+        self._send_mouse(
+            playhead,
+            QtCore.QEvent.MouseMove,
+            self._in_front_of(self._marker_for("Sketch001")),
+            QtCore.Qt.LeftButton,
+        )
+        self._process_events()
+        self.assertIs(self.body.Tip, self.pad, "The model follows the playhead while dragged")
+        self.assertFalse(self.sketch2.Visibility)
+
+        self._send_mouse(
+            playhead,
+            QtCore.QEvent.MouseMove,
+            self._in_front_of(self._marker_for("Pad")),
+            QtCore.Qt.LeftButton,
+        )
+        self._process_events()
+        self.assertIsNone(self.body.Tip)
+
+        # And back again before letting go
+        target = self._after(self._marker_for("Pad"))
+        self._send_mouse(playhead, QtCore.QEvent.MouseMove, target, QtCore.Qt.LeftButton)
+        self._send_mouse(playhead, QtCore.QEvent.MouseButtonRelease, target, QtCore.Qt.NoButton)
+        self._settle()
+
+        self.assertIs(self.body.Tip, self.pad)
+        self.assertEqual(self.doc.UndoCount, before + 1)
+
+        self.doc.undo()
+        self._settle()
+        self.assertIs(self.body.Tip, self.pad2)
+        self.assertTrue(self.sketch2.Visibility)
 
     def test_undo_puts_back_the_tip_and_what_the_roll_hid(self):
         """Rolling to the start moves the tip and hides both sketches in one entry."""
@@ -604,68 +794,6 @@ class TestTimeline(TimelineTestBase):
         for button in buttons:
             self.assertEqual(button.focusPolicy(), QtCore.Qt.TabFocus)
 
-    def _choose_from_marker_menu(self, label, text):
-        """Right-click a marker and pick an entry of its menu.
-
-        The menu runs an event loop of its own, so the pick is made from a timer that
-        keeps looking until it is open. Returns whether the entry was checked.
-        """
-
-        # A popup of an application in the background can close as soon as it opens
-        self.window.raise_()
-        self.window.activateWindow()
-        # A menu that is still closing would take the right-click for itself
-        deadline = time.monotonic() + 2.0
-        while QtWidgets.QApplication.activePopupWidget() and time.monotonic() < deadline:
-            self._process_events(50)
-
-        marker = self._marker_for(label)
-        self.assertIsNotNone(marker, f"Expected a marker for {label}")
-        chosen = []
-        offered = []
-        timer = QtCore.QTimer()
-        timer.setInterval(50)
-        deadline = time.monotonic() + 5.0
-
-        def pick():
-            menu = QtWidgets.QApplication.activePopupWidget()
-            if menu is not None:
-                timer.stop()
-                offered.extend(action.text() for action in menu.actions())
-                for action in menu.actions():
-                    if action.text() == text:
-                        chosen.append(action.isChecked())
-                        # Enter on the highlighted entry, as trigger() alone is not
-                        # what exec() hands back
-                        menu.setActiveAction(action)
-                        for kind in (QtCore.QEvent.KeyPress, QtCore.QEvent.KeyRelease):
-                            QtWidgets.QApplication.sendEvent(
-                                menu,
-                                QtGui.QKeyEvent(kind, QtCore.Qt.Key_Return, QtCore.Qt.NoModifier),
-                            )
-                        break
-                else:
-                    menu.close()
-            elif time.monotonic() > deadline:
-                timer.stop()
-
-        timer.timeout.connect(pick)
-        timer.start()
-        centre = marker.rect().center()
-        event = QtGui.QContextMenuEvent(
-            QtGui.QContextMenuEvent.Mouse, centre, marker.mapToGlobal(centre)
-        )
-        QtWidgets.QApplication.instance().sendEvent(marker, event)
-        self._process_events(600)
-        timer.stop()
-        if not offered and QtWidgets.QApplication.activeWindow() is None:
-            self.skipTest(
-                "This machine did not hand the application the foreground, "
-                "so the menu closed as soon as it opened"
-            )
-        self.assertEqual(len(chosen), 1, f"the menu of {label} had no {text} entry: {offered}")
-        return chosen[0]
-
     def test_suppress_from_the_marker_menu(self):
         full = self.body.Shape.Volume
 
@@ -718,6 +846,293 @@ class TestTimeline(TimelineTestBase):
 
         selected = [obj.Name for obj in FreeCADGui.Selection.getSelection()]
         self.assertEqual(selected, [self.pad.Name])
+
+
+class TestTimelineReorder(TimelineTestBase):
+    """Dragging a marker along the strip moves its feature, unless that breaks the model.
+
+    Sketch001 sits on the XY plane, so it can move in front of Pad; Pad001 is built
+    from Sketch001 and Pad from Sketch, so neither pad can move in front of its sketch,
+    nor either sketch past its pad.
+    """
+
+    def _order(self):
+        names = {"Sketch", "Pad", "Sketch001", "Pad001"}
+        return [obj.Name for obj in self.body.Group if obj.Name in names]
+
+    def _drop_indicator(self):
+        return self.widget.findChild(QtWidgets.QWidget, "TimelineDropIndicator")
+
+    def _status_text(self):
+        labels = self.window.statusBar().findChildren(QtWidgets.QLabel)
+        return " ".join(label.text() for label in labels)
+
+    def test_dragging_a_sketch_earlier_moves_it_in_one_undo_step(self):
+        before = self.doc.UndoCount
+
+        indicator = self._drag(
+            self._marker_for("Sketch001"), self._in_front_of(self._marker_for("Pad"))
+        )
+
+        self.assertTrue(indicator["shown"], "A drag shows where the marker would land")
+        self.assertTrue(indicator["valid"])
+        self.assertFalse(self._drop_indicator().isVisible(), "The drop takes the indicator away")
+        self.assertEqual(self._order(), ["Sketch", "Sketch001", "Pad", "Pad001"])
+        self.assertEqual(self.doc.UndoCount, before + 1)
+        self.assertIs(self.body.Tip, self.pad2)
+        self.assertTrue(self._wait_for_markers(FEATURE_COUNT))
+        self.assertEqual(
+            [m.toolTip().split("\n")[0] for m in self._markers_in_order()],
+            ["Sketch", "Sketch001", "Pad", "Pad001"],
+        )
+
+        self.doc.undo()
+        self._settle()
+        self.assertEqual(self._order(), ["Sketch", "Pad", "Sketch001", "Pad001"])
+
+    def test_dragging_a_pad_to_the_end_takes_the_tip_with_it(self):
+        volume = self.body.Shape.Volume
+
+        self._drag(self._marker_for("Pad"), self._after(self._marker_for("Pad001")))
+
+        self.assertEqual(self._order(), ["Sketch", "Sketch001", "Pad001", "Pad"])
+        self.assertIs(self.body.Tip, self.pad)
+        self.assertIs(self.pad.BaseFeature, self.pad2)
+        self.assertIsNone(self.pad2.BaseFeature)
+        self.assertAlmostEqual(self.body.Shape.Volume, volume, places=3)
+
+    def test_a_feature_cannot_move_in_front_of_what_it_is_built_on(self):
+        before = self.doc.UndoCount
+
+        indicator = self._drag(
+            self._marker_for("Pad001"), self._in_front_of(self._marker_for("Pad"))
+        )
+
+        self.assertTrue(indicator["shown"])
+        self.assertFalse(indicator["valid"], "The indicator says the drop is refused")
+        self.assertEqual(self._order(), ["Sketch", "Pad", "Sketch001", "Pad001"])
+        self.assertEqual(self.doc.UndoCount, before)
+        self.assertIn("Sketch001", self._status_text())
+
+    def test_a_feature_cannot_move_past_what_is_built_on_it(self):
+        before = self.doc.UndoCount
+
+        self._drag(self._marker_for("Sketch"), self._after(self._marker_for("Pad001")))
+
+        self.assertEqual(self._order(), ["Sketch", "Pad", "Sketch001", "Pad001"])
+        self.assertEqual(self.doc.UndoCount, before)
+        self.assertIn("Pad", self._status_text())
+
+    def test_a_drag_in_place_changes_nothing(self):
+        before = self.doc.UndoCount
+
+        marker = self._marker_for("Sketch001")
+        self._drag(marker, self._after(marker))
+
+        self.assertEqual(self._order(), ["Sketch", "Pad", "Sketch001", "Pad001"])
+        self.assertEqual(self.doc.UndoCount, before)
+
+
+class TestTimelineGroups(TimelineTestBase):
+    """Adjacent markers can be grouped into one that folds and unfolds, as in Fusion.
+
+    Groups live on the body's view provider as key, name and member IDs, so they are
+    saved with the document and undone like any other change.
+    """
+
+    def _group_markers(self):
+        found = self.widget.findChildren(QtWidgets.QWidget, "TimelineGroupMarker")
+        return [marker for marker in found if not marker.isHidden()]
+
+    def _wait_for_group_markers(self, count, timeout_ms=3000):
+        deadline = time.monotonic() + (timeout_ms / 1000.0)
+        while len(self._group_markers()) != count and time.monotonic() < deadline:
+            self._process_events(50)
+        return self._group_markers()
+
+    def _stored(self):
+        """The stored groups as (name, member names) pairs."""
+
+        groups = []
+        for entry in self.body.ViewObject.TimelineGroups:
+            fields = entry.split("\t")
+            ids = {int(field) for field in fields[2:]}
+            names = sorted(obj.Name for obj in self.doc.Objects if obj.ID in ids)
+            groups.append((fields[1], names))
+        return groups
+
+    def _store(self, *members):
+        """Group features directly, for tests about what a group does rather than its menu."""
+
+        ids = "\t".join(str(obj.ID) for obj in members)
+        self.body.ViewObject.TimelineGroups = ["1\tGroup 1\t" + ids]
+        self._settle()
+
+    def _order(self):
+        names = {"Sketch", "Pad", "Sketch001", "Pad001"}
+        return [obj.Name for obj in self.body.Group if obj.Name in names]
+
+    def _double_click(self, widget):
+        centre = widget.rect().center()
+        QtWidgets.QApplication.instance().sendEvent(
+            widget,
+            QtGui.QMouseEvent(
+                QtCore.QEvent.MouseButtonDblClick,
+                QtCore.QPointF(centre),
+                QtCore.QPointF(widget.mapToGlobal(centre)),
+                QtCore.Qt.LeftButton,
+                QtCore.Qt.LeftButton,
+                QtCore.Qt.NoModifier,
+            ),
+        )
+        self._settle()
+
+    def test_grouping_adjacent_markers_folds_them_into_one_undo_step(self):
+        FreeCADGui.Selection.clearSelection()
+        FreeCADGui.Selection.addSelection(self.doc.Name, self.sketch2.Name)
+        FreeCADGui.Selection.addSelection(self.doc.Name, self.pad2.Name)
+        self._process_events()
+        before = self.doc.UndoCount
+
+        self._choose_from_marker_menu("Pad001", "Group")
+        self._settle()
+
+        self.assertEqual(self._stored(), [("Group 1", ["Pad001", "Sketch001"])])
+        self.assertEqual(self.doc.UndoCount, before + 1)
+        self.assertEqual(len(self._wait_for_group_markers(1)), 1)
+        self.assertIsNone(self._marker_for("Sketch001"), "A folded group hides its members")
+        self.assertIsNone(self._marker_for("Pad001"))
+        self.assertTrue(self._wait_for_markers(2))
+
+        self.doc.undo()
+        self._settle()
+        self.assertEqual(self._stored(), [])
+        self.assertEqual(len(self._wait_for_group_markers(0)), 0)
+        self.assertTrue(self._wait_for_markers(FEATURE_COUNT))
+
+    def test_markers_that_are_not_side_by_side_cannot_be_grouped(self):
+        FreeCADGui.Selection.clearSelection()
+        FreeCADGui.Selection.addSelection(self.doc.Name, self.sketch.Name)
+        FreeCADGui.Selection.addSelection(self.doc.Name, self.sketch2.Name)
+        self._process_events()
+
+        self._choose_from_marker_menu("Sketch001", "Group")
+        self._settle()
+
+        self.assertFalse(self.last_menu_entry_enabled)
+        self.assertEqual(self._stored(), [])
+
+    def test_groups_survive_a_save_and_a_reload(self):
+        self._store(self.sketch2, self.pad2)
+        self.assertEqual(len(self._wait_for_group_markers(1)), 1)
+
+        self._reopen()
+        self._activate_body()
+
+        self.assertEqual(self._stored(), [("Group 1", ["Pad001", "Sketch001"])])
+        self.assertEqual(len(self._wait_for_group_markers(1)), 1)
+        self.assertIsNone(self._marker_for("Pad001"))
+
+    def test_a_double_click_unfolds_and_folds_a_group(self):
+        self._store(self.sketch2, self.pad2)
+        group = self._wait_for_group_markers(1)[0]
+
+        self._double_click(group)
+        self.assertIsNotNone(self._marker_for("Sketch001"), "Unfolded, the members show")
+        self.assertIsNotNone(self._marker_for("Pad001"))
+        self.assertEqual(len(self._group_markers()), 1, "and the group heads them")
+
+        self._double_click(self._group_markers()[0])
+        self.assertIsNone(self._marker_for("Pad001"))
+
+    def test_rename_and_ungroup_from_the_group_menu(self):
+        self._store(self.sketch2, self.pad2)
+        group = self._wait_for_group_markers(1)[0]
+
+        def answer():
+            dialog = QtWidgets.QApplication.activeModalWidget()
+            if isinstance(dialog, QtWidgets.QInputDialog):
+                timer.stop()
+                dialog.setTextValue("Holes")
+                dialog.accept()
+
+        timer = QtCore.QTimer()
+        timer.setInterval(50)
+        timer.timeout.connect(answer)
+        timer.start()
+        self._choose_from_marker_menu(group, "Rename Group")
+        self._settle()
+        timer.stop()
+
+        self.assertEqual(self._stored(), [("Holes", ["Pad001", "Sketch001"])])
+        self.assertIn("Holes", self._wait_for_group_markers(1)[0].toolTip())
+
+        self._choose_from_marker_menu(self._group_markers()[0], "Ungroup")
+        self._settle()
+
+        self.assertEqual(self._stored(), [])
+        self.assertTrue(self._wait_for_markers(FEATURE_COUNT))
+
+    def test_a_deleted_member_drops_out_and_an_empty_group_goes(self):
+        self._store(self.sketch2, self.pad2)
+        self.assertEqual(len(self._wait_for_group_markers(1)), 1)
+
+        self.body.removeObject(self.pad2)
+        self.doc.removeObject("Pad001")
+        self.doc.recompute()
+        self._settle()
+
+        groups = self._wait_for_group_markers(1)
+        self.assertEqual(len(groups), 1)
+        self.assertIn("1 feature", groups[0].toolTip())
+
+        self.body.removeObject(self.sketch2)
+        self.doc.removeObject("Sketch001")
+        self.doc.recompute()
+        self._settle()
+
+        self.assertEqual(len(self._wait_for_group_markers(0)), 0)
+
+    def test_a_folded_group_is_dragged_as_one(self):
+        self._store(self.sketch2, self.pad2)
+        group = self._wait_for_group_markers(1)[0]
+
+        self._drag(group, self._in_front_of(self._marker_for("Pad")))
+
+        self.assertEqual(self._order(), ["Sketch", "Sketch001", "Pad001", "Pad"])
+        self.assertIs(self.body.Tip, self.pad)
+        self.assertEqual(self._stored(), [("Group 1", ["Pad001", "Sketch001"])])
+
+    def test_a_member_dragged_out_of_an_unfolded_group_leaves_it(self):
+        self._store(self.sketch2, self.pad2)
+        self._double_click(self._wait_for_group_markers(1)[0])
+
+        self._drag(self._marker_for("Sketch001"), self._in_front_of(self._marker_for("Pad")))
+
+        self.assertEqual(self._order(), ["Sketch", "Sketch001", "Pad", "Pad001"])
+        self.assertEqual(self._stored(), [("Group 1", ["Pad001"])])
+
+    def test_a_feature_dropped_inside_an_unfolded_group_joins_it(self):
+        self._store(self.sketch, self.pad)
+        self._double_click(self._wait_for_group_markers(1)[0])
+
+        self._drag(self._marker_for("Sketch001"), self._in_front_of(self._marker_for("Pad")))
+
+        self.assertEqual(self._order(), ["Sketch", "Sketch001", "Pad", "Pad001"])
+        self.assertEqual(self._stored(), [("Group 1", ["Pad", "Sketch", "Sketch001"])])
+
+    def test_stepping_back_skips_over_a_folded_group(self):
+        self._store(self.sketch2, self.pad2)
+        self.assertEqual(len(self._wait_for_group_markers(1)), 1)
+
+        self._invoke("stepBack")
+
+        self.assertIs(self.body.Tip, self.pad)
+        self.assertFalse(self.sketch2.Visibility, "The whole group is rolled back")
+        groups = self._wait_for_group_markers(1)
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0].property("timelineState"), "rolledBack")
+        self.assertIsNone(self._marker_for("Pad001"), "and it stays folded")
 
 
 class TestTimelineDock(unittest.TestCase):
@@ -811,7 +1226,7 @@ class TestTimelineFollowsSelection(TimelineTestBase):
             if not m.isHidden()
         ]
 
-    def _inactive_label(self):
+    def _body_label(self):
         return self.widget.findChild(QtWidgets.QLabel, "TimelineBodyLabel")
 
     def _select(self, obj):
@@ -819,12 +1234,35 @@ class TestTimelineFollowsSelection(TimelineTestBase):
         FreeCADGui.Selection.addSelection(self.doc.Name, obj.Name)
         self._settle()
 
+    def _assert_label_shows_active(self, body):
+        # The strip names the active body too, as Fusion's browser always shows which
+        # component is active (#753)
+        label = self._body_label()
+        self.assertFalse(label.isHidden())
+        self.assertIn(body.Label, label.text())
+        self.assertNotIn("inactive", label.text())
+        self.assertTrue(label.font().bold())
+
+    def test_the_label_names_the_active_body(self):
+        self._assert_label_shows_active(self.body)
+
+    def test_clicking_the_label_activates_the_shown_body(self):
+        if QtTest is None:
+            self.skipTest("QtTest is not available in this build")
+        self._select(self.other_pad)
+        self.assertIn("inactive", self._body_label().text())
+        QtTest.QTest.mouseClick(self._body_label(), QtCore.Qt.LeftButton)
+        self._settle()
+        view = FreeCADGui.getDocument(self.doc.Name).ActiveView
+        self.assertEqual(view.getActiveObject("pdbody").Name, self.other.Name)
+        self._assert_label_shows_active(self.other)
+
     def test_selecting_in_another_body_shows_its_history_without_activating_it(self):
         self._select(self.other_pad)
         self.assertEqual(self._labels(), ["OtherSketch", "OtherPad"])
         view = FreeCADGui.getDocument(self.doc.Name).ActiveView
         self.assertEqual(view.getActiveObject("pdbody").Name, self.body.Name)
-        label = self._inactive_label()
+        label = self._body_label()
         self.assertIsNotNone(label)
         # Hidden rather than visible, like the markers: the label is the strip's to show,
         # whether or not the dock itself is on screen
@@ -835,7 +1273,7 @@ class TestTimelineFollowsSelection(TimelineTestBase):
         self._select(self.other_pad)
         self.other.Label = "Bracket"
         self._settle()
-        self.assertIn("Bracket", self._inactive_label().text())
+        self.assertIn("Bracket", self._body_label().text())
 
     def test_clearing_the_selection_keeps_the_body(self):
         self._select(self.other_pad)
@@ -857,7 +1295,7 @@ class TestTimelineFollowsSelection(TimelineTestBase):
         self._activate_body(self.body)
         self._settle()
         self.assertEqual(len(self._labels()), FEATURE_COUNT)
-        self.assertTrue(self._inactive_label().isHidden())
+        self._assert_label_shows_active(self.body)
 
     def test_while_editing_the_strip_stays_on_the_edited_body(self):
         gui_doc = FreeCADGui.getDocument(self.doc.Name)
@@ -890,7 +1328,7 @@ class TestTimelineFollowsSelection(TimelineTestBase):
             gui_doc.resetEdit()
             self._settle()
         self.assertEqual(len(self._labels()), FEATURE_COUNT)
-        self.assertTrue(self._inactive_label().isHidden())
+        self._assert_label_shows_active(self.body)
 
     def test_opening_an_edit_takes_the_strip_to_the_edited_body(self):
         self._select(self.other_pad)
@@ -901,7 +1339,7 @@ class TestTimelineFollowsSelection(TimelineTestBase):
         self._settle()
         try:
             self.assertEqual(len(self._labels()), FEATURE_COUNT)
-            self.assertTrue(self._inactive_label().isHidden())
+            self._assert_label_shows_active(self.body)
         finally:
             gui_doc.resetEdit()
             self._settle()
@@ -922,7 +1360,7 @@ class TestTimelineFollowsSelection(TimelineTestBase):
             gui_doc.resetEdit()
             self._settle()
         self.assertEqual(len(self._labels()), FEATURE_COUNT)
-        self.assertTrue(self._inactive_label().isHidden())
+        self._assert_label_shows_active(self.body)
 
     def test_edit_from_an_inactive_body_marker_activates_it_and_opens_the_feature(self):
         self._select(self.other_pad)
@@ -974,3 +1412,149 @@ class TestTimelineFollowsSelection(TimelineTestBase):
         self.doc.removeObject(self.other.Name)
         self._settle()
         self.assertEqual(len(self._labels()), FEATURE_COUNT)
+
+
+class TestTimelineReferenceWarnings(TimelineTestBase):
+    """A feature that still builds, but only because the naming code had to find one of
+    its edges again by where it lies, is drawn in yellow with what changed in its
+    tooltip (#754). Fusion does the same and offers to reselect."""
+
+    _choose_from_marker_menu = TestTimeline._choose_from_marker_menu
+
+    def setUp(self):
+        super().setUp()
+        self.edge = None
+        for index, edge in enumerate(self.pad2.Shape.Edges, start=1):
+            a, b = (vertex.Point for vertex in edge.Vertexes)
+            if abs(a.z - b.z) > 5 and abs(a.x - 10) < 1e-6 and abs(a.y - 6) < 1e-6:
+                self.edge = f"Edge{index}"
+        self.assertIsNotNone(self.edge, "the pad has no vertical edge at its far corner")
+        self.fillet = self.body.newObject("PartDesign::Fillet", "Fillet")
+        self.fillet.Base = (self.pad2, [self.edge])
+        self.fillet.Radius = 1.0
+        self.doc.recompute()
+        if not self._wait_for_markers(FEATURE_COUNT + 1):
+            self.skipTest("The fillet never reached the timeline strip")
+        self.assertTrue(self.fillet.isValid())
+
+    def tearDown(self):
+        if FreeCADGui.Control.activeDialog():
+            FreeCADGui.Control.closeDialog()
+        gui_doc = (
+            FreeCADGui.getDocument(self.doc.Name)
+            if self.doc.Name in FreeCAD.listDocuments()
+            else None
+        )
+        if gui_doc is not None and gui_doc.getInEdit():
+            gui_doc.resetEdit()
+        self._process_events()
+        super().tearDown()
+
+    def _redraw_the_first_profile(self):
+        """Redrawn lines are new lines to the sketch, so every name the shape gave the
+        fillet's edge is gone, while an edge in the same place is still there."""
+
+        self.sketch.deleteAllGeometry()
+        self._draw_rectangle(self.sketch, 10.0, 6.0)
+        self.doc.recompute()
+        self._settle()
+
+    def test_a_rematched_edge_turns_the_marker_yellow(self):
+        self._redraw_the_first_profile()
+
+        self.assertTrue(self.fillet.isValid(), self.fillet.getStatusString())
+        marker = self._marker_for("Fillet")
+        self.assertIsNotNone(marker)
+        # What the style sheet draws the yellow border from
+        self.assertTrue(marker.property("timelineWarning"))
+        self.assertFalse(marker.property("timelineError"))
+        self.assertIn(f"{self.edge} of Pad001 was lost", marker.toolTip())
+        self.assertIn("Edit Fillet", marker.toolTip())
+
+    def test_a_plain_change_leaves_the_marker_alone(self):
+        """An edge that keeps its name is no guess."""
+
+        self.pad2.Length = 25.0
+        self.doc.recompute()
+        self._settle()
+
+        self.assertTrue(self.fillet.isValid())
+        self.assertFalse(self._marker_for("Fillet").property("timelineWarning"))
+
+    def test_a_failure_wins_over_a_warning(self):
+        self._redraw_the_first_profile()
+        self.fillet.Radius = 50.0  # far too big for the edge
+        self.doc.recompute()
+        self._settle()
+
+        self.assertFalse(self.fillet.isValid())
+        marker = self._marker_for("Fillet")
+        self.assertTrue(marker.property("timelineError"))
+        self.assertFalse(marker.property("timelineWarning"))
+
+    def test_editing_the_feature_clears_the_warning(self):
+        """Opening the feature is where the user checks or reselects the edge, so once
+        that edit is over there is nothing left to warn about."""
+
+        self._redraw_the_first_profile()
+        gui_doc = FreeCADGui.getDocument(self.doc.Name)
+        gui_doc.setEdit(self.fillet.Name)
+        self._settle()
+        self.assertTrue(self._marker_for("Fillet").property("timelineWarning"))
+
+        if FreeCADGui.Control.activeDialog():
+            FreeCADGui.Control.closeDialog()
+        gui_doc.resetEdit()
+        self._settle()
+
+        self.assertFalse(self._marker_for("Fillet").property("timelineWarning"))
+
+    def test_undoing_the_change_takes_the_warning_back(self):
+        """Undo puts the link back on the name it had, so it no longer points at the
+        edge it was moved to."""
+
+        self.doc.openTransaction("Redraw")
+        self._redraw_the_first_profile()
+        self.doc.commitTransaction()
+        self._settle()
+        self.assertTrue(self._marker_for("Fillet").property("timelineWarning"))
+
+        self.doc.undo()
+        self._settle()
+
+        self.assertTrue(self.fillet.isValid())
+        self.assertFalse(self._marker_for("Fillet").property("timelineWarning"))
+
+    def test_the_marker_menu_offers_to_reselect(self):
+        self._redraw_the_first_profile()
+
+        self._choose_from_marker_menu("Fillet", "Edit to Reselect")
+        self._settle()
+
+        in_edit = FreeCADGui.getDocument(self.doc.Name).getInEdit()
+        self.assertIsNotNone(in_edit)
+        self.assertEqual(in_edit.Object.Name, self.fillet.Name)
+
+    def _tree_icon(self, label):
+        for tree in self.window.findChildren(QtWidgets.QTreeWidget):
+            flags = QtCore.Qt.MatchExactly | QtCore.Qt.MatchRecursive
+            for item in tree.findItems(label, flags, 0):
+                return item.icon(0).pixmap(16, 16).toImage()
+        return None
+
+    def test_the_model_tree_badges_the_feature_too(self):
+        before = self._tree_icon("Fillet")
+        if before is None:
+            self.skipTest("The model tree is not shown in this test environment")
+
+        self._redraw_the_first_profile()
+        self.assertNotEqual(self._tree_icon("Fillet"), before, "no warning badge in the tree")
+
+        gui_doc = FreeCADGui.getDocument(self.doc.Name)
+        gui_doc.setEdit(self.fillet.Name)
+        self._settle()
+        if FreeCADGui.Control.activeDialog():
+            FreeCADGui.Control.closeDialog()
+        gui_doc.resetEdit()
+        self._settle()
+        self.assertEqual(self._tree_icon("Fillet"), before, "the badge outlived the edit")

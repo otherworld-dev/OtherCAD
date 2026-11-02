@@ -129,3 +129,6 @@ class TestMissingReferenceGui(unittest.TestCase):
         if not markers:
             self.skipTest("The timeline is not shown in this test environment")
         self.assertIn(f"{self.edge} of Pad no longer exists", markers[0].toolTip())
+        # Red, not the yellow of a feature that built on a reference found again
+        self.assertTrue(markers[0].property("timelineError"))
+        self.assertFalse(markers[0].property("timelineWarning"))

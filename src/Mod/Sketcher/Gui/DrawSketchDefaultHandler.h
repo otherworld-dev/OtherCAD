@@ -571,6 +571,7 @@ protected:
         }
 
         AutoConstraints.clear();
+        clearArcMidpointHelpers();
         ShapeGeometry.clear();
         ShapeConstraints.clear();
 

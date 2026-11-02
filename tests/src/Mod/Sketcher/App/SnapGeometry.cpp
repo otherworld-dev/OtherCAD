@@ -56,6 +56,23 @@ TEST(SnapGeometryPickSnap, ChoosesNearestAmongSameKind)
     EXPECT_DOUBLE_EQ(picked->point.y, 2.0);
 }
 
+TEST(SnapGeometryPickSnap, KeepsTheOtherCurveOfTheCrossingItPicks)
+{
+    // The sketcher constrains a crossing snap to both curves, so the pick must say which
+    // crossing, and with it which other curve, it chose.
+    std::vector<SnapCandidate> candidates {
+        {SnapKind::Intersection, Base::Vector2d(3.0, 0.0), 7},
+        {SnapKind::Intersection, Base::Vector2d(1.0, 0.0), Sketcher::GeoEnum::VAxis},
+        {SnapKind::Midpoint, Base::Vector2d(0.5, 0.0)},
+    };
+
+    auto picked = SnapGeometry::pickSnap(candidates, Base::Vector2d(0.0, 0.0), 5.0);
+
+    ASSERT_TRUE(picked.has_value());
+    EXPECT_EQ(picked->kind, SnapKind::Intersection);
+    EXPECT_EQ(picked->otherGeoId, Sketcher::GeoEnum::VAxis);
+}
+
 TEST(SnapGeometrySnapToGrid, LandsOnTheIntersectionWhenBothAxesAreWithinTolerance)
 {
     auto snapped = SnapGeometry::snapToGrid(Base::Vector2d(3.9, 6.1), 1.0, 0.2);

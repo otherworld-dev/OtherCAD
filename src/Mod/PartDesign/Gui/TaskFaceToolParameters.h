@@ -53,7 +53,10 @@ private:
     Gui::QuantitySpinBox* offset;
 };
 
-/// The face list plus the vector the faces travel along.
+/**
+ * The face list plus the vector the faces travel along, and the part of that travel
+ * along the first face's normal, which is what the arrow in the view drives.
+ */
 class TaskMoveFaceParameters: public TaskFaceOperationParameters
 {
     Q_OBJECT
@@ -63,11 +66,22 @@ public:
 
 protected:
     void addParameters(QFormLayout* layout) override;
+    Base::Vector3d arrowOffset() const override;
+    void facesChanged() override;
 
 private:
     void onComponentChanged();
+    void onAlongNormalChanged(double value);
+    /// The travel the X, Y and Z fields hold.
+    Base::Vector3d travel() const;
+    /// Shows the part of the travel along the normal in its own field.
+    void showAlongNormal();
 
     Gui::QuantitySpinBox* along[3] {nullptr, nullptr, nullptr};
+    Gui::QuantitySpinBox* alongNormal = nullptr;
+    /// Set while one field is being brought into line with another, so the change is
+    /// not taken for one the user made.
+    bool syncing = false;
 };
 
 /// Only the face list: there is nothing to say about a face being removed.

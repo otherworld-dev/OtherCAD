@@ -28,6 +28,7 @@
 #include <vector>
 
 #include <Base/Tools2D.h>
+#include <Mod/Sketcher/App/GeoEnum.h>
 #include <Mod/Sketcher/SketcherGlobal.h>
 
 namespace Part
@@ -64,6 +65,8 @@ struct SnapCandidate
 {
     SnapKind kind = SnapKind::None;
     Base::Vector2d point;
+    /// For a crossing, the GeoId of the other curve, so the snap can be constrained to both.
+    int otherGeoId = GeoEnum::GeoUndef;
 };
 
 /// Rank of a kind; a higher rank wins whenever several kinds are within reach.
@@ -87,7 +90,10 @@ SketcherExport std::optional<Base::Vector2d> midpoint(const Part::Geometry* geo)
 SketcherExport std::vector<Base::Vector2d> quadrantPoints(const Part::Geometry* geo);
 
 /// Points where two bounded curves cross, without duplicates.
-SketcherExport std::vector<Base::Vector2d> intersections(const Part::Geometry* a, const Part::Geometry* b);
+SketcherExport std::vector<Base::Vector2d> intersections(
+    const Part::Geometry* a,
+    const Part::Geometry* b
+);
 
 /**
  * Snaps @a point to the grid lines of a square grid of @a spacing that lie

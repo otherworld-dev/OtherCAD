@@ -74,6 +74,12 @@ public:
     short mustExecute() const override;
     void setupObject() override;
 
+    /// Extra profiles must lie in planes parallel to Profile; each is extruded from its own
+    bool supportsExtraProfiles() const override
+    {
+        return true;
+    }
+
     const char* getViewProviderName() const override
     {
         return "PartDesignGui::ViewProviderExtrude";

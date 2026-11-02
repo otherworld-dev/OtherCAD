@@ -46,6 +46,7 @@
 #include <App/DocumentObjectGroup.h>
 #include <App/Transactions.h>
 #include <App/ElementNamingUtils.h>
+#include <App/ReferenceWarnings.h>
 #include <Base/Console.h>
 #include <Base/Exception.h>
 #include <Base/Matrix.h>
@@ -796,6 +797,11 @@ void Document::_resetEdit()
         if (d->_editViewProvider
             && d->_editViewProvider->isDerivedFrom<ViewProviderDocumentObject>()) {
             auto vpd = static_cast<ViewProviderDocumentObject*>(d->_editViewProvider);
+            // The feature's panel is where a reference the naming code found again is
+            // checked or picked anew, so once it closes the warning has served its turn
+            if (d->_editMode == ViewProvider::Default) {
+                App::clearReferenceWarnings(vpd->getObject());
+            }
             vpd->getDocument()->signalResetEdit(*vpd);
         }
         d->_editViewProvider = nullptr;

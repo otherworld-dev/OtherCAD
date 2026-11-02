@@ -85,6 +85,13 @@ public:
     /// Re-reads icon, label and error state from the document object.
     void refresh();
 
+    /// Whether the feature built but one of its references was found again by its
+    /// geometry, or has gone. A failure takes precedence and clears it.
+    bool hasWarning() const
+    {
+        return warning;
+    }
+
 Q_SIGNALS:
     /// All three carry the internal name of the feature rather than the marker,
     /// so that a handler which outlives the marker has nothing to dangle on.
@@ -108,9 +115,60 @@ private:
     State markerState {State::Normal};
     bool tip {false};
     bool error {false};
+    bool warning {false};
     bool suppressed {false};
 
     Q_DISABLE_COPY(TimelineMarker)
+};
+
+/**
+ * A group of adjacent features on the timeline, drawn as one folder tile. Folded,
+ * it stands in for its members; unfolded, it heads them. It knows its group only
+ * by key, which the strip resolves against the body each time.
+ * @author FuCad contributors
+ */
+class GuiExport TimelineGroupMarker: public QWidget
+{
+    Q_OBJECT
+
+public:
+    explicit TimelineGroupMarker(const QString& key, QWidget* parent = nullptr);
+    ~TimelineGroupMarker() override = default;
+
+    QString key() const
+    {
+        return groupKey;
+    }
+
+    /// What the tile shows: the group's name, how many features it holds, whether it is
+    /// unfolded, and whether any of them failed or carries a warning
+    void setGroup(const QString& label, int count, bool expanded, bool error, bool warning);
+    void setState(TimelineMarker::State state);
+    void setTip(bool value);
+
+Q_SIGNALS:
+    void selectRequested(const QString& key);
+    /// A double click folds or unfolds the group
+    void toggleRequested(const QString& key);
+    void menuRequested(const QString& key, const QPoint& globalPos);
+
+protected:
+    void paintEvent(QPaintEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
+    void contextMenuEvent(QContextMenuEvent* event) override;
+
+private:
+    void restyle();
+
+    QString groupKey;
+    TimelineMarker::State markerState {TimelineMarker::State::Normal};
+    bool expanded {false};
+    bool tip {false};
+    bool error {false};
+    bool warning {false};
+
+    Q_DISABLE_COPY(TimelineGroupMarker)
 };
 
 }  // namespace Timeline

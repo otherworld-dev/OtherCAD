@@ -30,10 +30,12 @@
 #include <QSize>
 #include <QStyle>
 #include <QStyleOption>
+#include <QStringList>
 
 #include <App/Application.h>
 #include <App/Document.h>
 #include <App/DocumentObject.h>
+#include <App/ReferenceWarnings.h>
 #include <App/SuppressibleExtension.h>
 #include <Gui/Application.h>
 #include <Gui/BitmapFactory.h>
@@ -71,6 +73,13 @@ const QPixmap& errorBadge()
 {
     static const QPixmap badge
         = Gui::BitmapFactory().pixmapFromSvg("overlay_error", QSizeF(badgeExtent, badgeExtent));
+    return badge;
+}
+
+const QPixmap& warningBadge()
+{
+    static const QPixmap badge
+        = Gui::BitmapFactory().pixmapFromSvg("Warning", QSizeF(badgeExtent, badgeExtent));
     return badge;
 }
 }  // namespace
@@ -141,6 +150,11 @@ void TimelineMarker::refresh()
         error = obj->isError();
         auto* suppressible = obj->getExtensionByType<App::SuppressibleExtension>(true);
         suppressed = suppressible && suppressible->Suppressed.getValue();
+        // A failure, or a feature left out of the shape, says all there is to say
+        const std::vector<std::string> warnings = error || suppressed
+            ? std::vector<std::string>()
+            : App::getReferenceWarnings(obj);
+        warning = !warnings.empty();
 
         Gui::ViewProvider* provider = Gui::Application::Instance
             ? Gui::Application::Instance->getViewProvider(obj)
@@ -149,8 +163,14 @@ void TimelineMarker::refresh()
             featureIcon = provider->getIcon();
         }
 
-        const QString status = suppressed ? tr("Suppressed")
-                                          : QString::fromUtf8(obj->getStatusString());
+        QString status = suppressed ? tr("Suppressed") : QString::fromUtf8(obj->getStatusString());
+        if (warning) {
+            QStringList lines;
+            for (const std::string& line : warnings) {
+                lines.append(QString::fromStdString(line));
+            }
+            status = lines.join(QLatin1Char('\n'));
+        }
         setToolTip(status.isEmpty() ? caption : QStringLiteral("%1\n%2").arg(caption, status));
     }
 
@@ -162,6 +182,7 @@ void TimelineMarker::restyle()
     setProperty("timelineState", stateName(markerState));
     setProperty("timelineTip", tip);
     setProperty("timelineError", error);
+    setProperty("timelineWarning", warning);
     setProperty("timelineSuppressed", suppressed);
 
     style()->unpolish(this);
@@ -197,8 +218,8 @@ void TimelineMarker::paintEvent(QPaintEvent* event)
         painter.drawLine(iconRect.bottomLeft(), iconRect.topRight());
     }
 
-    if (error) {
-        const QPixmap& badge = errorBadge();
+    if (error || warning) {
+        const QPixmap& badge = error ? errorBadge() : warningBadge();
         if (!badge.isNull()) {
             painter.drawPixmap(iconRect.right() - badgeExtent / 2, iconRect.top(), badge);
         }
@@ -231,6 +252,121 @@ void TimelineMarker::contextMenuEvent(QContextMenuEvent* event)
     // the selection over as well would throw away whatever the user had picked, and
     // every entry of the menu works off the feature name rather than the selection.
     Q_EMIT menuRequested(QString::fromUtf8(internalName.c_str()), event->globalPos());
+}
+
+
+TimelineGroupMarker::TimelineGroupMarker(const QString& key, QWidget* parent)
+    : QWidget(parent)
+    , groupKey(key)
+{
+    setObjectName(QStringLiteral("TimelineGroupMarker"));
+    setAttribute(Qt::WA_StyledBackground, true);
+    setFixedSize(TimelineMarker::tileSize());
+    setFocusPolicy(Qt::TabFocus);
+    restyle();
+}
+
+void TimelineGroupMarker::setGroup(
+    const QString& label,
+    int count,
+    bool isExpanded,
+    bool hasError,
+    bool hasWarning
+)
+{
+    expanded = isExpanded;
+    error = hasError;
+    warning = hasWarning;
+    const QString members = count == 1 ? tr("1 feature") : tr("%1 features").arg(count);
+    setToolTip(QStringLiteral("%1\n%2").arg(label, members));
+    restyle();
+}
+
+void TimelineGroupMarker::setState(TimelineMarker::State state)
+{
+    if (markerState == state) {
+        return;
+    }
+
+    markerState = state;
+    restyle();
+}
+
+void TimelineGroupMarker::setTip(bool value)
+{
+    if (tip == value) {
+        return;
+    }
+
+    tip = value;
+    restyle();
+}
+
+void TimelineGroupMarker::restyle()
+{
+    setProperty("timelineState", stateName(markerState));
+    setProperty("timelineTip", tip);
+    setProperty("timelineError", error);
+    setProperty("timelineWarning", warning);
+    setProperty("timelineExpanded", expanded);
+
+    style()->unpolish(this);
+    style()->polish(this);
+    update();
+}
+
+void TimelineGroupMarker::paintEvent(QPaintEvent* event)
+{
+    Q_UNUSED(event)
+
+    QStyleOption opt;
+    opt.initFrom(this);
+
+    QPainter painter(this);
+    style()->drawPrimitive(QStyle::PE_Widget, &opt, &painter, this);
+
+    const QRect content = rect().adjusted(markerPadding, markerPadding, -markerPadding, -markerPadding);
+    QRect iconRect(0, 0, iconExtent, iconExtent);
+    iconRect.moveCenter(content.center());
+
+    // An open folder heads its members, a closed one stands in for them
+    const QIcon icon = style()->standardIcon(
+        expanded ? QStyle::SP_DirOpenIcon : QStyle::SP_DirClosedIcon
+    );
+    const QIcon::Mode mode = markerState == TimelineMarker::State::RolledBack ? QIcon::Disabled
+                                                                              : QIcon::Normal;
+    icon.paint(&painter, iconRect, Qt::AlignCenter, mode, QIcon::Off);
+
+    if (error || warning) {
+        const QPixmap& badge = error ? errorBadge() : warningBadge();
+        if (!badge.isNull()) {
+            painter.drawPixmap(iconRect.right() - badgeExtent / 2, iconRect.top(), badge);
+        }
+    }
+}
+
+void TimelineGroupMarker::mousePressEvent(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton) {
+        Q_EMIT selectRequested(groupKey);
+    }
+
+    QWidget::mousePressEvent(event);
+}
+
+void TimelineGroupMarker::mouseDoubleClickEvent(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton) {
+        Q_EMIT toggleRequested(groupKey);
+    }
+
+    QWidget::mouseDoubleClickEvent(event);
+}
+
+void TimelineGroupMarker::contextMenuEvent(QContextMenuEvent* event)
+{
+    event->accept();
+    Q_EMIT menuRequested(groupKey, event->globalPos());
 }
 
 #include "moc_TimelineMarker.cpp"

@@ -63,6 +63,38 @@ PartDesign::Body* getBody(
 /// Display a dialog to select or create a Body object when none is active
 PartDesign::Body* needActiveBodyMessage(App::Document* doc, const QString& infoText = QString());
 
+/// The body everything selected belongs to; null if nothing is selected, or if the
+/// selection is outside any body or spread over several
+PartDesign::Body* getBodyOfSelection();
+
+/**
+ * Fusion's rule for a new feature: it goes into the body of what it is made from. Makes
+ * the body of the selection (see getBodyOfSelection) the active one and returns it, or
+ * returns null and leaves the active body alone when the selection names no single body.
+ */
+PartDesign::Body* activateBodyOfSelection();
+
+/**
+ * The body a new feature goes into: the body of the selection, made active, or else what
+ * getBody(true) gives (the active body, the only body, a new body in an empty document,
+ * or the picker). With \a selectionWins false the selection counts only while no body is
+ * active, for features that may well reference geometry of another body.
+ */
+PartDesign::Body* getBodyForNewFeature(bool selectionWins = true);
+
+/**
+ * Brings a reference to geometry outside \a feature's body into that body, as a dependent
+ * shape binder placed just before \a feature. Returns the binder and sets \a subname to
+ * the matching element of it, or returns null when \a selObj needs no binder (it is in the
+ * body already, or is an origin feature or datum). Opens no transaction of its own, so the
+ * binder goes with whatever edit is open.
+ */
+App::DocumentObject* bindIntoBody(
+    App::DocumentObject* feature,
+    App::DocumentObject* selObj,
+    std::string& subname
+);
+
 /**
  * Set given body active, and return pointer to it.
  * \param body the pointer to the body

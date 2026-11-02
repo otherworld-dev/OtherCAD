@@ -57,6 +57,7 @@ from PartDesignTests.TestChamfer import TestChamfer
 from PartDesignTests.TestMissingReference import TestMissingReference
 from PartDesignTests.TestDraft import TestDraft
 from PartDesignTests.TestThickness import TestThickness
+from PartDesignTests.TestFaceTools import TestFaceTools
 
 # extras
 from PartDesignTests.TestInvoluteGear import TestInvoluteGear

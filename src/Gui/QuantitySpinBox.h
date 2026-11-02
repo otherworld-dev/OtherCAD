@@ -173,6 +173,14 @@ public:
     bool apply(const std::string& propName) override;
     using ExpressionSpinBox::apply;
 
+    /// The object whose property the field is bound to, or null when it is unbound
+    App::DocumentObject* boundObject() const;
+    /// The bound property's expression, or null when it has none
+    std::shared_ptr<App::Expression> boundExpression() const;
+    /// Binds the field's property to expr, as the formula dialog does, or drops its
+    /// expression when expr is null. Throws Base::Exception when expr cannot drive it.
+    void setBoundExpression(std::shared_ptr<App::Expression> expr);
+
 public Q_SLOTS:
     /// Sets the field with a quantity
     void setValue(const Base::Quantity& val);
@@ -185,6 +193,7 @@ protected Q_SLOTS:
 
 protected:
     void setExpression(std::shared_ptr<App::Expression> expr) override;
+    void onChange() override;
     void openFormulaDialog() override;
     void showIcon() override;
     StepEnabled stepEnabled() const override;
@@ -227,6 +236,8 @@ Q_SIGNALS:
      *  or finished (false).
      */
     void showFormulaDialog(bool);
+    /// The bound property's expression was set, changed or dropped, from here or elsewhere
+    void boundExpressionChanged();
     /** Gets emitted if user confirms the value with return. This
      *  is very similar to editingFinished() but does not fire on
      *  focus out.

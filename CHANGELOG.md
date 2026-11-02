@@ -11,6 +11,10 @@ done in this fork.
 
 ### Added
 
+- The model tree shows which body is active, like the radio button on a Fusion component:
+  every body row ends in a ring, filled on the active body, and clicking a ring makes that
+  body active. The timeline names its body as well, marked the same way and in bold when
+  it is the active one, and clicking the name activates the body it shows.
 - AI Chat, in the Tools menu, is a panel where you talk to Claude about the open model
   without setting up an MCP client. It uses the plan you are signed in to in Claude Code,
   so Claude Code must be installed. Claude gets the LLM Bridge's tools and nothing else:
@@ -68,9 +72,74 @@ done in this fork.
   panel lists the reference as missing so it can be removed and picked again.
 - A feature panel says at its top why the feature cannot be built while a value is
   wrong, and again if OK is pressed on it, instead of only in the Report view.
+- Change Parameters, under Modify on the SOLID tab, lists the document's user
+  parameters and the model's dimensions in one place, as Fusion's Parameters dialog
+  does. User parameters can be added with a unit and a value or formula, renamed (the
+  formulas that use one follow the new name), edited and deleted while nothing uses
+  them; they live in a variable set called Parameters, made when the first one is
+  added. Named sketch dimensions, feature sizes such as an extrude's distance, and
+  values that formulas link can be edited there too. Each edit is one undo step and
+  recomputes the model.
+- The value boxes on feature gizmos take formulas, such as `Width * 2`: Enter, Tab or
+  clicking away binds the value to it, and a formula that cannot be used is turned
+  away with the reason. A value driven by a formula keeps its gizmo, shows the formula
+  in its box and its value in the tooltip, and typing a number over the formula or
+  dragging the gizmo replaces it.
+- A feature that still builds, but only because an edge or face it used was lost and
+  one in the same place was found instead, is drawn in yellow on the timeline, with a
+  warning badge in the model tree. Its tooltip says what moved, for example "Edge5 of
+  Pad was lost and Edge1, in the same place, is used instead.", and right-clicking it
+  offers Edit to Reselect. The warning goes once the feature has been edited, or the
+  change that caused it is undone.
+- One Extrude or Revolve can be built from several profiles at once, as in Fusion:
+  regions of different sketches, whole sketches and flat faces of the solid. While the
+  panel's Select is on, the body's sketches are shown, and clicking a region, a sketch's
+  curve or a flat face adds it; clicking it again takes it out. Selecting several before
+  starting the command does the same. Extrude takes each profile from its own plane, so
+  the extra ones must lie in planes parallel to the first. Revolve turns them all about
+  the same axis. Profiles that overlap are merged. A feature with one profile is saved
+  exactly as before.
+- Features can be dragged along the timeline to move them earlier or later in their body,
+  as in Fusion. A line shows where the feature will land, red when it cannot go there: a
+  feature cannot move in front of something it is built on, nor past something built on
+  it, and the status bar says which. A move is one undo step.
+- Features side by side on the timeline can be grouped, as in Fusion: select them and
+  choose Group from the right-click menu. A group folds into one marker, and a double
+  click or Expand unfolds it. Its menu also has Rename Group and Ungroup. A folded group
+  is dragged as one; a feature dragged out of an unfolded group leaves it, and one
+  dropped between two of its members joins it. Groups are saved with the document and
+  never change the model. A deleted feature drops out of its group, and an empty group
+  goes. The step buttons and keys step over a folded group.
+- Offset Face, Move Face and Press/Pull on a face put an arrow on the face, along its
+  normal, with its distance in a box beside it, as in Fusion. Drag the arrow or type in
+  the box. Move Face keeps its X, Y and Z fields and gains an Along normal field, which
+  the arrow drives.
+- Offset Face and Press/Pull work on curved faces too: the face grows or shrinks by the
+  distance along its own normal, so offsetting a cylinder or a hole's wall changes its
+  radius. Move Face still works only on flat faces, and says to use Offset Face for a
+  curved one.
+- Move (M, and Move on the ribbon) puts three arrows and three turning handles on the
+  selected body or object, coloured by axis, with their values in boxes in the view, as
+  Fusion's Move does. The body follows as you drag or type, turning about its middle, and
+  the panel keeps X, Y and Z distance and angle fields. OK keeps the whole move as one
+  undo step; Cancel puts it back. Picking a feature moves its body. With a face picked, M
+  moves that face with Move Face instead of being greyed out. The numeric Placement
+  dialog is still under Edit > Placement.
 
 ### Changed
 
+- A new feature goes into the body of what it is made from, as in Fusion. Sketching on a
+  face, extruding a sketch or face, or filleting an edge of a body other than the active
+  one makes that body active and works there, instead of refusing or asking about a copy.
+  With no body active the selection's body is used, and a document without a body gets one
+  silently with the first feature (one undo takes both back). The body picker is left
+  only for a document with several bodies, none active and nothing selected. A new
+  document still starts empty.
+- An up-to face, axis, direction or other reference on another body comes into the
+  feature's own body as a shape binder, without the copy/cross-reference question.
+- Dragging the timeline's playhead rolls the model back and forward as it goes, as in
+  Fusion, instead of only when it is let go. A whole drag is one undo step, however
+  many features it passes.
 - The Start page is redone. A sidebar holds a New design button, which starts a body
   ready to sketch on, with Open and the other new file types listed under it. Recent
   files and examples are cards with the thumbnail filling the top, a file type badge
@@ -98,6 +167,8 @@ done in this fork.
 - L and the Line button in a sketch draw lines one after another from the end of the
   last, as Fusion's Line does, until Esc. M switches the next segment to an arc. The
   single line is still in the Create menu as Single Line (G, L).
+  - Pressing on the end of the last segment and dragging draws an arc tangent to it, as
+    in Fusion. Letting go places the arc, and the lines carry on from its end.
 - The editor for stored preferences is called Edit Stored Preferences instead of Edit
   Parameters, so searching the commands for parameters no longer leads to it.
 - The model tree now groups a body's contents into Sketches, Construction and History
@@ -109,6 +180,19 @@ done in this fork.
 
 ### Fixed
 
+- The Offset Face and Move Face panels showed only the list of faces: their Offset and
+  X, Y and Z fields never appeared, so the distance could not be changed there.
+- A sketch point snapped to an arc's midpoint, a circle or arc quadrant, or a crossing
+  now stays there. Before, all of these got a plain point-on-curve constraint and slid
+  along the curve. An arc midpoint now adds a construction radius that the arc's ends are
+  symmetric about, a quadrant puts the point on the circle and lines it up with the
+  centre horizontally or vertically, and a crossing puts the point on both curves.
+- An object bound to a spreadsheet alias now follows the alias after rows or columns are
+  inserted above or before its cell. Before, changing the moved cell left the object alone
+  and changing whatever cell took its old place updated it instead. The same happened
+  when the object was bound before the sheet had first recomputed.
+- Undoing rows inserted above aliased cells no longer breaks those aliases. Objects bound
+  to them failed with "Property not found" until the file was closed and opened again.
 - The Measure tool's hover values now show on Linux and macOS builds made with clang, where
   they were always missing.
 - A click on the view cube that lands exactly on the line between two tiles now picks a
@@ -135,6 +219,15 @@ done in this fork.
 - The Tasks panel on the right-hand overlay is no longer cut off at the edge of the
   screen when a sketch's panels need more width than the overlay had. The overlay grows
   while they need it and goes back to its own width afterwards.
+- Revolve can intersect or make a new body when it goes up to a face, the first face or
+  the last face. These only worked with an angle before, and the up-to types gave an
+  error. Up to a face also works with nothing before it in the body, which is where a
+  new body ends up.
+- Revolve with Cut up to a face, like the old Groove, left only the material it should
+  have taken away.
+- Revolve up to a face with more than one profile failed with "Could not revolve the
+  sketch!".
+- A New body Revolve about an origin axis did not move into a body of its own on OK.
 
 ## [26.4.0] - 2026-09-25
 

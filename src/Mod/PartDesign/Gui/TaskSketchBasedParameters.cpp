@@ -37,6 +37,8 @@
 #include <QTimer>
 #include <QToolButton>
 
+#include <gp_Pln.hxx>
+#include <Standard_Failure.hxx>
 #include <TopExp_Explorer.hxx>
 #include <TopoDS_Shape.hxx>
 
@@ -51,11 +53,14 @@
 #include <Gui/Selection/Selection.h>
 #include <Gui/ViewProvider.h>
 #include <Mod/Part/App/DatumFeature.h>
+#include <Mod/Part/App/PartFeature.h>
+#include <Mod/PartDesign/App/Body.h>
 #include <Mod/PartDesign/App/FeatureSketchBased.h>
 #include <Mod/Sketcher/App/SketchObject.h>
 
 #include "TaskSketchBasedParameters.h"
 #include "ReferenceSelection.h"
+#include "Utils.h"
 
 using namespace PartDesignGui;
 using namespace Gui;
@@ -104,7 +109,11 @@ ProfileSelectionWidget::ProfileSelectionWidget(PartDesign::ProfileBased* profile
     pickButton->setObjectName(QStringLiteral("ProfilePickButton"));
     pickButton->setText(tr("Select"));
     pickButton->setCheckable(true);
-    pickButton->setToolTip(tr("Click inside a closed sketch region to add or remove it"));
+    pickButton->setToolTip(
+        profileFeature && profileFeature->supportsExtraProfiles()
+            ? tr("Click a sketch region, a sketch or a flat face to add or remove it")
+            : tr("Click inside a closed sketch region to add or remove it")
+    );
     layout->addWidget(pickButton);
 
     connect(pickButton, &QToolButton::toggled, this, &ProfileSelectionWidget::setPickingActive);
@@ -179,6 +188,7 @@ void ProfileSelectionWidget::setPickingActive(bool active)
                 profileWasVisible = profileView->isVisible();
                 profileView->show();
             }
+            showOtherSketches(true);
 
             Gui::Selection().clearSelection();
             attachSelection();
@@ -191,11 +201,13 @@ void ProfileSelectionWidget::setPickingActive(bool active)
                     return;
                 }
 
+                PartDesign::ProfileBased* profileBased = getFeature();
                 Gui::getMainWindow()->showHints({{
-                    .message = tr(
-                        "Click a region to build the feature from that region only; click "
-                        "it again to release it"
-                    ),
+                    .message = profileBased && profileBased->supportsExtraProfiles()
+                        ? tr("Click regions, sketches or flat faces to build the feature "
+                             "from; click one again to release it")
+                        : tr("Click a region to build the feature from that region only; "
+                             "click it again to release it"),
                     // The hint names no key: the region is picked with the mouse.
                     .sequences = {},
                 }});
@@ -210,6 +222,7 @@ void ProfileSelectionWidget::setPickingActive(bool active)
                     profileView->hide();
                 }
             }
+            showOtherSketches(false);
 
             // The hint row is a single shared slot, so clearing it would leave the
             // dialog without its own hints for the rest of its life.
@@ -236,16 +249,29 @@ void ProfileSelectionWidget::updateSummary()
 
     const int regions = countRegions(profileBased->Profile.getValue());
 
-    if (selected > 0) {
-        summaryLabel->setText(tr("%1 of %2 regions").arg(static_cast<int>(selected)).arg(regions));
+    QString text;
+    if (selected > 0 && regions > 0) {
+        text = tr("%1 of %2 regions").arg(static_cast<int>(selected)).arg(regions);
     }
-    else if (regions > 0) {
+    else if (selected > 0) {
+        // A face of a solid rather than a sketch's regions
+        text = tr("%n face(s)", nullptr, static_cast<int>(selected));
+    }
+    else if (regions > 1) {
         // No region picked is not nothing picked: the feature is built from all of them.
-        summaryLabel->setText(tr("All %n regions", nullptr, regions));
+        text = tr("All %n regions", nullptr, regions);
+    }
+    else if (profileBased->Profile.getValue()) {
+        text = tr("Sketch");
     }
     else {
-        summaryLabel->setText(tr("Nothing selected"));
+        text = tr("Nothing selected");
     }
+
+    if (const int extras = profileBased->ExtraProfiles.getSize(); extras > 0) {
+        text = tr("%1 + %n more", nullptr, extras).arg(text);
+    }
+    summaryLabel->setText(text);
 }
 
 void ProfileSelectionWidget::onSelectionChanged(const Gui::SelectionChanges& msg)
@@ -264,15 +290,25 @@ void ProfileSelectionWidget::onSelectionChanged(const Gui::SelectionChanges& msg
         return;
     }
 
-    if (std::string(profile->getNameInDocument()) != msg.pObjectName
-        || std::string(profile->getDocument()->getName()) != msg.pDocName) {
-        return;
-    }
-
     std::string sub = msg.pSubName ? msg.pSubName : "";
     const std::size_t separator = sub.rfind('.');
     if (separator != std::string::npos) {
         sub = sub.substr(separator + 1);
+    }
+
+    if (std::string(profile->getNameInDocument()) != msg.pObjectName
+        || std::string(profile->getDocument()->getName()) != msg.pDocName) {
+        // Another sketch's region, a whole sketch or a flat face, as Fusion takes several
+        App::Document* document = profileBased->getDocument();
+        if (std::string(document->getName()) != msg.pDocName) {
+            return;
+        }
+        auto [object, element] = extraProfileFor(document->getObject(msg.pObjectName), sub);
+        if (object) {
+            toggleExtraProfile(object, element);
+            QTimer::singleShot(0, this, []() { Gui::Selection().clearSelection(); });
+        }
+        return;
     }
 
     // The element may or may not still carry the prefix depending on the observer resolve mode.
@@ -331,6 +367,174 @@ void ProfileSelectionWidget::toggleRegion(const std::string& subName)
     Q_EMIT profileChanged();
 }
 
+std::pair<App::DocumentObject*, std::string> ProfileSelectionWidget::extraProfileFor(
+    App::DocumentObject* object,
+    const std::string& element
+) const
+{
+    PartDesign::ProfileBased* profileBased = getFeature();
+    if (!object || !profileBased || !profileBased->supportsExtraProfiles()) {
+        return {};
+    }
+    auto* body = PartDesign::Body::findBodyOf(profileBased);
+    if (!body || PartDesign::Body::findBodyOf(object) != body) {
+        return {};
+    }
+
+    if (object->isDerivedFrom<Part::Part2DObject>()) {
+        if (!profileBased->testIfLinkDAGCompatible(object)) {
+            return {};
+        }
+        // A region of the sketch, or a click on one of its curves for the whole sketch
+        const std::string& prefix = Sketcher::SketchObject::internalPrefix();
+        std::string sub = element;
+        if (sub.rfind(prefix, 0) == 0) {
+            sub = sub.substr(prefix.size());
+        }
+        if (sub.size() > 4 && sub.rfind("Face", 0) == 0) {
+            return {object, prefix + sub};
+        }
+        return {object, std::string()};
+    }
+
+    if (element.rfind("Face", 0) != 0 || object->isDerivedFrom<Part::Datum>()) {
+        return {};
+    }
+
+    try {
+        Part::TopoShape face = Part::Feature::getTopoShape(
+            object,
+            Part::ShapeOption::NeedSubElement | Part::ShapeOption::ResolveLink
+                | Part::ShapeOption::Transform,
+            element.c_str()
+        );
+        gp_Pln plane;
+        if (face.isNull() || !face.findPlane(plane)) {
+            return {};
+        }
+
+        if (object == profileBased) {
+            // The feature being edited is what shows in the view. A face it took over from
+            // the solid before it is linked there, as linking the feature itself is circular.
+            auto* base = profileBased->getBaseObject(/* silent = */ true);
+            if (!base) {
+                return {};
+            }
+            Part::TopoShape baseShape = Part::Feature::getTopoShape(
+                base,
+                Part::ShapeOption::ResolveLink | Part::ShapeOption::Transform
+            );
+            std::vector<std::string> names;
+            baseShape.findSubShapesWithSharedVertex(face, &names);
+            if (names.empty()) {
+                return {};
+            }
+            return {base, names.front()};
+        }
+
+        if (!profileBased->testIfLinkDAGCompatible(object)) {
+            return {};
+        }
+        return {object, element};
+    }
+    catch (const Base::Exception&) {
+        return {};
+    }
+    catch (const Standard_Failure&) {
+        return {};
+    }
+}
+
+void ProfileSelectionWidget::toggleExtraProfile(App::DocumentObject* object, const std::string& subName)
+{
+    PartDesign::ProfileBased* profileBased = getFeature();
+    if (!profileBased || !object) {
+        return;
+    }
+
+    std::vector<App::DocumentObject*> objects = profileBased->ExtraProfiles.getValues();
+    std::vector<std::string> subs = profileBased->ExtraProfiles.getSubValues();
+    subs.resize(objects.size());
+
+    auto erase = [&](auto&& matches) {
+        for (std::size_t i = objects.size(); i-- > 0;) {
+            if (matches(objects[i], subs[i])) {
+                objects.erase(objects.begin() + static_cast<std::ptrdiff_t>(i));
+                subs.erase(subs.begin() + static_cast<std::ptrdiff_t>(i));
+            }
+        }
+    };
+
+    const auto before = objects.size();
+    erase([&](App::DocumentObject* obj, const std::string& sub) {
+        return obj == object && sub == subName;
+    });
+    if (objects.size() == before) {
+        // A whole sketch takes in its regions, and a region replaces the whole sketch
+        erase([&](App::DocumentObject* obj, const std::string& sub) {
+            return obj == object && (subName.empty() || sub.empty());
+        });
+        objects.push_back(object);
+        subs.push_back(subName);
+    }
+
+    profileBased->ExtraProfiles.setValues(objects, subs);
+
+    updateSummary();
+    Q_EMIT profileChanged();
+}
+
+void ProfileSelectionWidget::showOtherSketches(bool show)
+{
+    if (!show) {
+        for (const App::DocumentObjectT& sketchT : shownSketches) {
+            if (App::DocumentObject* sketch = sketchT.getObject()) {
+                if (Gui::ViewProvider* view = Gui::Application::Instance->getViewProvider(sketch)) {
+                    view->hide();
+                }
+            }
+        }
+        shownSketches.clear();
+        return;
+    }
+
+    PartDesign::ProfileBased* profileBased = getFeature();
+    if (!profileBased || !profileBased->supportsExtraProfiles()) {
+        return;
+    }
+    auto* body = PartDesign::Body::findBodyOf(profileBased);
+    if (!body) {
+        return;
+    }
+
+    // Only what comes before the feature can be built from without a circular link
+    for (App::DocumentObject* obj : body->Group.getValues()) {
+        if (obj == profileBased) {
+            break;
+        }
+        if (!obj->isDerivedFrom<Part::Part2DObject>() || obj == profileBased->Profile.getValue()) {
+            continue;
+        }
+        Gui::ViewProvider* view = Gui::Application::Instance->getViewProvider(obj);
+        if (view && !view->isVisible()) {
+            view->show();
+            shownSketches.emplace_back(obj);
+        }
+    }
+}
+
+void ProfileSelectionWidget::hideExtraProfileSketches(PartDesign::ProfileBased* feature)
+{
+    if (!feature) {
+        return;
+    }
+    for (App::DocumentObject* obj : feature->ExtraProfiles.getValues()) {
+        if (obj && obj->isDerivedFrom<Part::Part2DObject>()) {
+            Gui::cmdAppObjectHide(obj);
+        }
+    }
+}
+
 TaskSketchBasedParameters::TaskSketchBasedParameters(
     PartDesignGui::ViewProvider* vp,
     QWidget* parent,
@@ -359,7 +563,15 @@ TaskSketchBasedParameters::TaskSketchBasedParameters(
 
     App::DocumentObject* profile = sketchBased->Profile.getValue();
     const int regions = ProfileSelectionWidget::countRegions(profile);
-    if (regions < 2) {
+    if (sketchBased->supportsExtraProfiles()) {
+        // Other sketches and faces can always be added, as in Fusion's Profiles row
+        if (regions < 2 && pickRegionsOnOpenFlag) {
+            pickRegionsOnOpenFlag = false;
+            profileWidget->setPickingActive(true);
+            return;
+        }
+    }
+    else if (regions < 2) {
         profileWidget->hide();
         return;
     }
@@ -398,6 +610,11 @@ const QString TaskSketchBasedParameters::onAddSelection(
 
     std::string subname = msg.pSubName;
     QString refStr;
+
+    // A face of another body comes in as a shape binder, not as a link out of the body
+    if (App::DocumentObject* binder = bindIntoBody(sketchBased, selObj, subname)) {
+        selObj = binder;
+    }
 
     if (PartDesign::Feature::isDatum(selObj)) {
         // Check if it's a plane within a LCS
@@ -681,6 +898,7 @@ bool TaskDlgSketchBasedParameters::accept()
     if (TaskDlgFeatureParameters::accept()) {
         App::DocumentObject* sketch = feature->Profile.getValue();
         Gui::cmdAppObjectHide(sketch);
+        ProfileSelectionWidget::hideExtraProfileSketches(feature);
         return true;
     }
 

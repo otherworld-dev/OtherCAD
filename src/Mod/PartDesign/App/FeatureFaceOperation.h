@@ -24,6 +24,7 @@
 
 #pragma once
 
+#include <optional>
 #include <vector>
 
 #include <TopoDS_Face.hxx>
@@ -51,7 +52,6 @@ class PartDesignExport FaceOperation: public DressUp
 public:
     FaceOperation() = default;
 
-protected:
     /// The faces the Base property names, in the order it names them.
     std::vector<TopoDS_Face> selectedFaces(const Part::TopoShape& shape) const;
 
@@ -78,6 +78,13 @@ public:
 protected:
     /// How far and in which direction \a face travels.
     virtual gp_Vec displacement(const TopoDS_Face& face) const = 0;
+
+    /// How far a curved face moves along its own normal, for the tools that can grow or
+    /// shrink one. Nothing means the tool cannot, and curved faces are refused.
+    virtual std::optional<double> normalOffset() const
+    {
+        return std::nullopt;
+    }
 };
 
 }  // namespace PartDesign

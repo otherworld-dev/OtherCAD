@@ -1647,6 +1647,12 @@ ObjectIdentifier::access(const ResolveResults& result, const Py::Object* value, 
     }
     if (ptype == PseudoNone) {
         setPropDep(lastObj, result.resolvedProperty, result.resolvedProperty->getName());
+        // A name that stands for a property of another name, as a spreadsheet alias stands
+        // for its cell, is a dependency too: the alias stays put when its cell moves.
+        if (!result.propertyName.empty()
+            && result.propertyName != result.resolvedProperty->getName()) {
+            setPropDep(lastObj, result.resolvedProperty, result.propertyName.c_str());
+        }
     }
     else {
         setPropDep(lastObj, nullptr, nullptr);

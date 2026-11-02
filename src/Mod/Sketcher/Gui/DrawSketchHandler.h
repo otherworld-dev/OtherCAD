@@ -145,6 +145,8 @@ private:
     static inline int getPreselectCurve(const ViewProviderSketch& vp);
     static inline int getPreselectCross(const ViewProviderSketch& vp);
     static inline const std::set<int>& getPreselectConstraints(const ViewProviderSketch& vp);
+    static inline std::optional<SnapManager::SnapResult> getLastSnap(const ViewProviderSketch& vp);
+    static inline float getSketchUnitsPerPixel(const ViewProviderSketch& vp);
 
     static inline void moveConstraint(
         ViewProviderSketch& vp,
@@ -337,6 +339,8 @@ protected:
     int getPreselectCross() const;
     /// The existing dimension whose value is under the cursor, or -1
     int getPreselectDimension() const;
+    /// Sketch units covered by one screen pixel at the current zoom, 0 if it is not known
+    float getSketchUnitsPerPixel() const;
     /// Whether constraints can be hovered and picked while the tool runs; off unless a tool
     /// turns it on in activated()
     void setConstraintSelectability(bool enabled);
@@ -426,6 +430,18 @@ protected:
 
     bool isLineCenterAutoConstraint(int GeoId, const Base::Vector2d& Pos) const;
 
+    /// Constraints that hold a point where a midpoint, quadrant or crossing snap put it on the
+    /// preselected curve. Returns false, suggesting nothing, when Pos is not such a snap.
+    bool seekSnapAutoConstraint(
+        std::vector<AutoConstraint>& constraints,
+        int curveGeoId,
+        const Base::Vector2d& Pos
+    );
+
+    /// Adds the construction radius each arc-midpoint autoconstraint needs (see
+    /// generateOneAutoConstraintFromSuggestion), then forgets them.
+    void addArcMidpointHelpers();
+
     bool seekAlignmentAutoConstraint(std::vector<AutoConstraint>& constraints, const Base::Vector2d& Dir);
 
     bool seekTangentAutoConstraint(
@@ -457,6 +473,22 @@ private:
     bool parallelPerpendicularRefFromEndpoint {false};
     int lastHoveredGeoId {Sketcher::GeoEnum::GeoUndef};
     QTimer* hoverTimer {nullptr};
+
+    /// A point to hold at the angular middle of an arc, waiting for its construction radius.
+    struct ArcMidpointHelper
+    {
+        int geoId;
+        Sketcher::PointPos posId;
+        int arcGeoId;
+    };
+    std::vector<ArcMidpointHelper> pendingArcMidpointHelpers;
+
+protected:
+    /// Drops arc-midpoint helpers generated for autoconstraints that will not be added.
+    void clearArcMidpointHelpers()
+    {
+        pendingArcMidpointHelpers.clear();
+    }
 };
 
 

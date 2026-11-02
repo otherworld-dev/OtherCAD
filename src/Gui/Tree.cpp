@@ -53,15 +53,19 @@
 #include <App/AutoTransaction.h>
 #include <App/GeoFeatureGroupExtension.h>
 #include <App/Link.h>
+#include <App/Part.h>
+#include <App/ReferenceWarnings.h>
 #include <App/SuppressibleExtension.h>
 
 #include "Tree.h"
+#include "ActiveObjectList.h"
 #include "BitmapFactory.h"
 #include "Command.h"
 #include "Document.h"
 #include "ExpressionCompleter.h"
 #include "Macro.h"
 #include "MainWindow.h"
+#include "MDIView.h"
 #include "MenuManager.h"
 #include "TreeParams.h"
 #include "View3DInventor.h"
@@ -104,6 +108,98 @@ static bool isVisibilityIconEnabled()
 static bool isOnlyNameColumnDisplayed()
 {
     return TreeParams::getHideInternalNames() && TreeParams::getHideColumn();
+}
+
+// The active-body indicator: Fusion's radio button on a component row. A ring on every
+// PartDesign body row, filled on the active one, and a click on it activates that body.
+static const int bodyIndicatorMargin = 3;
+
+static App::DocumentObject* bodyOfRow(QTreeWidgetItem* item)
+{
+    if (!item || item->type() != TreeWidget::ObjectType) {
+        return nullptr;
+    }
+    auto vp = static_cast<DocumentObjectItem*>(item)->object();
+    App::DocumentObject* obj = vp ? vp->getObject() : nullptr;
+    // Gui cannot see PartDesign, so the type is looked up by name, and only once it exists
+    Base::Type bodyType = Base::Type::fromName("PartDesign::Body");
+    if (!obj || bodyType.isBad() || !obj->isDerivedFrom(bodyType)) {
+        return nullptr;
+    }
+    return obj;
+}
+
+static bool isActiveBodyRow(QTreeWidgetItem* item, App::DocumentObject* body)
+{
+    auto docItem = static_cast<DocumentObjectItem*>(item)->getOwnerDocument();
+    Gui::Document* doc = docItem ? docItem->document() : nullptr;
+    MDIView* view = doc ? doc->getActiveView() : nullptr;
+    return view && view->getActiveObject<App::DocumentObject*>(PDBODYKEY) == body;
+}
+
+/// Where the indicator sits in a row's first-column cell: at its right end, kept on screen
+static QRect bodyIndicatorRect(const QRect& cell, int viewportWidth)
+{
+    int size = std::min(TreeWidget::getIconSize(), cell.height());
+    int right = std::min(cell.right(), viewportWidth - 1) - bodyIndicatorMargin;
+    return {right - size + 1, cell.center().y() - size / 2, size, size};
+}
+
+static void drawBodyIndicator(QPainter* painter, const QRect& rect, const QPalette& palette, bool active)
+{
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+    QRectF ring = QRectF(rect).adjusted(2.5, 2.5, -2.5, -2.5);
+    QColor ringColor = palette.color(QPalette::Text);
+    if (!active) {
+        ringColor.setAlphaF(0.45F);
+    }
+    painter->setPen(QPen(ringColor, 1.2));
+    painter->setBrush(Qt::NoBrush);
+    painter->drawEllipse(ring);
+    if (active) {
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(palette.color(QPalette::Highlight));
+        double inset = ring.width() * 0.25;
+        painter->drawEllipse(ring.adjusted(inset, inset, -inset, -inset));
+    }
+    painter->restore();
+}
+
+static void activateBodyOfRow(QTreeWidgetItem* item, App::DocumentObject* body)
+{
+    if (isActiveBodyRow(item, body)) {
+        return;  // a radio button: pressing the chosen one leaves it chosen
+    }
+    auto docItem = static_cast<DocumentObjectItem*>(item)->getOwnerDocument();
+    Gui::Document* doc = docItem ? docItem->document() : nullptr;
+    if (!doc) {
+        return;
+    }
+    const char* docName = doc->getDocument()->getName();
+    // What double-clicking the body does, less the switch of workbench. Neither change
+    // touches the document, so nothing lands in the undo history.
+    try {
+        if (App::Part* part = App::Part::getPartOfObject(body)) {
+            Command::doCommand(
+                Command::Gui,
+                "Gui.getDocument('%s').ActiveView.setActiveObject('%s',%s)",
+                docName,
+                PARTKEY,
+                Command::getObjectCmd(part).c_str()
+            );
+        }
+        Command::doCommand(
+            Command::Gui,
+            "Gui.getDocument('%s').ActiveView.setActiveObject('%s',%s)",
+            docName,
+            PDBODYKEY,
+            Command::getObjectCmd(body).c_str()
+        );
+    }
+    catch (const Base::Exception& e) {
+        e.reportException();
+    }
 }
 
 static bool isSelectionCheckBoxesEnabled()
@@ -491,6 +587,16 @@ void TreeWidgetItemDelegate::paint(
             }
         }
     }
+
+    QTreeWidgetItem* item = index.column() == 0 ? tree->itemFromIndex(index) : nullptr;
+    if (App::DocumentObject* body = bodyOfRow(item)) {
+        // The label ends short of the indicator rather than running under it
+        QRect indicator = bodyIndicatorRect(option.rect, tree->viewport()->width());
+        opt.rect.setRight(std::max(opt.rect.left(), indicator.left() - bodyIndicatorMargin));
+        style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, artificial);
+        drawBodyIndicator(painter, indicator, opt.palette, isActiveBodyRow(item, body));
+        return;
+    }
     style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, artificial);
 }
 
@@ -600,6 +706,10 @@ QSize TreeWidgetItemDelegate::sizeHint(const QStyleOptionViewItem& option, const
     QSize size = QStyledItemDelegate::sizeHint(option, index);
     int spacing = std::max(0, static_cast<int>(TreeParams::getItemSpacing()));
     size.setHeight(size.height() + spacing);
+    auto tree = static_cast<TreeWidget*>(parent());
+    if (index.column() == 0 && bodyOfRow(tree->itemFromIndex(index))) {
+        size.setWidth(size.width() + TreeWidget::getIconSize() + 2 * bodyIndicatorMargin);
+    }
     return size;
 }
 // ---------------------------------------------------------------------------
@@ -2115,6 +2225,20 @@ void TreeWidget::mousePressEvent(QMouseEvent* event)
 {
     expandIndicatorPressed = false;
     visibilityIconPressed = false;
+    if (event->button() == Qt::LeftButton) {
+        QTreeWidgetItem* item = itemAt(event->pos());
+        if (App::DocumentObject* body = bodyOfRow(item)) {
+            QRect cell = visualRect(indexFromItem(item, 0));
+            if (bodyIndicatorRect(cell, viewport()->width()).contains(event->pos())) {
+                activateBodyOfRow(item, body);
+                // Like the eye: the click is the indicator's, not a selection of the row
+                visibilityIconDoubleClickTimer.start();
+                visibilityIconPressed = true;
+                event->accept();
+                return;
+            }
+        }
+    }
     if (isVisibilityIconEnabled()) {
         QTreeWidgetItem* item = itemAt(event->pos());
         if (item && item->type() == TreeWidget::FolderType && event->button() == Qt::LeftButton) {
@@ -4688,6 +4812,12 @@ void DocumentItem::slotResetEdit(const Gui::ViewProviderDocumentObject& v)
     }
     END_FOREACH_ITEM
     tree->editingItem = nullptr;
+
+    // Ending the edit clears a reference warning, which changes no property
+    auto it = ObjectMap.find(v.getObject());
+    if (it != ObjectMap.end()) {
+        it->second->testStatus();
+    }
 }
 
 void DocumentItem::slotNewObject(const Gui::ViewProviderDocumentObject& obj)
@@ -6847,7 +6977,9 @@ enum Status
     External = 1 << 4,
     Freezed = 1 << 5,
     FolderBody = 1 << 6,
-    RolledBack = 1 << 7
+    RolledBack = 1 << 7,
+    /// Built, but on a reference the naming code had to find again
+    Warning = 1 << 8
 };
 
 // Whether a row is greyed out. In a group showing folders that means rolled back, and a
@@ -6936,6 +7068,13 @@ void DocumentObjectItem::generateIcon(int currentStatus, QIcon::Mode mode, QIcon
             pxError = Gui::BitmapFactory().pixmapFromSvg("overlay_error", QSize(10, 10));
         }
         px = pxError;
+    }
+    else if (currentStatus & Status::Warning) {
+        static QPixmap pxWarning;
+        if (pxWarning.isNull()) {
+            pxWarning = Gui::BitmapFactory().pixmapFromSvg("Warning", QSize(10, 10));
+        }
+        px = pxWarning;
     }
     else if (currentStatus & Status::Recompute) {
         static QPixmap pxRecompute;
@@ -7085,6 +7224,9 @@ void DocumentObjectItem::testStatus(bool resetStatus, QIcon& icon1, QIcon& icon2
     int currentStatus = ((freezed ? 1 : 0) << 5) | ((external ? 1 : 0) << 4)
         | ((object()->showInTree() ? 0 : 1) << 3) | ((pObject->isError() ? 1 : 0) << 2)
         | ((pObject->isTouched() || pObject->mustExecute() == 1 ? 1 : 0) << 1) | (visible ? 1 : 0);
+    if (!pObject->isError() && !App::getReferenceWarnings(pObject).empty()) {
+        currentStatus |= Status::Warning;
+    }
 
     if (auto* owner = folderOwnerOf(pObject, getTree()->ObjectTable)) {
         currentStatus |= Status::FolderBody;

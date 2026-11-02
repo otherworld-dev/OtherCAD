@@ -49,7 +49,7 @@ namespace
  * `otherCadPriority` below is what lets its exact match fire immediately, ahead
  * of any enabled longer sequence with a lower priority. Modelling commands
  * that must stay off while a sketch is open (PartDesign's tools,
- * `Std_Placement`, `Std_Measure`) are guarded in their own `isActive()`
+ * `Std_Move`, `Std_Measure`) are guarded in their own `isActive()`
  * instead of here.
  *
  * That win has a price, and this is the whole of it: a chord that begins with
@@ -103,7 +103,7 @@ const std::unordered_map<std::string_view, const char*> shortcuts = {
     {"PartDesign_Extrude", "E"},
     {"PartDesign_Fillet", "F"},
     {"PartDesign_Hole", "H"},
-    {"Std_Placement", "M"},
+    {"Std_Move", "M"},
     {"Std_Measure", "I"},
     {"Std_SetAppearance", "A"},
     {"Std_CommandPalette", "S"},

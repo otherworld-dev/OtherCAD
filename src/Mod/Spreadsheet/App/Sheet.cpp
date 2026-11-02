@@ -1853,6 +1853,17 @@ void Sheet::onChanged(const App::Property* prop)
         cells.slotChangedObject(*this, *prop);
     }
     App::DocumentObject::onChanged(prop);
+
+    // Objects bound to an alias depend on the alias by name (see ObjectIdentifier::access),
+    // so a new value in an aliased cell touches the alias as well as the cell
+    CellAddress address;
+    std::string alias;
+    if (GetApplication().isFineGrainedRecomputeEnabled() && !testStatus(ObjectStatus::NoTouch)
+        && getCellAddress(prop, address)) {
+        if (auto cell = getCell(address); cell && cell->getAlias(alias)) {
+            enforceRecompute(alias);
+        }
+    }
 }
 
 void Sheet::setCopyOrCutRanges(const std::vector<App::Range>& ranges, bool copy)

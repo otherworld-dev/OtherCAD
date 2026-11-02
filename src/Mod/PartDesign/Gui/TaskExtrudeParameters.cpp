@@ -642,8 +642,17 @@ void PartDesignGui::TaskExtrudeParameters::selectedFace(
         QSignalBlocker block(side.lineFaceName);
 
         side.lineFaceName->setText(refText);
-        side.lineFaceName->setProperty("FeatureName", QByteArray(msg.pObjectName));
-        side.lineFaceName->setProperty("FaceName", QByteArray(msg.pSubName));
+        // What was stored, which for a face of another body is the binder made for it
+        App::DocumentObject* faceObj = side.UpToFace->getValue();
+        const auto& faceSubs = side.UpToFace->getSubValues();
+        side.lineFaceName->setProperty(
+            "FeatureName",
+            QByteArray(faceObj ? faceObj->getNameInDocument() : msg.pObjectName)
+        );
+        side.lineFaceName->setProperty(
+            "FaceName",
+            QByteArray(faceSubs.empty() ? msg.pSubName : faceSubs.front().c_str())
+        );
 
         // Turn off reference selection mode
         side.buttonFace->setChecked(false);

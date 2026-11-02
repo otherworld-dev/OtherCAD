@@ -29,11 +29,14 @@
 #include <QLineEdit>
 #include <QPainter>
 #include <QPixmap>
+#include <QSignalBlocker>
 #include <QString>
+#include <QToolTip>
 
 #include <Inventor/nodes/SoCamera.h>
 
 #include <Base/Precision.h>
+#include <Base/Quantity.h>
 #include <Base/Rotation.h>
 #include "Base/ServiceProvider.h"
 #include <Gui/EditableDatumLabel.h>
@@ -198,7 +201,17 @@ void GizmoValueLabel::showBoxAt(const SbVec3f& point, const SbVec3f& dir)
 void GizmoValueLabel::setValue(double value)
 {
     QuantitySpinBox* box = label->getSpinBox();
-    if (box && box->hasValidInput()
+    const bool wasExpression = !expression.isEmpty();
+    expression.clear();
+    if (wasExpression && box) {
+        box->setToolTip(QString());
+    }
+    if (wasExpression && isBeingTyped()) {
+        // The formula went because a number is being typed over it: leave the number be
+        return;
+    }
+    // A box that was showing a formula always needs its value back
+    if (!wasExpression && box && box->hasValidInput()
         && std::abs(box->rawValue() - value) < Base::Precision::Confusion()) {
         return;
     }
@@ -208,6 +221,102 @@ void GizmoValueLabel::setValue(double value)
     if (kind == Kind::Count && box) {
         box->setDecimals(0);
     }
+}
+
+void GizmoValueLabel::showExpression(const QString& text, double value)
+{
+    QuantitySpinBox* box = label->getSpinBox();
+    auto* edit = box ? box->findChild<QLineEdit*>() : nullptr;
+    if (!edit) {
+        return;
+    }
+    expression = text;
+    const QString valueText = QString::fromStdString(Base::Quantity(value, unit).getUserString());
+    box->setToolTip(tr("%1 = %2").arg(text, valueText));
+    if (isBeingTyped()) {
+        // Never rewrite what is being typed
+        return;
+    }
+    // The value goes in first, so the box falls back to it rather than to an older one when
+    // it is left with the formula still in it, which it cannot read
+    label->setSpinboxValue(value, unit);
+    putExpressionText();
+}
+
+void GizmoValueLabel::putExpressionText()
+{
+    QuantitySpinBox* box = label->getSpinBox();
+    auto* edit = box ? box->findChild<QLineEdit*>() : nullptr;
+    if (!edit) {
+        return;
+    }
+    {
+        QSignalBlocker block(edit);
+        edit->setText(expression);
+    }
+    label->updateGeometry();
+    if (box->hasFocus()) {
+        edit->selectAll();
+    }
+}
+
+bool GizmoValueLabel::isBeingTyped() const
+{
+    QuantitySpinBox* box = label->getSpinBox();
+    auto* edit = box ? box->findChild<QLineEdit*>() : nullptr;
+    // Focus alone is not enough: the box falls back to a plain number whenever it loses
+    // the keyboard, and the formula has to come back even if it has the keyboard again.
+    // The line edit counts as modified only after a keystroke, until its text is next set.
+    return edit && box->hasFocus() && edit->isModified() && !committing;
+}
+
+QString GizmoValueLabel::shownExpression() const
+{
+    return expression;
+}
+
+void GizmoValueLabel::setTextCommitter(TextCommitter committer)
+{
+    this->committer = std::move(committer);
+}
+
+bool GizmoValueLabel::commitTypedText(bool reportError)
+{
+    QuantitySpinBox* box = label->getSpinBox();
+    auto* edit = box ? box->findChild<QLineEdit*>() : nullptr;
+    if (!committer || !edit) {
+        return true;
+    }
+    const QString text = edit->text().trimmed();
+    if (!expression.isEmpty() && text == expression) {
+        return true;
+    }
+    const bool number = box->hasValidInput() && !text.startsWith(QLatin1Char('='));
+    if (number && expression.isEmpty()) {
+        // Passed on as it was typed
+        return true;
+    }
+
+    committing = true;
+    QString error = committer(text, number ? std::optional<double>(box->rawValue()) : std::nullopt);
+    committing = false;
+    if (!error.isEmpty()) {
+        if (reportError) {
+            showError(error);
+        }
+        return false;
+    }
+    return true;
+}
+
+void GizmoValueLabel::showError(const QString& message)
+{
+    QuantitySpinBox* box = label->getSpinBox();
+    if (!box) {
+        return;
+    }
+    box->setToolTip(message);
+    QToolTip::showText(box->mapToGlobal(QPoint(0, box->height())), message, box);
 }
 
 void GizmoValueLabel::setRange(double minimum, double maximum)
@@ -224,6 +333,10 @@ void GizmoValueLabel::setShown(bool shown)
     }
     this->shown = shown;
     label->setVisible(shown);
+    if (shown && !expression.isEmpty()) {
+        // QuantitySpinBox writes its value over the text whenever it is shown
+        putExpressionText();
+    }
 }
 
 bool GizmoValueLabel::isShown() const
@@ -251,11 +364,15 @@ bool GizmoValueLabel::eventFilter(QObject* watched, QEvent* event)
     }
 
     if (event->type() == QEvent::FocusOut) {
+        // Clicking away takes a formula as Enter does; one that cannot be used is dropped
+        commitTypedText(false);
         Q_EMIT focusLeft();
     }
-    else if (event->type() == QEvent::PaletteChange || event->type() == QEvent::StyleChange
-             || event->type() == QEvent::ScreenChangeInternal
-             || event->type() == QEvent::DevicePixelRatioChange) {
+    else if (
+        event->type() == QEvent::PaletteChange || event->type() == QEvent::StyleChange
+        || event->type() == QEvent::ScreenChangeInternal
+        || event->type() == QEvent::DevicePixelRatioChange
+    ) {
         // The pixmap was drawn once, from the box's palette and device pixel ratio at
         // construction; a theme switch or a move to a screen with a different scale
         // leaves it stale otherwise (a fixed dark-on-light glyph on a dark theme, or a
@@ -267,16 +384,22 @@ bool GizmoValueLabel::eventFilter(QObject* watched, QEvent* event)
         switch (static_cast<QKeyEvent*>(event)->key()) {
             case Qt::Key_Return:
             case Qt::Key_Enter:
-                Q_EMIT accepted();
+                if (commitTypedText(true)) {
+                    Q_EMIT accepted();
+                }
                 return true;
             case Qt::Key_Escape:
                 Q_EMIT cancelled();
                 return true;
             case Qt::Key_Tab:
-                Q_EMIT tabbed(false);
+                if (commitTypedText(true)) {
+                    Q_EMIT tabbed(false);
+                }
                 return true;
             case Qt::Key_Backtab:
-                Q_EMIT tabbed(true);
+                if (commitTypedText(true)) {
+                    Q_EMIT tabbed(true);
+                }
                 return true;
             default:
                 break;

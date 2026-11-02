@@ -34,6 +34,9 @@ Three things are checked here:
   its own, its tooltip no longer promises that Escape leaves the sketch, and the
   Grid and Snap panels stay available while a tool is drawing.
 
+The same snapped pointer drives the polyline's drag from its last point into a tangent
+arc (TestPolylineTangentArcDrag).
+
 To run tests:
     FreeCAD -t TestSketcherSnapFeedback
 """
@@ -431,6 +434,18 @@ class SketchSnapCase(unittest.TestCase):
         self.fail(message)
         return None
 
+    def _click_on_snap(self, u, v, message):
+        """Hover until the snap glyph sits on (u, v), then click there."""
+
+        marker = self._snapped_marker_at(u, v, message)
+        self.assertAlmostEqual(marker[0], u, delta=1e-3, msg=message)
+        self.assertAlmostEqual(marker[1], v, delta=1e-3, msg=message)
+        pos = self._widget_point(u, v)
+        self._send_mouse_event(MOUSE_PRESS, pos, LEFT_BUTTON, LEFT_BUTTON)
+        self._process_events(50)
+        self._send_mouse_event(MOUSE_RELEASE, pos, LEFT_BUTTON, NO_BUTTON)
+        self._process_events(150)
+
     # -- dragging --------------------------------------------------------
 
     def _reset_line(self, start, end):
@@ -608,6 +623,475 @@ class TestSketcherSnapFeedback(SketchSnapCase):
             FreeCADGui.Command.get("Sketcher_Grid").isActive(),
             "The Grid panel must stay available while a tool is drawing",
         )
+
+
+class TestSnapAutoConstraints(SketchSnapCase):
+    """A point a snap puts on a special point of a curve is constrained to stay there.
+
+    The snap recorded what it caught, but the autoconstraints came from preselection, which
+    only knows the curve: a point snapped to an arc's midpoint, a quadrant or a crossing got
+    point-on-object and slid along the curve as soon as anything moved. Each test blocks the
+    curves it snapped to and counts what is left free.
+    """
+
+    def _prepare_the_sketch_view(self):
+        super()._prepare_the_sketch_view()
+        self.sketch.ViewObject.Autoconstraints = True
+
+    # -- building and reading the sketch ---------------------------------
+
+    def _add(self, geometry):
+        index = self.sketch.addGeometry(geometry, False)
+        self.doc.recompute()
+        self._process_events(50)
+        return index
+
+    def _add_arc(self, centre, radius, start_deg, end_deg):
+        import Part
+
+        circle = Part.Circle(
+            FreeCAD.Vector(centre[0], centre[1], 0.0), FreeCAD.Vector(0, 0, 1), radius
+        )
+        return self._add(Part.ArcOfCircle(circle, math.radians(start_deg), math.radians(end_deg)))
+
+    def _add_circle(self, centre, radius):
+        import Part
+
+        return self._add(
+            Part.Circle(FreeCAD.Vector(centre[0], centre[1], 0.0), FreeCAD.Vector(0, 0, 1), radius)
+        )
+
+    def _add_line(self, start, end):
+        import Part
+
+        return self._add(
+            Part.LineSegment(
+                FreeCAD.Vector(start[0], start[1], 0.0), FreeCAD.Vector(end[0], end[1], 0.0)
+            )
+        )
+
+    @staticmethod
+    def _arc_midpoint(arc):
+        middle = 0.5 * (arc.FirstParameter + arc.LastParameter)
+        return (
+            arc.Location.x + arc.Radius * math.cos(middle),
+            arc.Location.y + arc.Radius * math.sin(middle),
+        )
+
+    def _new_point_index(self):
+        import Part
+
+        indices = [
+            i for i, geometry in enumerate(self.sketch.Geometry) if isinstance(geometry, Part.Point)
+        ]
+        self.assertEqual(len(indices), 1, "the point tool must have placed exactly one point")
+        return indices[0]
+
+    def _block(self, *geo_ids):
+        import Sketcher
+
+        for geo_id in geo_ids:
+            self.sketch.addConstraint(Sketcher.Constraint("Block", geo_id))
+        self.sketch.solve()
+
+    def _assert_free_and_clean(self, dof, message):
+        self.assertEqual(self.sketch.ConflictingConstraints, [], "no conflicts")
+        self.assertEqual(self.sketch.RedundantConstraints, [], "no redundant constraints")
+        self.assertEqual(self.sketch.PartiallyRedundantConstraints, [], "no partial redundancy")
+        self.assertEqual(self.sketch.DoF, dof, message)
+
+    def _constraints_on(self, geo_id, pos):
+        return [
+            c
+            for c in self.sketch.Constraints
+            if (c.First == geo_id and c.FirstPos == pos)
+            or (c.Second == geo_id and c.SecondPos == pos)
+        ]
+
+    # -- driving the tools -----------------------------------------------
+
+    def _place_point(self, u, v, message):
+        FreeCADGui.runCommand("Sketcher_CreatePoint", 0)
+        self._process_events(100)
+        self._click_on_snap(u, v, message)
+
+    def _draw_line(self, start, end, start_message, end_message):
+        self._start_line_tool()
+        self._click_on_snap(start[0], start[1], start_message)
+        # Far enough apart that the second press is not read as a double click.
+        self._process_events(400)
+        self._click_on_snap(end[0], end[1], end_message)
+
+    # -- the tests -------------------------------------------------------
+
+    def test_a_point_snapped_to_an_arc_midpoint_stays_at_the_middle(self):
+        arc_id = self._add_arc((5.0, 3.0), 15.0, 20.0, 110.0)
+        middle = self._arc_midpoint(self.sketch.Geometry[arc_id])
+        self._require_on_screen([middle])
+
+        self._place_point(*middle, "the pointer must snap to the arc's midpoint")
+        point_id = self._new_point_index()
+
+        self._block(arc_id)
+        self._assert_free_and_clean(
+            0, "a point snapped to an arc's midpoint must not be free to slide along the arc"
+        )
+
+        # Swing the arc's end round: the point has to follow the middle, not stay put.
+        self.sketch.delConstraint(self.sketch.ConstraintCount - 1)
+        self.sketch.solve()
+        swung = math.radians(160.0)
+        arc = self.sketch.Geometry[arc_id]
+        self.sketch.moveGeometry(
+            arc_id,
+            2,
+            FreeCAD.Vector(
+                arc.Location.x + arc.Radius * math.cos(swung),
+                arc.Location.y + arc.Radius * math.sin(swung),
+                0.0,
+            ),
+        )
+        self.sketch.solve()
+        arc = self.sketch.Geometry[arc_id]
+        self.assertGreater(
+            math.degrees(arc.LastParameter),
+            130.0,
+            "the arc's end never moved, so this proves nothing",
+        )
+        expected = self._arc_midpoint(arc)
+        point = self.sketch.getPoint(point_id, 1)
+        self.assertAlmostEqual(point.x, expected[0], delta=1e-6)
+        self.assertAlmostEqual(point.y, expected[1], delta=1e-6)
+
+    def test_a_line_drawn_from_an_arc_midpoint_keeps_its_start_there(self):
+        arc_id = self._add_arc((5.0, 3.0), 15.0, 20.0, 110.0)
+        middle = self._arc_midpoint(self.sketch.Geometry[arc_id])
+        # Half a cell clear of the grid lines and well off any horizontal or vertical.
+        free_end = (25.0, 35.0)
+        self._require_on_screen([middle, free_end])
+
+        self._start_line_tool()
+        self._click_on_snap(*middle, "the line must start on the arc's midpoint snap")
+        # Far enough apart in time that the second press is not read as a double click.
+        self._process_events(400)
+        self._move_pointer(*free_end)
+        pos = self._widget_point(*free_end)
+        self._send_mouse_event(MOUSE_PRESS, pos, LEFT_BUTTON, LEFT_BUTTON)
+        self._process_events(50)
+        self._send_mouse_event(MOUSE_RELEASE, pos, LEFT_BUTTON, NO_BUTTON)
+        self._process_events(150)
+
+        self._block(arc_id)
+        # The free end keeps its two degrees of freedom; the start has none.
+        self._assert_free_and_clean(
+            2, "a line end snapped to an arc's midpoint must not be free to slide along the arc"
+        )
+
+    def test_a_polyline_from_an_arc_midpoint_stays_joined_up(self):
+        """The construction radius is added between segments; the polyline must not mind."""
+
+        import Part
+
+        arc_id = self._add_arc((5.0, 3.0), 15.0, 20.0, 110.0)
+        middle = self._arc_midpoint(self.sketch.Geometry[arc_id])
+        # Off the grid lines and not horizontal or vertical from each other.
+        corner = (25.0, 35.0)
+        far_end = (35.0, 45.0)
+        self._require_on_screen([middle, corner, far_end])
+
+        FreeCADGui.runCommand("Sketcher_CreatePolyline", 0)
+        self._process_events(100)
+        self._click_on_snap(*middle, "the polyline must start on the arc's midpoint snap")
+        for point in (corner, far_end):
+            self._process_events(400)
+            self._move_pointer(*point)
+            pos = self._widget_point(*point)
+            self._send_mouse_event(MOUSE_PRESS, pos, LEFT_BUTTON, LEFT_BUTTON)
+            self._process_events(50)
+            self._send_mouse_event(MOUSE_RELEASE, pos, LEFT_BUTTON, NO_BUTTON)
+            self._process_events(150)
+
+        segments = [
+            i
+            for i, g in enumerate(self.sketch.Geometry)
+            if isinstance(g, Part.LineSegment) and not self.sketch.getConstruction(i)
+        ]
+        self.assertEqual(len(segments), 2, "the polyline must have drawn two segments")
+        first, second = segments
+        joined = self.sketch.getPoint(first, 2) - self.sketch.getPoint(second, 1)
+        self.assertLess(joined.Length, 1e-6, "the second segment must start where the first ends")
+
+        self._block(arc_id)
+        # The corner and the far end are free; the start on the arc is not.
+        self._assert_free_and_clean(
+            4, "a polyline started on an arc's midpoint must not be free to slide along the arc"
+        )
+
+    def test_a_line_between_two_quadrants_is_held_level_and_plumb_with_the_centre(self):
+        centre = (25.0, 15.0)
+        radius = 8.0
+        circle_id = self._add_circle(centre, radius)
+        right = (centre[0] + radius, centre[1])
+        top = (centre[0], centre[1] + radius)
+        self._require_on_screen([right, top])
+
+        self._draw_line(
+            right,
+            top,
+            "the line must start on the circle's right-hand quadrant",
+            "the line must end on the circle's top quadrant",
+        )
+        line_id = self.sketch.GeometryCount - 1
+        self.assertNotEqual(line_id, circle_id, "the line tool must have drawn a line")
+
+        alignments = {
+            c.Type
+            for pos in (1, 2)
+            for c in self._constraints_on(line_id, pos)
+            if c.Type in ("Horizontal", "Vertical") and c.Second == circle_id and c.SecondPos == 3
+        }
+        self.assertEqual(
+            alignments,
+            {"Horizontal", "Vertical"},
+            "the side quadrant must be level with the centre and the top one plumb over it",
+        )
+
+        self._block(circle_id)
+        self._assert_free_and_clean(
+            0, "line ends snapped to quadrants must not be free to slide round the circle"
+        )
+
+    def test_a_point_snapped_to_a_crossing_stays_on_both_curves(self):
+        centre = (25.0, 15.0)
+        radius = 8.0
+        circle_id = self._add_circle(centre, radius)
+        line_id = self._add_line((12.0, 19.0), (38.0, 19.0))
+        crossing = (centre[0] + math.sqrt(radius**2 - 4.0**2), 19.0)
+        self._require_on_screen([crossing])
+
+        self._place_point(*crossing, "the pointer must snap to where the line crosses the circle")
+        point_id = self._new_point_index()
+
+        on_object = {
+            c.Second for c in self._constraints_on(point_id, 1) if c.Type == "PointOnObject"
+        }
+        self.assertEqual(
+            on_object, {circle_id, line_id}, "a crossing must put the point on both curves"
+        )
+
+        # Both constraints belong to one undo step.
+        constraint_count = self.sketch.ConstraintCount
+        self.doc.undo()
+        self._process_events(50)
+        self.assertEqual(self.sketch.ConstraintCount, 0, "one undo must take both constraints off")
+        self.assertEqual(self.sketch.GeometryCount, 3, "and leave the point where it was put")
+        self.doc.redo()
+        self._process_events(50)
+        self.assertEqual(self.sketch.ConstraintCount, constraint_count)
+
+        self._block(circle_id, line_id)
+        self._assert_free_and_clean(
+            0, "a point snapped to a crossing must not be free to slide along either curve"
+        )
+
+
+class TestPolylineTangentArcDrag(SketchSnapCase):
+    """Pressing on the polyline's last point and dragging draws an arc tangent to it.
+
+    That is how Fusion's Line tool turns a corner smoothly: no mode key, the drag itself
+    is the arc, and the chain carries on with lines once it is let go. A press anywhere
+    else, or one that hardly moves before it is let go, has to do what it always did.
+    """
+
+    # A quarter circle: tangent to the first segment at its end, centred on (-10, 0) with
+    # a radius of 20, so the arc it has to draw is known exactly. All four points are grid
+    # intersections, so every click and the release land on them exactly.
+    START = (-30.0, -20.0)
+    CORNER = (-10.0, -20.0)
+    ARC_END = (10.0, 0.0)
+    LAST = (10.0, 20.0)
+
+    def _prepare_the_sketch_view(self):
+        super()._prepare_the_sketch_view()
+        self.sketch.ViewObject.Autoconstraints = True
+
+    def _start_polyline(self):
+        FreeCADGui.runCommand("Sketcher_CreatePolyline", 0)
+        self._process_events(100)
+        self._click_on_snap(*self.START, "the polyline must start on the grid")
+        # Far enough apart in time that the next press is not read as a double click.
+        self._process_events(400)
+        self._click_on_snap(*self.CORNER, "the first segment must end on the grid")
+        self._process_events(400)
+        self.assertEqual(self.sketch.GeometryCount, 1, "the first segment must be in place")
+
+    def _drag(self, press, path, release):
+        """Press at the widget point press, move through path with the button held, let go."""
+
+        self._send_mouse_event(MOUSE_PRESS, press, LEFT_BUTTON, LEFT_BUTTON)
+        self._process_events(50)
+        for pos in path:
+            self._send_mouse_event(MOUSE_MOVE, pos, NO_BUTTON, LEFT_BUTTON)
+            self._process_events(30)
+        self._send_mouse_event(MOUSE_RELEASE, release, LEFT_BUTTON, NO_BUTTON)
+        self._process_events(150)
+
+    def _hover_on_the_corner(self):
+        marker = self._snapped_marker_at(*self.CORNER, "the pointer must snap to the last point")
+        self.assertAlmostEqual(marker[0], self.CORNER[0], delta=1e-3)
+        self.assertAlmostEqual(marker[1], self.CORNER[1], delta=1e-3)
+        return self._widget_point(*self.CORNER)
+
+    def _kinds(self):
+        import Part
+
+        def kind(geometry):
+            if isinstance(geometry, Part.ArcOfCircle):
+                return "arc"
+            if isinstance(geometry, Part.LineSegment):
+                return "line"
+            return "other"
+
+        return [
+            kind(g)
+            for i, g in enumerate(self.sketch.Geometry)
+            if not self.sketch.getConstruction(i)
+        ]
+
+    def test_dragging_from_the_last_point_draws_a_tangent_arc(self):
+        self._require_on_screen([self.START, self.CORNER, self.ARC_END, self.LAST])
+        self._start_polyline()
+
+        press = self._hover_on_the_corner()
+        centre = (-10.0, 0.0)
+        path = [
+            self._widget_point(
+                centre[0] + 20.0 * math.cos(math.radians(a)),
+                centre[1] + 20.0 * math.sin(math.radians(a)),
+            )
+            for a in (-80.0, -65.0, -50.0, -35.0, -20.0, -8.0)
+        ]
+        arc_end = self._widget_point(*self.ARC_END)
+        path.append(arc_end)
+        self._drag(press, path, arc_end)
+
+        self.assertEqual(self._kinds(), ["line", "arc"], "the drag must have drawn one arc")
+
+        # The chain carries on with a line from the end of the arc.
+        self._process_events(400)
+        self._click_on_snap(*self.LAST, "the next segment must end on the grid")
+        self.assertEqual(
+            self._kinds(), ["line", "arc", "line"], "after the arc the polyline draws lines again"
+        )
+
+        arc = self.sketch.Geometry[1]
+        self.assertAlmostEqual(arc.Radius, 20.0, delta=1e-6)
+        self.assertAlmostEqual(arc.Center.x, centre[0], delta=1e-6)
+        self.assertAlmostEqual(arc.Center.y, centre[1], delta=1e-6)
+        # A quarter turn anticlockwise from the corner: the arc leaves the corner heading
+        # the way the first segment was going, not doubling back on it.
+        self.assertAlmostEqual(arc.LastParameter - arc.FirstParameter, math.pi / 2, delta=1e-6)
+        self.assertLess((arc.StartPoint - FreeCAD.Vector(*self.CORNER, 0)).Length, 1e-6)
+        self.assertLess((arc.EndPoint - FreeCAD.Vector(*self.ARC_END, 0)).Length, 1e-6)
+
+        tangent = [
+            c
+            for c in self.sketch.Constraints
+            if c.Type == "Tangent"
+            and {(c.First, c.FirstPos), (c.Second, c.SecondPos)} == {(0, 2), (1, 1)}
+        ]
+        self.assertEqual(
+            len(tangent), 1, "the arc must be tangent to the first segment at their shared point"
+        )
+        joined = self.sketch.getPoint(1, 2) - self.sketch.getPoint(2, 1)
+        self.assertLess(joined.Length, 1e-6, "the line after the arc must start where it ends")
+        self.assertEqual(self.sketch.ConflictingConstraints, [], "no conflicts")
+        self.assertEqual(self.sketch.RedundantConstraints, [], "no redundant constraints")
+        dimensions = [
+            c.Type for c in self.sketch.Constraints if c.Type in ("Radius", "Angle", "Distance")
+        ]
+        self.assertEqual(dimensions, [], "a drag must not dimension what it drew")
+
+        # The tangency is a constraint, not a coincidence of where things were drawn: pull
+        # the end of the arc further out and the joint has to stay smooth.
+        self.sketch.moveGeometry(1, 2, FreeCAD.Vector(25.0, 0.0, 0.0))
+        self.sketch.solve()
+        line = self.sketch.Geometry[0]
+        arc = self.sketch.Geometry[1]
+        self.assertGreater(
+            abs(arc.Radius - 20.0), 1.0, "the arc never changed, so this proves nothing"
+        )
+        self.assertLess((line.EndPoint - arc.StartPoint).Length, 1e-6, "the joint must hold")
+        direction = (line.EndPoint - line.StartPoint).normalize()
+        radial = (line.EndPoint - arc.Center).normalize()
+        self.assertAlmostEqual(direction.dot(radial), 0.0, delta=1e-6)
+
+    def test_the_m_key_still_switches_to_a_tangent_arc(self):
+        self._require_on_screen([self.START, self.CORNER, self.ARC_END])
+        self._start_polyline()
+
+        self._hover_on_the_corner()
+        app = QtGui.QApplication.instance()
+        for event_type in (QtCore.QEvent.KeyPress, QtCore.QEvent.KeyRelease):
+            # The on-view value box holds the focus while the tool draws and hands keys on.
+            receiver = app.focusWidget() or self.viewport
+            event = QtGui.QKeyEvent(event_type, QtCore.Qt.Key_M, NO_MODIFIER, "m")
+            app.sendEvent(receiver, event)
+            self._process_events(50)
+        centre = (-10.0, 0.0)
+        for a in (-80.0, -65.0, -50.0, -35.0, -20.0, -8.0):
+            angle = math.radians(a)
+            self._move_pointer(
+                centre[0] + 20.0 * math.cos(angle), centre[1] + 20.0 * math.sin(angle)
+            )
+        self._click_on_snap(*self.ARC_END, "the arc must end on the grid")
+
+        self.assertEqual(self._kinds(), ["line", "arc"], "M must still switch the tool to arcs")
+        arc = self.sketch.Geometry[1]
+        self.assertAlmostEqual(arc.Radius, 20.0, delta=1e-6)
+        self.assertAlmostEqual(arc.LastParameter - arc.FirstParameter, math.pi / 2, delta=1e-6)
+        self.assertTrue(
+            any(
+                c.Type == "Tangent" and c.First == 0 and c.Second == 1
+                for c in self.sketch.Constraints
+            ),
+            "the M arc must still be tangent to the segment before it",
+        )
+
+    def test_a_drag_that_starts_away_from_the_last_point_draws_a_line(self):
+        away = (10.0, -10.0)
+        beyond = (20.0, 10.0)
+        self._require_on_screen([self.START, self.CORNER, away, beyond])
+        self._start_polyline()
+
+        self._snapped_marker_at(*away, "the pointer must snap to the grid")
+        press = self._widget_point(*away)
+        target = self._widget_point(*beyond)
+        self._drag(press, [target, target], target)
+
+        self.assertEqual(self._kinds(), ["line", "line"], "a press away from the end is a click")
+        second = self.sketch.Geometry[1]
+        self.assertLess((second.EndPoint - FreeCAD.Vector(*away, 0)).Length, 1e-6)
+
+    def test_a_tiny_drag_from_the_last_point_draws_nothing(self):
+        away = (10.0, -10.0)
+        self._require_on_screen([self.START, self.CORNER, away])
+        self._start_polyline()
+
+        press = self._hover_on_the_corner()
+        threshold = QtGui.QApplication.instance().startDragDistance()
+        nudge = QtCore.QPoint(press.x() + 2, press.y() - 1)
+        self.assertLess(3, threshold, "the nudge must stay inside the drag threshold")
+        self._drag(press, [nudge], nudge)
+
+        self.assertEqual(self._kinds(), ["line"], "a nudge on the last point must add nothing")
+
+        # And the tool is still drawing lines from the same point.
+        self._process_events(400)
+        self._click_on_snap(*away, "the next segment must end on the grid")
+        self.assertEqual(self._kinds(), ["line", "line"])
+        second = self.sketch.Geometry[1]
+        self.assertLess((second.StartPoint - FreeCAD.Vector(*self.CORNER, 0)).Length, 1e-6)
 
 
 class TestSketcherLeaveSketch(unittest.TestCase):

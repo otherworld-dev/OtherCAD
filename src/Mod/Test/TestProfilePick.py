@@ -212,6 +212,124 @@ class TestProfilePick(unittest.TestCase):
         self.assertIs(pads[1].Profile[0], self.sketch)
         self.assertEqual(list(pads[1].Profile[1]), ["InternalFace2"])
 
+    # -- several profiles in one feature (#752) ---------------------------
+
+    def _second_sketch(self, z=5.0):
+        """Two more squares on a plane parallel to the first sketch's, out of sight."""
+        sketch = self.body.newObject("Sketcher::SketchObject", "Second")
+        sketch.AttachmentSupport = (self.body.Origin.OriginFeatures[3], [""])  # XY_Plane
+        sketch.MapMode = "FlatFace"
+        sketch.AttachmentOffset = FreeCAD.Placement(FreeCAD.Vector(0, 0, z), FreeCAD.Rotation())
+        for x in (0, 20):
+            corners = [
+                FreeCAD.Vector(x, 30, 0),
+                FreeCAD.Vector(x + 10, 30, 0),
+                FreeCAD.Vector(x + 10, 40, 0),
+                FreeCAD.Vector(x, 40, 0),
+            ]
+            for start, end in zip(corners, corners[1:] + corners[:1]):
+                sketch.addGeometry(Part.LineSegment(start, end), False)
+        self.doc.recompute()
+        sketch.Visibility = False
+        self._process_events()
+        return sketch
+
+    def _pick_in(self, sketch, sub):
+        FreeCADGui.Selection.addSelection(self.doc.Name, self.body.Name, f"{sketch.Name}.{sub}")
+        self._process_events(300)
+
+    def testARegionOfAnotherSketchJoinsTheFeature(self):
+        second = self._second_sketch()
+        self._start_extrude()
+        self._pick("InternalFace1")
+
+        pad = self._pads()[0]
+        self.assertTrue(second.Visibility, "the body's other sketches are shown to pick from")
+        self._pick_in(second, "InternalFace2")
+
+        self.assertEqual(
+            [(obj.Name, tuple(subs)) for obj, subs in pad.ExtraProfiles],
+            [(second.Name, ("InternalFace2",))],
+        )
+        self.assertTrue(pad.isValid(), pad.getStatusString())
+        self.assertAlmostEqual(pad.Shape.BoundBox.ZMax, 15.0, places=6)
+        self.assertIn(second, pad.ViewObject.claimChildren())
+
+        # A second click releases it
+        self._pick_in(second, "InternalFace2")
+        self.assertEqual(len(pad.ExtraProfiles), 0)
+        self.assertAlmostEqual(pad.Shape.BoundBox.ZMax, 10.0, places=6)
+
+        # Picked again and kept: the sketch is hidden with the first one when the panel closes
+        self._pick_in(second, "InternalFace2")
+        FreeCADGui.Control.activeTaskDialog().accept()
+        self._process_events(300)
+        self.assertFalse(FreeCADGui.Control.activeDialog())
+        self.assertEqual(len(pad.ExtraProfiles), 1)
+        self.assertFalse(second.Visibility)
+        self.assertFalse(self.sketch.Visibility)
+
+    def testACurveOfAnotherSketchAddsTheWholeSketch(self):
+        second = self._second_sketch()
+        self._start_extrude()
+        self._pick("InternalFace1")
+        pad = self._pads()[0]
+
+        self._pick_in(second, "Edge1")
+
+        self.assertEqual(
+            [(obj.Name, tuple(subs)) for obj, subs in pad.ExtraProfiles], [(second.Name, ("",))]
+        )
+        self.assertTrue(pad.isValid(), pad.getStatusString())
+
+    def testAFlatFaceOfTheSolidJoinsTheFeature(self):
+        """A click on the solid lands on the feature being edited, which is what shows. The
+        face is linked on the solid before it, as the feature cannot link itself."""
+        box = self.body.newObject("PartDesign::AdditiveBox", "Box")
+        box.Length = box.Width = box.Height = 10
+        box.Placement.Base = FreeCAD.Vector(0, -30, 0)
+        self.doc.recompute()
+        self._process_events()
+
+        self._start_extrude()
+        self._pick("InternalFace2")
+        pad = self._pads()[0]
+
+        top = [
+            f"Face{i + 1}"
+            for i, face in enumerate(pad.Shape.Faces)
+            if abs(face.CenterOfMass.z - 10) < 1e-7 and face.CenterOfMass.y < -10
+        ][0]
+        FreeCADGui.Selection.addSelection(self.doc.Name, self.body.Name, f"{pad.Name}.{top}")
+        self._process_events(300)
+
+        self.assertEqual([obj.Name for obj, _ in pad.ExtraProfiles], [box.Name])
+        self.assertTrue(pad.isValid(), pad.getStatusString())
+        self.assertAlmostEqual(pad.Shape.BoundBox.ZMax, 20.0, places=6)
+
+    def testRegionsOfTwoSketchesSelectedFirstMakeOneFeature(self):
+        second = self._second_sketch()
+        second.Visibility = True
+        self._process_events()
+        FreeCADGui.Selection.addSelection(
+            self.doc.Name, self.body.Name, f"{self.sketch.Name}.InternalFace1"
+        )
+        FreeCADGui.Selection.addSelection(
+            self.doc.Name, self.body.Name, f"{second.Name}.InternalFace2"
+        )
+        FreeCADGui.runCommand("PartDesign_Extrude")
+        self._process_events(300)
+
+        pads = self._pads()
+        self.assertEqual(len(pads), 1)
+        self.assertEqual(list(pads[0].Profile[1]), ["InternalFace1"])
+        self.assertEqual(
+            [(obj.Name, tuple(subs)) for obj, subs in pads[0].ExtraProfiles],
+            [(second.Name, ("InternalFace2",))],
+        )
+        self.assertTrue(pads[0].isValid(), pads[0].getStatusString())
+        self.assertFalse(second.Visibility, "the extra sketch is hidden like the first")
+
     def testEscapeGivesUpAndHidesTheSketchesAgain(self):
         self.sketch.Visibility = False
         self._start_extrude()

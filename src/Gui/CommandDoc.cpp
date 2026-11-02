@@ -61,6 +61,7 @@
 #include "MergeDocuments.h"
 #include "Navigation/NavigationStyle.h"
 #include "Placement.h"
+#include "TaskMove.h"
 #include "Tools.h"
 #include "Transform.h"
 #include "Tree.h"
@@ -2013,6 +2014,83 @@ bool StdCmdPlacement::isActive()
 }
 
 //===========================================================================
+// Std_Move
+//===========================================================================
+DEF_STD_CMD_A(StdCmdMove)
+
+StdCmdMove::StdCmdMove()
+    : Command("Std_Move")
+{
+    sGroup = "Edit";
+    sMenuText = QT_TR_NOOP("&Move");
+    sToolTipText = QT_TR_NOOP(
+        "Moves and turns the selected object with handles in the 3D view, or moves the "
+        "selected face"
+    );
+    sStatusTip = sToolTipText;
+    sWhatsThis = "Std_Move";
+    sPixmap = "Std_Placement";
+}
+
+namespace
+{
+/// The command Fusion's Move becomes with a face picked: it moves that face. Null
+/// while no face is picked, or while the face tool is not loaded.
+Command* moveFaceCommand()
+{
+    Command* moveFace = Application::Instance->commandManager().getCommandByName("PartDesign_MoveFace");
+    if (!moveFace) {
+        return nullptr;
+    }
+
+    for (const SelectionObject& selected : Selection().getSelectionEx()) {
+        for (const std::string& sub : selected.getSubNames()) {
+            const std::size_t dot = sub.rfind('.');
+            const std::string element = dot == std::string::npos ? sub : sub.substr(dot + 1);
+            if (element.starts_with("Face")) {
+                return moveFace;
+            }
+        }
+    }
+    return nullptr;
+}
+
+App::DocumentObject* objectToMove()
+{
+    const std::vector<App::DocumentObject*> selected = Selection().getObjectsOfType(
+        App::GeoFeature::getClassTypeId(),
+        nullptr,
+        ResolveMode::FollowLink
+    );
+    return selected.empty() ? nullptr : TaskMove::movableFor(selected.front());
+}
+}  // namespace
+
+void StdCmdMove::activated(int iMsg)
+{
+    Q_UNUSED(iMsg);
+
+    if (Command* moveFace = moveFaceCommand()) {
+        Application::Instance->commandManager().runCommandByName(moveFace->getName());
+        return;
+    }
+
+    if (App::DocumentObject* object = objectToMove()) {
+        Gui::Control().showDialog(new TaskMove(object), object->getDocument());
+    }
+}
+
+bool StdCmdMove::isActive()
+{
+    // A task dialog owns the 3D view's keys while it is open (a sketch edit,
+    // for instance), so Fusion's bare "M" must not also reach for this here.
+    if (Gui::Control().activeDialog() != nullptr) {
+        return false;
+    }
+    return moveFaceCommand() != nullptr || objectToMove() != nullptr;
+}
+
+//===========================================================================
 // Std_TransformManip
 //===========================================================================
 DEF_STD_CMD_A(StdCmdTransformManip)
@@ -2498,6 +2576,7 @@ void CreateDocCommands()
     rcCmdMgr.addCommand(new StdCmdRefresh());
     rcCmdMgr.addCommand(new StdCmdTransform());
     rcCmdMgr.addCommand(new StdCmdPlacement());
+    rcCmdMgr.addCommand(new StdCmdMove());
     rcCmdMgr.addCommand(new StdCmdTransformManip());
     rcCmdMgr.addCommand(new StdCmdAlignment());
     rcCmdMgr.addCommand(new StdCmdEdit());

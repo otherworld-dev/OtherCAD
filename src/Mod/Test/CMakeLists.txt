@@ -45,6 +45,7 @@ SET(Test_SRCS
     TestFusionShortcuts.py
     TestExtrudeFlip.py
     TestNewBodyGui.py
+    TestActiveBodyRule.py
     TestSelectOther.py
     TestProfileRegions.py
     TestMoveFeatureGui.py
@@ -53,6 +54,9 @@ SET(Test_SRCS
     TestFeaturePanelErrors.py
     TestOverlayPanelWidth.py
     TestGizmoValueLabels.py
+    TestFaceToolArrows.py
+    TestMoveGizmo.py
+    TestChangeParameters.py
     TestPatternPanel.py
     TestViewportProjection.py
     TestMeasureHover.py
