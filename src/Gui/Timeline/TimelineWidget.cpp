@@ -30,6 +30,7 @@
 #include <QApplication>
 #include <QCursor>
 #include <QEvent>
+#include <QFontMetrics>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QInputDialog>
@@ -91,6 +92,8 @@ constexpr int stepIconExtent = 12;
 constexpr int scrollBarThickness = 8;
 // Between the markers and the scroll bar under them, when it shows
 constexpr int scrollBarGap = 3;
+// The body's name before the strip cuts it short
+constexpr int bodyNameMaxWidth = 180;
 // Long enough that a slider drag or a batch of property changes collapses into
 // a single update, short enough to feel immediate.
 constexpr int updateDelay = 120;
@@ -722,18 +725,25 @@ void TimelineWidget::updateBodyLabel()
         bodyLabel->hide();
         return;
     }
-    const QString name = QString::fromUtf8(body->Label.getValue());
+    const QString fullName = QString::fromUtf8(body->Label.getValue());
     const bool active = body == activeBody(app->activeDocument());
     QFont font = bodyLabel->font();
     font.setBold(active);
     bodyLabel->setFont(font);
+    // A long label took the room of a dozen markers, so it is cut short and given in full
+    // in the tooltip
+    const QString name = QFontMetrics(font).elidedText(fullName, Qt::ElideRight, bodyNameMaxWidth);
     if (active) {
         bodyLabel->setText(QString(QChar(0x25C9)) + QLatin1Char(' ') + name);
-        bodyLabel->setToolTip(tr("The active body: new features go into it"));
+        bodyLabel->setToolTip(
+            fullName + QLatin1Char('\n') + tr("The active body: new features go into it")
+        );
     }
     else {
         bodyLabel->setText(QString(QChar(0x25CB)) + QLatin1Char(' ') + tr("%1 (inactive)").arg(name));
-        bodyLabel->setToolTip(tr("Click to make this body the active one"));
+        bodyLabel->setToolTip(
+            fullName + QLatin1Char('\n') + tr("Click to make this body the active one")
+        );
     }
     bodyLabel->show();
 }

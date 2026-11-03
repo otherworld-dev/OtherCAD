@@ -144,6 +144,8 @@ done in this fork.
 - The timeline's playhead is easier to find and to grab. It has a grip at each end, like
   Fusion's history marker, and a grab area wider than its line, and it lights up under the
   mouse. Drag it to see the part as it was earlier in its history.
+- A long body name on the timeline is cut short with "…", leaving the room for markers,
+  and given in full when you hover over it.
 - Big sketches solve much faster. Every solve checks the sketch for redundant and
   conflicting constraints, and in sketches over about 250 lines that check took around a
   second. It now takes a few milliseconds. On a 576-line test sketch a solve drops from

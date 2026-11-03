@@ -1435,6 +1435,22 @@ class TestTimelineFollowsSelection(TimelineTestBase):
         self._settle()
         self.assertIn("Bracket", self._body_label().text())
 
+    def test_a_long_body_name_is_cut_short_and_given_in_full_on_hover(self):
+        """A body named like a note took the room of a dozen markers."""
+
+        long_name = (
+            "Tool body (print one per tool; Volcano version, set hotend_len = v6_len for V6)"
+        )
+        self._select(self.other_pad)
+        self.other.Label = long_name
+        self._settle()
+        label = self._body_label()
+        self.assertNotIn(long_name, label.text())
+        self.assertIn("…", label.text())
+        self.assertTrue(label.text().endswith("(inactive)"), "the state is still shown")
+        self.assertLess(label.sizeHint().width(), 320)
+        self.assertIn(long_name, label.toolTip())
+
     def test_clearing_the_selection_keeps_the_body(self):
         self._select(self.other_pad)
         FreeCADGui.Selection.clearSelection()
