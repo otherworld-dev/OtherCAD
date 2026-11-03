@@ -1437,7 +1437,13 @@ bool TopoShape::isNull() const
 
 bool TopoShape::isValid() const
 {
-    BRepCheck_Analyzer aChecker(this->_Shape);
+    // Every boolean checks its inputs, the whole solid built so far among them, so a
+    // recompute spends a good part of its time here: check the sub-shapes in parallel
+    BRepCheck_Analyzer aChecker(
+        this->_Shape,
+        /*GeomControls=*/Standard_True,
+        /*theIsParallel=*/Standard_True
+    );
     return aChecker.IsValid() ? true : false;
 }
 

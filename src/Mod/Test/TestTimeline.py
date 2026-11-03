@@ -599,6 +599,23 @@ class TestTimeline(TimelineTestBase):
         self.assertIs(self.body.Tip, self.pad2)
         self.assertTrue(self.sketch2.Visibility)
 
+    def test_the_playhead_can_be_caught_beside_its_line(self):
+        """The playhead was a bare 3 px line, too thin to find or to catch. It now has a grab
+        area either side of the line, as Fusion's history marker does, so a press a few
+        pixels off the line still takes hold of it."""
+
+        playhead = self.widget.findChild(QtWidgets.QWidget, "TimelinePlayhead")
+        strip = self.widget.findChild(QtWidgets.QWidget, "TimelineStrip")
+        self.assertTrue(playhead.isVisible())
+        centre = playhead.mapTo(strip, playhead.rect().center())
+        for offset in (-4, 4):
+            point = QtCore.QPoint(centre.x() + offset, centre.y())
+            self.assertIs(
+                strip.childAt(point),
+                playhead,
+                "a press %+d px off the line misses the playhead" % offset,
+            )
+
     def test_undo_puts_back_the_tip_and_what_the_roll_hid(self):
         """Rolling to the start moves the tip and hides both sketches in one entry."""
 
@@ -670,6 +687,76 @@ class TestTimeline(TimelineTestBase):
         self.assertIn(self.pad.getStatusString(), marker.toolTip())
         # What the style sheet draws the red border from
         self.assertTrue(marker.property("timelineError"))
+
+    def test_a_recompute_restyles_only_the_markers_whose_look_changed(self):
+        """Every recompute refreshes every marker, and running the style sheet again for each
+        took about a tenth of a big model's recompute. A marker is only polished again when
+        a property the sheet selects on changes, which shows as a palette change."""
+
+        class PaletteChanges(QtCore.QObject):
+            def __init__(self):
+                super().__init__()
+                self.counts = {}
+
+            def eventFilter(self, watched, event):
+                if event.type() == QtCore.QEvent.PaletteChange:
+                    self.counts[watched] = self.counts.get(watched, 0) + 1
+                return False
+
+        watcher = PaletteChanges()
+        markers = self._markers_in_order()
+        self.assertEqual(len(markers), FEATURE_COUNT)
+        for marker in markers:
+            marker.installEventFilter(watcher)
+
+        self.pad2.Length = 25.0  # recomputes, and no marker looks any different
+        self.doc.recompute()
+        self._settle()
+        self.assertEqual(
+            watcher.counts, {}, "markers were restyled although nothing they show changed"
+        )
+
+        self.sketch.delGeometry(0)  # now the pad fails, and so does what is built on it
+        self.doc.recompute()
+        self._settle()
+        pad = self._marker_for("Pad")
+        self.assertTrue(pad.property("timelineError"))
+        self.assertGreater(
+            watcher.counts.get(pad, 0), 0, "the failed pad's marker was not restyled"
+        )
+
+    def test_the_scroll_bar_leaves_the_markers_uncovered(self):
+        """A history longer than the strip shows a scroll bar under it. The scroll area made
+        room for the theme's taller bar, not the thin one drawn, so the bar covered the
+        bottom of the markers."""
+
+        scroll = self.widget.findChild(QtWidgets.QScrollArea, "TimelineScroll")
+        strip = self.widget.findChild(QtWidgets.QWidget, "TimelineStrip")
+        bar = scroll.horizontalScrollBar()
+        old_minimum = strip.minimumWidth()
+        strip.setMinimumWidth(scroll.width() * 3)  # as a long history would
+        try:
+            deadline = time.monotonic() + 3.0
+            while not bar.isVisible() and time.monotonic() < deadline:
+                self._process_events(50)
+            self.assertTrue(bar.isVisible(), "the strip never overflowed")
+            self._process_events(100)
+
+            bar_top = bar.mapTo(self.widget, QtCore.QPoint(0, 0)).y()
+            for marker in self._markers_in_order():
+                bottom = marker.mapTo(self.widget, QtCore.QPoint(0, marker.height())).y()
+                self.assertLessEqual(
+                    bottom,
+                    bar_top,
+                    "the scroll bar is drawn over %s" % marker.toolTip().split("\n")[0],
+                )
+            viewport = scroll.viewport()
+            self.assertGreaterEqual(
+                viewport.height(), max(m.height() for m in self._markers_in_order())
+            )
+        finally:
+            strip.setMinimumWidth(old_minimum)
+            self._process_events(100)
 
     def test_arrow_keys_roll_the_history(self):
         """Left and right step one feature, Home and End run to the ends of the strip."""
@@ -1135,6 +1222,79 @@ class TestTimelineGroups(TimelineTestBase):
         self.assertIsNone(self._marker_for("Pad001"), "and it stays folded")
 
 
+class _SlowLoad:
+    """Document observer standing in for a slow step of a big file being opened.
+
+    The progress bar runs the event loop every 100 ms while a document loads, so in a big
+    file the strip's update timer used to fire again and again mid-load. Here the first
+    objects of the file each take 200 ms and are followed by an event pump.
+    """
+
+    def __init__(self, steps=3):
+        self.steps = steps
+        self.pumped = 0
+
+    def slotCreatedObject(self, obj):
+        if self.pumped < self.steps and FreeCAD.isRestoring():
+            time.sleep(0.2)
+            QtWidgets.QApplication.instance().processEvents()
+            QtWidgets.QApplication.instance().processEvents()
+            self.pumped += 1
+
+
+class _HideCounter(QtCore.QObject):
+    """Counts the hides of the strip's markers, split by whether a load was running."""
+
+    def __init__(self):
+        super().__init__()
+        self.during_load = 0
+        self.after_load = 0
+
+    def eventFilter(self, watched, event):
+        if event.type() == QtCore.QEvent.Hide:
+            if FreeCAD.isRestoring():
+                self.during_load += 1
+            else:
+                self.after_load += 1
+        return False
+
+
+class TestTimelineOpeningDocument(TimelineTestBase):
+    """Opening a document leaves the strip alone until the load has finished.
+
+    Opening a 1600-object model rebuilt the strip dozens of times on the way, about a
+    tenth of the 27 s the open took. Rebuilding clears the strip, so every marker on
+    it is hidden first: none may be hidden while the load is still running.
+    """
+
+    def test_the_strip_is_not_rebuilt_while_a_document_loads(self):
+        path = os.path.join(self.tempdir, "TestTimelineLoad.FCStd")
+        self.doc.saveCopy(path)
+
+        markers = [
+            m for m in self.widget.findChildren(QtWidgets.QWidget, MARKER_NAME) if not m.isHidden()
+        ]
+        self.assertEqual(len(markers), FEATURE_COUNT)
+        counter = _HideCounter()
+        for marker in markers:
+            marker.installEventFilter(counter)
+        slow = _SlowLoad()
+        FreeCAD.addDocumentObserver(slow)
+        try:
+            FreeCAD.openDocument(path)
+        finally:
+            FreeCAD.removeDocumentObserver(slow)
+
+        self.assertEqual(slow.pumped, slow.steps, "the slow load never ran the event loop")
+        self.assertEqual(counter.during_load, 0, "the strip was rebuilt in the middle of the load")
+
+        # it catches up once the load is done: the opened document is now the active one
+        deadline = time.monotonic() + 3.0
+        while counter.after_load == 0 and time.monotonic() < deadline:
+            self._process_events(50)
+        self.assertGreater(counter.after_load, 0, "the strip never caught up after the load")
+
+
 class TestTimelineDock(unittest.TestCase):
     """The timeline is a strip along the bottom, as Fusion draws it, not a captioned dock.
 
@@ -1274,6 +1434,22 @@ class TestTimelineFollowsSelection(TimelineTestBase):
         self.other.Label = "Bracket"
         self._settle()
         self.assertIn("Bracket", self._body_label().text())
+
+    def test_a_long_body_name_is_cut_short_and_given_in_full_on_hover(self):
+        """A body named like a note took the room of a dozen markers."""
+
+        long_name = (
+            "Tool body (print one per tool; Volcano version, set hotend_len = v6_len for V6)"
+        )
+        self._select(self.other_pad)
+        self.other.Label = long_name
+        self._settle()
+        label = self._body_label()
+        self.assertNotIn(long_name, label.text())
+        self.assertIn("…", label.text())
+        self.assertTrue(label.text().endswith("(inactive)"), "the state is still shown")
+        self.assertLess(label.sizeHint().width(), 320)
+        self.assertIn(long_name, label.toolTip())
 
     def test_clearing_the_selection_keeps_the_body(self):
         self._select(self.other_pad)

@@ -56,6 +56,16 @@ constexpr int markerPadding = 2;
 constexpr int iconExtent = 20;
 constexpr int badgeExtent = 8;
 
+// Sets a property the style sheet selects on and says whether it changed
+bool setStyleProperty(QWidget* widget, const char* name, const QVariant& value)
+{
+    if (widget->property(name) == value) {
+        return false;
+    }
+    widget->setProperty(name, value);
+    return true;
+}
+
 QString stateName(TimelineMarker::State state)
 {
     switch (state) {
@@ -179,14 +189,18 @@ void TimelineMarker::refresh()
 
 void TimelineMarker::restyle()
 {
-    setProperty("timelineState", stateName(markerState));
-    setProperty("timelineTip", tip);
-    setProperty("timelineError", error);
-    setProperty("timelineWarning", warning);
-    setProperty("timelineSuppressed", suppressed);
+    // Polishing runs the whole style sheet again, and every recompute refreshes every
+    // marker, so it is only done when one of the properties the sheet selects on changed
+    bool changed = setStyleProperty(this, "timelineState", stateName(markerState));
+    changed |= setStyleProperty(this, "timelineTip", tip);
+    changed |= setStyleProperty(this, "timelineError", error);
+    changed |= setStyleProperty(this, "timelineWarning", warning);
+    changed |= setStyleProperty(this, "timelineSuppressed", suppressed);
 
-    style()->unpolish(this);
-    style()->polish(this);
+    if (changed) {
+        style()->unpolish(this);
+        style()->polish(this);
+    }
     update();
 }
 
@@ -304,14 +318,16 @@ void TimelineGroupMarker::setTip(bool value)
 
 void TimelineGroupMarker::restyle()
 {
-    setProperty("timelineState", stateName(markerState));
-    setProperty("timelineTip", tip);
-    setProperty("timelineError", error);
-    setProperty("timelineWarning", warning);
-    setProperty("timelineExpanded", expanded);
+    bool changed = setStyleProperty(this, "timelineState", stateName(markerState));
+    changed |= setStyleProperty(this, "timelineTip", tip);
+    changed |= setStyleProperty(this, "timelineError", error);
+    changed |= setStyleProperty(this, "timelineWarning", warning);
+    changed |= setStyleProperty(this, "timelineExpanded", expanded);
 
-    style()->unpolish(this);
-    style()->polish(this);
+    if (changed) {
+        style()->unpolish(this);
+        style()->polish(this);
+    }
     update();
 }
 

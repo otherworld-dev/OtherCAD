@@ -3493,8 +3493,7 @@ QWidget#TimelineGroupMarker[timelineError="true"] {
   border: 1px solid #d93025;
 }
 
+/* The playhead paints its own line and grips, in this colour */
 QWidget#TimelinePlayhead {
-  background-color: @AccentColor;
-  border-radius: 2px;
-  margin: 1px 0px 1px 0px;
+  color: @AccentColor;
 }
