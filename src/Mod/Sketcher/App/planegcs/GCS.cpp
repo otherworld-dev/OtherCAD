@@ -4994,7 +4994,7 @@ int System::diagnose(Algorithm alg)
 # endif
         int rank = 0;
         Eigen::MatrixXd R;
-        Eigen::SparseQR<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int>> SqrJT;
+        ReorderedSparseQR SqrJT;
         // Here we give the system the possibility to run the two QR decompositions in parallel,
         // depending on the load of the system so we are using the default std::launch::async |
         // std::launch::deferred policy, as nobody better than the system nows if it can run the
@@ -5153,10 +5153,58 @@ void System::makeDenseQRDecomposition(
 }
 
 #ifdef EIGEN_SPARSEQR_COMPATIBLE
+void ReorderedSparseQR::compute(const SparseMatrix& A)
+{
+    const int rowsNum = static_cast<int>(A.rows());
+    const int colsNum = static_cast<int>(A.cols());
+
+    // column order: approximate minimum degree on the structure of A^T A
+    SparseMatrix pattern = A;
+    std::fill_n(pattern.valuePtr(), pattern.nonZeros(), 1.0);
+    SparseMatrix AtA = SparseMatrix(pattern.transpose()) * pattern;
+    Permutation amd;
+    Eigen::AMDOrdering<int>()(AtA.selfadjointView<Eigen::Lower>(), amd);
+    const auto& colOrder = amd.indices();  // colOrder[j]: column of A placed at j
+
+    // row order: the order in which those columns first use each row
+    std::vector<int> rowPos(rowsNum, -1);
+    int next = 0;
+    for (int j = 0; j < colsNum; ++j) {
+        for (SparseMatrix::InnerIterator it(A, colOrder[j]); it; ++it) {
+            if (rowPos[it.row()] < 0) {
+                rowPos[it.row()] = next++;
+            }
+        }
+    }
+    for (auto& pos : rowPos) {
+        if (pos < 0) {
+            pos = next++;
+        }
+    }
+
+    std::vector<Eigen::Triplet<double>> triplets;
+    triplets.reserve(A.nonZeros());
+    for (int j = 0; j < colsNum; ++j) {
+        for (SparseMatrix::InnerIterator it(A, colOrder[j]); it; ++it) {
+            triplets.emplace_back(rowPos[it.row()], j, it.value());
+        }
+    }
+    SparseMatrix B(rowsNum, colsNum);
+    B.setFromTriplets(triplets.begin(), triplets.end());
+    B.makeCompressed();
+
+    qr.compute(B);
+
+    perm.resize(colsNum);
+    for (int k = 0; k < colsNum; ++k) {
+        perm.indices()[k] = colOrder[qr.colsPermutation().indices()[k]];
+    }
+}
+
 void System::makeSparseQRDecomposition(
     const Eigen::MatrixXd& J,
     const std::map<int, int>& jacobianconstraintmap,
-    Eigen::SparseQR<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int>>& SqrJT,
+    ReorderedSparseQR& SqrJT,
     int& rank,
     Eigen::MatrixXd& R,
     bool transposeJ,
@@ -5274,7 +5322,7 @@ void System::identifyDependentParametersSparseQR(
     bool silent
 )
 {
-    Eigen::SparseQR<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int>> SqrJ;
+    ReorderedSparseQR SqrJ;
     Eigen::MatrixXd Rparams;
 
     int nontransprank;
