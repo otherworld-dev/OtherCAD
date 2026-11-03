@@ -8,6 +8,7 @@ from SketcherTests.TestPlacementUpdate import TestSketchPlacementUpdate
 from SketcherTests.TestExternalFacePreselection import TestExternalFacePreselection
 from SketcherTests.TestSketchDimensionBox import TestSketchDimensionBox
 from SketcherTests.TestVisualLayerListGui import TestVisualLayerListGui
+from SketcherTests.TestCarbonCopyModelTreeDragging import TestCarbonCopyModelTreeDragging
 
 # Use the module so that code checkers don't complain (flake8)
 (
@@ -21,5 +22,6 @@ from SketcherTests.TestVisualLayerListGui import TestVisualLayerListGui
     and TestExternalFacePreselection
     and TestSketchDimensionBox
     and TestVisualLayerListGui
+    and TestCarbonCopyModelTreeDragging
     else False
 )

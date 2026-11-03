@@ -42,6 +42,7 @@ if(BUILD_GUI)
           SketcherTests/TestExternalFacePreselection.py
           SketcherTests/TestSketchDimensionBox.py
           SketcherTests/TestVisualLayerListGui.py
+          SketcherTests/TestCarbonCopyModelTreeDragging.py
     )
 endif(BUILD_GUI)
 
