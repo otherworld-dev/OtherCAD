@@ -141,6 +141,10 @@ done in this fork.
 
 ### Changed
 
+- Big sketches solve much faster. Every solve checks the sketch for redundant and
+  conflicting constraints, and in sketches over about 250 lines that check took around a
+  second. It now takes a few milliseconds. On a 576-line test sketch a solve drops from
+  1 s to 0.12 s, a recompute from 3.1 s to 1.1 s, and leaving the sketch from 2.7 s to 0.9 s.
 - A new feature goes into the body of what it is made from, as in Fusion. Sketching on a
   face, extruding a sketch or face, or filleting an edge of a body other than the active
   one makes that body active and works there, instead of refusing or asking about a copy.

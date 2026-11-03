@@ -40,6 +40,53 @@
 
 namespace GCS
 {
+#ifdef EIGEN_SPARSEQR_COMPATIBLE
+// Eigen's SparseQR never reorders rows, and COLAMD does not find a column order that keeps R
+// sparse for the sketch Jacobian or its transpose once constraints and parameters arrive in the
+// order a real sketch hands them over: R fills in almost completely (about 1 s per diagnose on a
+// 576-line sketch, against a few ms here).
+// This orders the columns by approximate minimum degree on the pattern of A^T A, puts the rows in
+// the order those columns first use them, factorises with natural ordering and reports
+// colsPermutation() against the original columns. R is the same apart from the signs of its rows.
+class SketcherExport ReorderedSparseQR
+{
+public:
+    using SparseMatrix = Eigen::SparseMatrix<double>;
+    using Permutation = Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic, int>;
+
+    void compute(const SparseMatrix& A);
+
+    Eigen::Index rows() const
+    {
+        return qr.rows();
+    }
+    Eigen::Index cols() const
+    {
+        return qr.cols();
+    }
+    Eigen::Index rank() const
+    {
+        return qr.rank();
+    }
+    const SparseMatrix& matrixR() const
+    {
+        return qr.matrixR();
+    }
+    const Permutation& colsPermutation() const
+    {
+        return perm;
+    }
+    void setPivotThreshold(double threshold)
+    {
+        qr.setPivotThreshold(threshold);
+    }
+
+private:
+    Eigen::SparseQR<SparseMatrix, Eigen::NaturalOrdering<int>> qr;
+    Permutation perm;
+};
+#endif
+
 ///////////////////////////////////////
 // Other BFGS Solver parameters
 ///////////////////////////////////////
@@ -172,7 +219,7 @@ private:
     void makeSparseQRDecomposition(
         const Eigen::MatrixXd& J,
         const std::map<int, int>& jacobianconstraintmap,
-        Eigen::SparseQR<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int>>& SqrJT,
+        ReorderedSparseQR& SqrJT,
         int& rank,
         Eigen::MatrixXd& R,
         bool transposeJ = true,
