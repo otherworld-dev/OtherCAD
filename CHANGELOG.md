@@ -145,6 +145,12 @@ done in this fork.
   conflicting constraints, and in sketches over about 250 lines that check took around a
   second. It now takes a few milliseconds. On a 576-line test sketch a solve drops from
   1 s to 0.12 s, a recompute from 3.1 s to 1.1 s, and leaving the sketch from 2.7 s to 0.9 s.
+- Big documents open and recompute faster. The timeline used to rebuild and restyle its
+  markers again and again while a file was loading or a recompute was running. It now
+  waits until the work is done, and it restyles only the markers whose look changed. Shape
+  checks before each boolean now run on all cores. On a 1600-object model, opening drops
+  from about 32 s to 21 s, and changing an early dimension in a 42-feature body from
+  about 36 s to 21 s.
 - A new feature goes into the body of what it is made from, as in Fusion. Sketching on a
   face, extruding a sketch or face, or filleting an edge of a body other than the active
   one makes that body active and works there, instead of refusing or asking about a copy.
