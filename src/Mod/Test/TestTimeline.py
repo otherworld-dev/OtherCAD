@@ -599,6 +599,23 @@ class TestTimeline(TimelineTestBase):
         self.assertIs(self.body.Tip, self.pad2)
         self.assertTrue(self.sketch2.Visibility)
 
+    def test_the_playhead_can_be_caught_beside_its_line(self):
+        """The playhead was a bare 3 px line, too thin to find or to catch. It now has a grab
+        area either side of the line, as Fusion's history marker does, so a press a few
+        pixels off the line still takes hold of it."""
+
+        playhead = self.widget.findChild(QtWidgets.QWidget, "TimelinePlayhead")
+        strip = self.widget.findChild(QtWidgets.QWidget, "TimelineStrip")
+        self.assertTrue(playhead.isVisible())
+        centre = playhead.mapTo(strip, playhead.rect().center())
+        for offset in (-4, 4):
+            point = QtCore.QPoint(centre.x() + offset, centre.y())
+            self.assertIs(
+                strip.childAt(point),
+                playhead,
+                "a press %+d px off the line misses the playhead" % offset,
+            )
+
     def test_undo_puts_back_the_tip_and_what_the_roll_hid(self):
         """Rolling to the start moves the tip and hides both sketches in one entry."""
 
@@ -707,6 +724,39 @@ class TestTimeline(TimelineTestBase):
         self.assertGreater(
             watcher.counts.get(pad, 0), 0, "the failed pad's marker was not restyled"
         )
+
+    def test_the_scroll_bar_leaves_the_markers_uncovered(self):
+        """A history longer than the strip shows a scroll bar under it. The scroll area made
+        room for the theme's taller bar, not the thin one drawn, so the bar covered the
+        bottom of the markers."""
+
+        scroll = self.widget.findChild(QtWidgets.QScrollArea, "TimelineScroll")
+        strip = self.widget.findChild(QtWidgets.QWidget, "TimelineStrip")
+        bar = scroll.horizontalScrollBar()
+        old_minimum = strip.minimumWidth()
+        strip.setMinimumWidth(scroll.width() * 3)  # as a long history would
+        try:
+            deadline = time.monotonic() + 3.0
+            while not bar.isVisible() and time.monotonic() < deadline:
+                self._process_events(50)
+            self.assertTrue(bar.isVisible(), "the strip never overflowed")
+            self._process_events(100)
+
+            bar_top = bar.mapTo(self.widget, QtCore.QPoint(0, 0)).y()
+            for marker in self._markers_in_order():
+                bottom = marker.mapTo(self.widget, QtCore.QPoint(0, marker.height())).y()
+                self.assertLessEqual(
+                    bottom,
+                    bar_top,
+                    "the scroll bar is drawn over %s" % marker.toolTip().split("\n")[0],
+                )
+            viewport = scroll.viewport()
+            self.assertGreaterEqual(
+                viewport.height(), max(m.height() for m in self._markers_in_order())
+            )
+        finally:
+            strip.setMinimumWidth(old_minimum)
+            self._process_events(100)
 
     def test_arrow_keys_roll_the_history(self):
         """Left and right step one feature, Home and End run to the ends of the strip."""

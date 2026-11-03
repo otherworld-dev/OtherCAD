@@ -39,6 +39,8 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMouseEvent>
+#include <QPainter>
+#include <QPaintEvent>
 #include <QPalette>
 #include <QScrollArea>
 #include <QScrollBar>
@@ -80,10 +82,15 @@ namespace
 {
 constexpr int stripMargin = 2;
 constexpr int markerSpacing = 1;
-constexpr int playheadWidth = 3;
+// The grab area; the line drawn in the middle of it is thinner
+constexpr int playheadWidth = 11;
+constexpr int playheadLineWidth = 3;
+constexpr int playheadGripHeight = 5;
 constexpr int stepButtonExtent = 20;
 constexpr int stepIconExtent = 12;
 constexpr int scrollBarThickness = 8;
+// Between the markers and the scroll bar under them, when it shows
+constexpr int scrollBarGap = 3;
 // Long enough that a slider drag or a batch of property changes collapses into
 // a single update, short enough to feel immediate.
 constexpr int updateDelay = 120;
@@ -155,6 +162,71 @@ void collectDependencies(
         }
     }
 }
+
+// The scroll area makes room for its bar from the bar's size hint, not its fixed height, so a
+// bar pinned thinner than the theme's would still take the theme's extent out of the
+// viewport and be drawn over the bottom of the markers.
+class ThinScrollBar: public QScrollBar
+{
+public:
+    explicit ThinScrollBar(Qt::Orientation orientation)
+        : QScrollBar(orientation)
+    {
+        setFixedHeight(scrollBarThickness);
+    }
+
+    QSize sizeHint() const override
+    {
+        return {QScrollBar::sizeHint().width(), scrollBarThickness};
+    }
+};
+
+// Fusion's history marker: a line between the features with a grip at either end, and a
+// grab area wider than the line, which on its own was too thin to find or to catch.
+// The style sheet's color is the accent the line is drawn in.
+class Playhead: public QWidget
+{
+public:
+    explicit Playhead(QWidget* parent)
+        : QWidget(parent)
+    {
+        setAttribute(Qt::WA_Hover, true);
+        setMouseTracking(true);
+    }
+
+protected:
+    void paintEvent(QPaintEvent* event) override
+    {
+        Q_UNUSED(event)
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        QColor accent = palette().color(QPalette::WindowText);
+        const bool lit = underMouse() || property("timelineDragging").toBool();
+        if (lit) {
+            accent = accent.lighter(135);
+        }
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(accent);
+
+        const qreal centre = width() / 2.0;
+        const qreal line = lit ? playheadLineWidth + 1 : playheadLineWidth;
+        painter.drawRect(QRectF(centre - line / 2.0, 0, line, height()));
+
+        // a grip at the top and the bottom, like the handle of a slider
+        const QRectF top(0.5, 0.5, width() - 1.0, playheadGripHeight);
+        const QRectF bottom(0.5, height() - playheadGripHeight - 0.5, width() - 1.0, playheadGripHeight);
+        painter.drawRoundedRect(top, 2.0, 2.0);
+        painter.drawRoundedRect(bottom, 2.0, 2.0);
+    }
+
+    bool event(QEvent* event) override
+    {
+        if (event->type() == QEvent::HoverEnter || event->type() == QEvent::HoverLeave) {
+            update();
+        }
+        return QWidget::event(event);
+    }
+};
 }  // namespace
 
 
@@ -246,9 +318,8 @@ void TimelineWidget::setupUi()
     stripLayout->setContentsMargins(0, 0, 0, 0);
     stripLayout->setSpacing(markerSpacing);
 
-    playhead = new QWidget(strip);
+    playhead = new Playhead(strip);
     playhead->setObjectName(QStringLiteral("TimelinePlayhead"));
-    playhead->setAttribute(Qt::WA_StyledBackground, true);
     playhead->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
     playhead->setFixedWidth(playheadWidth);
     playhead->setCursor(Qt::SizeHorCursor);
@@ -281,8 +352,10 @@ void TimelineWidget::setupUi()
     // The scroll bar's own extent has to be reserved whether or not it is showing,
     // and the theme's is taller than the markers themselves, so it is pinned to
     // something proportionate instead. Fusion's timeline is a thin strip.
-    scrollArea->horizontalScrollBar()->setFixedHeight(scrollBarThickness);
-    setFixedHeight(TimelineMarker::tileSize().height() + 2 * stripMargin + scrollBarThickness);
+    scrollArea->setHorizontalScrollBar(new ThinScrollBar(Qt::Horizontal));
+    setFixedHeight(
+        TimelineMarker::tileSize().height() + 2 * stripMargin + scrollBarGap + scrollBarThickness
+    );
 }
 
 void TimelineWidget::connectDocumentSignals()
@@ -1250,6 +1323,8 @@ bool TimelineWidget::eventFilter(QObject* watched, QEvent* event)
             if (static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) {
                 endScrub();
                 draggingPlayhead = true;
+                playhead->setProperty("timelineDragging", true);
+                playhead->update();
                 return true;
             }
             return false;
@@ -1869,6 +1944,8 @@ void TimelineWidget::scrubTo(int index)
 void TimelineWidget::endScrub()
 {
     draggingPlayhead = false;
+    playhead->setProperty("timelineDragging", false);
+    playhead->update();
     if (scrubbing) {
         scrubbing = false;
         Gui::Command::commitCommand(scrubTransaction);

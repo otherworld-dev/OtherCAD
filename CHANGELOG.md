@@ -141,6 +141,9 @@ done in this fork.
 
 ### Changed
 
+- The timeline's playhead is easier to find and to grab. It has a grip at each end, like
+  Fusion's history marker, and a grab area wider than its line, and it lights up under the
+  mouse. Drag it to see the part as it was earlier in its history.
 - Big sketches solve much faster. Every solve checks the sketch for redundant and
   conflicting constraints, and in sketches over about 250 lines that check took around a
   second. It now takes a few milliseconds. On a 576-line test sketch a solve drops from
@@ -203,6 +206,8 @@ done in this fork.
 
 ### Fixed
 
+- When a long history scrolled, the timeline's scroll bar covered the bottom of the
+  feature icons. The strip is now a little taller and the bar sits below them.
 - `doc.recompute()` called while the document is already recomputing returns -1, and
   `obj.recompute(True)` returns False. Both skip the rebuild, but returned 0 and True as
   if all was well, so a script carried on with a model that had not been rebuilt.
