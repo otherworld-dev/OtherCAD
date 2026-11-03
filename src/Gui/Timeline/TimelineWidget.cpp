@@ -95,6 +95,14 @@ constexpr char groupFieldSeparator = '\t';
 constexpr int refusalMessageTimeout = 6000;
 
 const char* const bodyTypeName = "PartDesign::Body";
+
+bool anyDocumentRecomputing()
+{
+    const std::vector<App::Document*> docs = App::GetApplication().getDocuments();
+    return std::any_of(docs.begin(), docs.end(), [](const App::Document* doc) {
+        return doc->testStatus(App::Document::Recomputing);
+    });
+}
 const char* const solidTypeName = "PartDesign::Feature";
 const char* const partFeatureTypeName = "Part::Feature";
 
@@ -394,6 +402,13 @@ void TimelineWidget::onTimeout()
 {
     // Rebuilding deletes the markers, the one being dragged among them, so it waits
     if (dragInProgress()) {
+        updateTimer->start();
+        return;
+    }
+    // Opening or recomputing a document changes object after object, and the progress bar
+    // runs the event loop throughout, so the timer would fire again and again midway.
+    // Wait for the load or the recompute to finish.
+    if (App::GetApplication().isRestoring() || anyDocumentRecomputing()) {
         updateTimer->start();
         return;
     }
