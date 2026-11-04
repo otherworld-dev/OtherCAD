@@ -105,6 +105,7 @@ FreeCAD.__unit_test__ += [
     "TestSelectionVisual",
     "TestCornerAxisCrossVisual",
     "TestRenderCaching",
+    "TestProgressPump",
     "TestCoinNodeSnapshots",
     "TestViewProviderLink",
     "TestOriginPlaneHover",

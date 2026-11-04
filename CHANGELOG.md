@@ -152,6 +152,11 @@ done in this fork.
   already intended; on a 1600-object model a frame takes about a sixth of the work. The
   first draw after opening takes a little longer while the caches are built. The corner
   axis cross also stopped rebuilding its letter textures on every frame.
+- Recomputes with long booleans are faster again. While an operation shows its progress, the
+  window was repainted every 100 ms, and in a big window with overlay panels that took a
+  third of the operation; repaints are now spaced to take at most about a tenth. Refine
+  also skips checking the solid's orientation when it merged nothing. Changing an early
+  dimension in a 42-feature body drops from about 21 s to 17 s.
 - OtherCAD starts a little faster. Two things on the start screen made Qt look through
   every fallback font on the system: the arrow after the ribbon's workspace name, which was
   a character and is now drawn, and the first start page's list of languages, each named in

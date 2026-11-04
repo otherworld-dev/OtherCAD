@@ -37,6 +37,7 @@ SET(Test_SRCS
     TestSelectionVisual.py
     TestCornerAxisCrossVisual.py
     TestRenderCaching.py
+    TestProgressPump.py
     TestViewProviderLink.py
     TestOriginPlaneHover.py
     TestNavigationBarIcons.py

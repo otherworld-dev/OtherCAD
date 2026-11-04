@@ -22,6 +22,8 @@
 
 
 #include <QApplication>
+#include <algorithm>
+
 #include <QElapsedTimer>
 #include <QKeyEvent>
 #include <QMessageBox>
@@ -52,6 +54,28 @@ struct SequencerBarPrivate
     QElapsedTimer checkAbortTime;
     QString text;
     bool guiThread;
+    // How long the last run of the event loop took
+    qint64 lastPumpMs {0};
+
+    // The event loop runs while a long operation reports progress, so the bar moves and
+    // Esc is heard. Each run repaints whatever changed, which in a big window with overlay
+    // panels took 30-50 ms: run every 100 ms, a third of a boolean went on painting. Runs
+    // are spaced so they take at most about a tenth of the time.
+    bool pumpDue(const QElapsedTimer& timer, qint64 minimumMs) const
+    {
+        return timer.elapsed() > std::max(minimumMs, 10 * lastPumpMs);
+    }
+
+    // update: what is drawn of the bar itself, which repaints at once
+    template<typename Update>
+    void pump(Update&& update)
+    {
+        QElapsedTimer pumpTime;
+        pumpTime.start();
+        update();
+        qApp->processEvents();
+        lastPumpMs = pumpTime.elapsed();
+    }
 };
 
 struct ProgressBarPrivate
@@ -181,11 +205,11 @@ void SequencerBar::checkAbort()
         return;
     }
     if (!wasCanceled()) {
-        if (d->checkAbortTime.elapsed() < 500) {
+        if (!d->pumpDue(d->checkAbortTime, 500)) {
             return;
         }
         d->checkAbortTime.restart();
-        qApp->processEvents();
+        d->pump([] {});
         return;
     }
     // restore cursor
@@ -258,9 +282,8 @@ void SequencerBar::setValue(int step)
     QThread* thr = d->bar->thread();  // this is the main thread
     // if number of total steps is unknown then increment only by one
     if (nTotalSteps == 0) {
-        int elapsed = d->progressTime.elapsed();
-        // allow an update every 100 milliseconds only
-        if (elapsed > 100) {
+        // allow an update every 100 milliseconds at most
+        if (d->pumpDue(d->progressTime, 100)) {
             d->progressTime.restart();
             if (thr != currentThread) {
                 QMetaObject::invokeMethod(
@@ -271,15 +294,13 @@ void SequencerBar::setValue(int step)
                 );
             }
             else {
-                d->bar->setValueEx(d->bar->value() + 1);
-                qApp->processEvents();
+                d->pump([this] { d->bar->setValueEx(d->bar->value() + 1); });
             }
         }
     }
     else {
-        int elapsed = d->progressTime.elapsed();
-        // allow an update every 100 milliseconds only
-        if (elapsed > 100) {
+        // allow an update every 100 milliseconds at most
+        if (d->pumpDue(d->progressTime, 100)) {
             d->progressTime.restart();
             if (thr != currentThread) {
                 QMetaObject::invokeMethod(
@@ -293,12 +314,13 @@ void SequencerBar::setValue(int step)
                 }
             }
             else {
-                d->bar->setValueEx(step);
-                if (d->bar->isVisible()) {
-                    showRemainingTime();
-                }
-                d->bar->resetObserveEventFilter();
-                qApp->processEvents();
+                d->pump([this, step] {
+                    d->bar->setValueEx(step);
+                    if (d->bar->isVisible()) {
+                        showRemainingTime();
+                    }
+                    d->bar->resetObserveEventFilter();
+                });
             }
         }
     }
