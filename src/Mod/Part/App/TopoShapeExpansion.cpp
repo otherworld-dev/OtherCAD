@@ -5084,6 +5084,28 @@ public:
     }
 };
 
+namespace
+{
+// Whether refining left every shell as it was, so nothing was merged: the solid is built
+// again around the very same shells and cannot have come out reversed
+bool sameShells(const TopoDS_Shape& before, const TopoDS_Shape& after)
+{
+    TopTools_IndexedMapOfShape beforeShells;
+    TopTools_IndexedMapOfShape afterShells;
+    TopExp::MapShapes(before, TopAbs_SHELL, beforeShells);
+    TopExp::MapShapes(after, TopAbs_SHELL, afterShells);
+    if (beforeShells.Extent() != afterShells.Extent()) {
+        return false;
+    }
+    for (int i = 1; i <= afterShells.Extent(); ++i) {
+        if (!beforeShells.Contains(afterShells(i))) {
+            return false;
+        }
+    }
+    return true;
+}
+}  // namespace
+
 TopoShape& TopoShape::makeElementRefine(const TopoShape& shape, const char* op, RefineFail no_fail)
 {
     if (shape.isNull()) {
@@ -5103,8 +5125,12 @@ TopoShape& TopoShape::makeElementRefine(const TopoShape& shape, const char* op, 
         mkRefine.populate(mapper);
         mapper.init(shape, mkRefine.Shape());
         makeShapeWithElementMap(mkRefine.Shape(), mapper, {shape}, op);
-        // For some reason, refine operation may reverse the solid
-        fixSolidOrientation();
+        // For some reason, refine operation may reverse the solid. Checking classifies a point
+        // against the whole solid, a good part of a refine, so it is left out when no shell
+        // was touched.
+        if (!sameShells(shape.getShape(), mkRefine.Shape())) {
+            fixSolidOrientation();
+        }
         if (isClosed() == closed) {
             return *this;
         }
