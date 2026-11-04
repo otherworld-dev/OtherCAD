@@ -150,6 +150,20 @@ class TestWorkbenchSwitcher(unittest.TestCase):
     def test_the_block_opens_the_switcher(self):
         self._open()
 
+    def test_the_block_draws_its_arrow_rather_than_typing_it(self):
+        """The arrow after the title was the character U+25BE. The first geometric shape Qt
+        lays out makes it query every fallback font on the system, about a second of each
+        start, so the arrow is drawn and the title is plain text with room left for it."""
+
+        text = self.button.text()
+        self.assertEqual(text, text.strip())
+        self.assertFalse(
+            [c for c in text if 0x2190 <= ord(c) <= 0x2BFF],
+            "the block's title holds an arrow or shape character: %r" % text,
+        )
+        title_width = self.button.fontMetrics().horizontalAdvance(text)
+        self.assertGreater(self.button.sizeHint().width(), title_width + 8, "no room for the arrow")
+
     def test_the_ribbon_areas_lead_the_list_under_their_tab_names(self):
         rows = self._rows(self._open())
         workbenches = [workbench for _, workbench in rows if workbench]

@@ -152,6 +152,11 @@ done in this fork.
   already intended; on a 1600-object model a frame takes about a sixth of the work. The
   first draw after opening takes a little longer while the caches are built. The corner
   axis cross also stopped rebuilding its letter textures on every frame.
+- OtherCAD starts a little faster. Two things on the start screen made Qt look through
+  every fallback font on the system: the arrow after the ribbon's workspace name, which was
+  a character and is now drawn, and the first start page's list of languages, each named in
+  its own script, which was laid out on every start although it is shown only once. The
+  page is now built when it is opened.
 - Big sketches solve much faster. Every solve checks the sketch for redundant and
   conflicting constraints, and in sketches over about 250 lines that check took around a
   second. It now takes a few milliseconds. On a 576-line test sketch a solve drops from

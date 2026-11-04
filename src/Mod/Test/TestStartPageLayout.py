@@ -155,6 +155,42 @@ class TestStartPageLayout(unittest.TestCase):
         bodies = [obj for obj in doc.Objects if obj.TypeId == "PartDesign::Body"]
         self.assertEqual(1, len(bodies), "The new document should hold a body")
 
+    def test_the_first_start_page_is_built_only_when_shown(self):
+        """The first start page lists every language in its own script, and laying it out,
+        even hidden, made Qt load fallback fonts for a dozen scripts on every start. It is
+        built when it is first shown, which the sidebar's link still does."""
+
+        def first_start_widgets():
+            return [
+                w
+                for w in self.start_view.findChildren(QtWidgets.QWidget)
+                if w.metaObject().className() == "StartGui::FirstStartWidget"
+            ]
+
+        if self.params.GetBool("FirstStart2024", True):
+            self.skipTest("this profile has not done its first start, so the page is shown")
+        self.assertEqual(first_start_widgets(), [], "the first start page was built up front")
+
+        link = [
+            b
+            for b in self.start_view.findChildren(QtWidgets.QPushButton, "StartLinkButton")
+            if "first start" in b.text().lower()
+        ]
+        self.assertTrue(link, "the sidebar has no link to the first start page")
+        stack = self.start_view.findChild(QtWidgets.QStackedWidget)
+        try:
+            link[0].click()
+            _process_events(0.2)
+            self.assertEqual(len(first_start_widgets()), 1, "the link did not build the page")
+            page = first_start_widgets()[0]
+            # The start view need not be on screen here, so whether the page is the one shown
+            # is asked of the stack, and of the page whether it was left hidden
+            self.assertTrue(stack.currentWidget().isAncestorOf(page), "the link did not show it")
+            self.assertFalse(page.isHidden(), "the page was built but left hidden")
+        finally:
+            stack.setCurrentIndex(1)
+            _process_events(0.1)
+
     def test_show_on_startup_stores_what_it_shows(self):
         check = self._child(QtWidgets.QCheckBox, "StartShowOnStartup")
         self.assertEqual("Show this page on startup", check.text())

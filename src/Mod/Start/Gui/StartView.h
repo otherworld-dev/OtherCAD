@@ -40,6 +40,7 @@ class QAbstractItemModel;
 class QCheckBox;
 class QEvent;
 class QGridLayout;
+class QHBoxLayout;
 class QLabel;
 class QLineEdit;
 class QListView;
@@ -137,8 +138,12 @@ private:
     void retranslateUi();
     void setListViewUpdatesEnabled(bool enabled);
     void rebuildShortcutChips();
+    /// Builds the first start page the first time it is shown
+    void ensureFirstStartPage();
 
     QStackedWidget* _contents = nullptr;
+    QHBoxLayout* _firstStartRegion = nullptr;
+    QWidget* _firstStartPage = nullptr;
     Start::RecentFilesModel _recentFilesModel;
     Start::ExamplesModel _examplesModel;
     Start::CustomFolderModel _customFolderModel;
