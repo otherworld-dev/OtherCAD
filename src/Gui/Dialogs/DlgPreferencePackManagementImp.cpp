@@ -53,7 +53,8 @@ DlgPreferencePackManagementImp::DlgPreferencePackManagementImp(QWidget* parent)
         );
     }
     else {
-        ui->pushButtonOpenAddonManager->setDisabled(true);
+        // OtherCAD builds without the Addon Manager, so there is nothing for it to open
+        ui->pushButtonOpenAddonManager->hide();
     }
     connect(
         this,

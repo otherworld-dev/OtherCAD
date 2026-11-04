@@ -152,6 +152,9 @@ done in this fork.
   already intended; on a 1600-object model a frame takes about a sixth of the work. The
   first draw after opening takes a little longer while the caches are built. The corner
   axis cross also stopped rebuilding its letter textures on every frame.
+- FreeCAD's Addon Manager is no longer part of OtherCAD. Add-ons OtherCAD wants are built
+  in instead. A workbench folder dropped into the user's Mod folder still loads, and the
+  manager can be built back with -DBUILD_ADDONMGR=ON.
 - OtherCAD starts a little faster. Two things on the start screen made Qt look through
   every fallback font on the system: the arrow after the ribbon's workspace name, which was
   a character and is now drawn, and the first start page's list of languages, each named in
