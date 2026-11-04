@@ -28,6 +28,8 @@
 #include <QKeyEvent>
 #include <QList>
 #include <QMenu>
+#include <QPainter>
+#include <QPaintEvent>
 #include <QSignalBlocker>
 #include <QSize>
 #include <QSizePolicy>
@@ -64,6 +66,45 @@ constexpr int workspaceSelectorMinimumWidth = 180;
 // captions under the panels.
 constexpr int workspaceSelectorPointSizeDelta = 2;
 constexpr int separatorWidth = 1;
+// The small down arrow after the title, drawn rather than typed
+constexpr int workspaceArrowWidth = 7;
+constexpr int workspaceArrowGap = 8;
+
+// The block's title with a small down arrow after it, which says the block opens something.
+// The arrow used to be the character U+25BE, but the first geometric shape Qt lays out
+// makes it query every fallback font on the system, which took about a second of startup.
+class WorkspaceButton: public QToolButton
+{
+public:
+    using QToolButton::QToolButton;
+
+    QSize sizeHint() const override
+    {
+        QSize size = QToolButton::sizeHint();
+        size.rwidth() += workspaceArrowGap + workspaceArrowWidth;
+        return size;
+    }
+
+protected:
+    void paintEvent(QPaintEvent* event) override
+    {
+        QToolButton::paintEvent(event);
+        // just after the title, which the button centres
+        const int textWidth = fontMetrics().horizontalAdvance(text());
+        const qreal x = (width() + textWidth) / 2.0 + workspaceArrowGap;
+        const qreal y = height() / 2.0 - workspaceArrowWidth / 4.0;
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(palette().color(QPalette::ButtonText));
+        const QPointF points[3] = {
+            {x, y},
+            {x + workspaceArrowWidth, y},
+            {x + workspaceArrowWidth / 2.0, y + workspaceArrowWidth / 2.0 + 1.0},
+        };
+        painter.drawPolygon(points, 3);
+    }
+};
 }  // namespace
 
 
@@ -240,7 +281,7 @@ QWidget* RibbonBar::createWorkspaceBlock(QWidget* parent)
     blockLayout->setContentsMargins(0, 0, 0, 0);
     blockLayout->setSpacing(0);
 
-    workspaceButton = new QToolButton(block);
+    workspaceButton = new WorkspaceButton(block);
     workspaceButton->setObjectName(QStringLiteral("RibbonWorkspaceSelector"));
     workspaceButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
     workspaceButton->setAutoRaise(true);
@@ -287,9 +328,9 @@ QWidget* RibbonBar::createWorkspaceBlock(QWidget* parent)
 void RibbonBar::setWorkspaceTitle(const QString& title)
 {
     if (workspaceButton != nullptr) {
-        // The tab titles beside it are upper case, so the block matches them. The
-        // small down arrow says the block opens something.
-        workspaceButton->setText(title.toUpper() + QStringLiteral("  ") + QChar(0x25BE));
+        // The tab titles beside it are upper case, so the block matches them.
+        // WorkspaceButton draws the small down arrow after it.
+        workspaceButton->setText(title.toUpper());
     }
 }
 

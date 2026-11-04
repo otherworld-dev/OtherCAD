@@ -87,11 +87,11 @@ StartView::StartView(QWidget* parent)
     firstStartScrollArea->setWidget(firstStartScrollWidget);
     firstStartScrollArea->setWidgetResizable(true);
 
-    auto firstStartRegion = gsl::owner<QHBoxLayout*>(new QHBoxLayout(firstStartScrollWidget));
-    firstStartRegion->setAlignment(Qt::AlignCenter);
-    auto firstStartWidget = gsl::owner<FirstStartWidget*>(new FirstStartWidget(this));
-    connect(firstStartWidget, &FirstStartWidget::dismissed, this, &StartView::firstStartWidgetDismissed);
-    firstStartRegion->addWidget(firstStartWidget);
+    // Filled in only when it is shown (ensureFirstStartPage): its language list names every
+    // language in its own script, and laying that out, even hidden, made Qt load fallback
+    // fonts for a dozen scripts on every start.
+    _firstStartRegion = gsl::owner<QHBoxLayout*>(new QHBoxLayout(firstStartScrollWidget));
+    _firstStartRegion->setAlignment(Qt::AlignCenter);
     _contents->addWidget(firstStartScrollArea);
 
     // Documents page: the ways to start on the left, the files to open on the right
@@ -215,6 +215,9 @@ StartView::StartView(QWidget* parent)
 
     // Set startup widget according to the first start parameter
     auto firstStart = hGrp->GetBool("FirstStart2024", true);
+    if (firstStart) {
+        ensureFirstStartPage();
+    }
     _contents->setCurrentWidget(firstStart ? firstStartScrollArea : documentsWidget);
     if (customFolderListWidget) {
         configureCustomFolderListWidget(customFolderListWidget);
@@ -685,8 +688,20 @@ void StartView::showOnStartupChanged(bool checked)
     hGrp->SetBool("ShowOnStartup", checked);
 }
 
+void StartView::ensureFirstStartPage()
+{
+    if (_firstStartPage) {
+        return;
+    }
+    auto firstStartWidget = gsl::owner<FirstStartWidget*>(new FirstStartWidget(this));
+    connect(firstStartWidget, &FirstStartWidget::dismissed, this, &StartView::firstStartWidgetDismissed);
+    _firstStartRegion->addWidget(firstStartWidget);
+    _firstStartPage = firstStartWidget;
+}
+
 void StartView::openFirstStartClicked()
 {
+    ensureFirstStartPage();
     _contents->setCurrentIndex(0);
 }
 
