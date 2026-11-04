@@ -551,8 +551,16 @@ SoSeparator* createAxisArrowGeometry()
     return root;
 }
 
+// Bumped whenever setAxisLetterColor() recolours the letters' pixels, so the corner axis
+// cross hands them to its textures again only then: setting a texture's image marks it
+// changed, and doing it every frame copied the pixels and built the GL textures anew.
+int axisLetterPixelsVersion = 0;
+
 struct OverlayAxisCrossState
 {
+    // The axisLetterPixelsVersion the letter textures were last given
+    int letterImageVersion {-1};
+
     SoSeparator* axisRoot {nullptr};
     SoPerspectiveCamera* axisCamera {nullptr};
     SoDepthBuffer* axisDepth {nullptr};
@@ -5254,6 +5262,7 @@ void View3DInventorViewer::setAxisLetterColor(const SbColor& color)
     recolor(XPM_PIXEL_MASK, XPM_pixel_data, XPM_WIDTH, XPM_HEIGHT, XPM_BYTES_PER_PIXEL);
     recolor(YPM_PIXEL_MASK, YPM_pixel_data, YPM_WIDTH, YPM_HEIGHT, YPM_BYTES_PER_PIXEL);
     recolor(ZPM_PIXEL_MASK, ZPM_pixel_data, ZPM_WIDTH, ZPM_HEIGHT, ZPM_BYTES_PER_PIXEL);
+    ++axisLetterPixelsVersion;
 }
 
 void View3DInventorViewer::updateColors()
@@ -5422,9 +5431,12 @@ void View3DInventorViewer::drawAxisCross()
     placeLetter(overlay.yLetter, yLetterProjected);
     placeLetter(overlay.zLetter, zLetterProjected);
 
-    overlay.xLetter.texture->image.setValue(SbVec2s(XPM_WIDTH, XPM_HEIGHT), 4, XPM_pixel_data);
-    overlay.yLetter.texture->image.setValue(SbVec2s(YPM_WIDTH, YPM_HEIGHT), 4, YPM_pixel_data);
-    overlay.zLetter.texture->image.setValue(SbVec2s(ZPM_WIDTH, ZPM_HEIGHT), 4, ZPM_pixel_data);
+    if (overlay.letterImageVersion != axisLetterPixelsVersion) {
+        overlay.letterImageVersion = axisLetterPixelsVersion;
+        overlay.xLetter.texture->image.setValue(SbVec2s(XPM_WIDTH, XPM_HEIGHT), 4, XPM_pixel_data);
+        overlay.yLetter.texture->image.setValue(SbVec2s(YPM_WIDTH, YPM_HEIGHT), 4, YPM_pixel_data);
+        overlay.zLetter.texture->image.setValue(SbVec2s(ZPM_WIDTH, ZPM_HEIGHT), 4, ZPM_pixel_data);
+    }
 
     SbViewportRegion vp = this->getSoRenderManager()->getViewportRegion();
     vp.setViewportPixels(origin[0], origin[1], pixelarea, pixelarea);
