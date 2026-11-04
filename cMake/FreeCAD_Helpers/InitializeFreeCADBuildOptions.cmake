@@ -147,8 +147,7 @@ macro(InitializeFreeCADBuildOptions)
 
     option(BUILD_FEM "Build the FreeCAD FEM module" ON)
     option(BUILD_TEMPLATE "Build the FreeCAD template module which is only for testing purposes" OFF)
-    # Off in OtherCAD: the add-ons it wants are built in rather than installed by the user
-    option(BUILD_ADDONMGR "Build the FreeCAD addon manager module" OFF)
+    option(BUILD_ADDONMGR "Build the FreeCAD addon manager module" ON)
     option(BUILD_BIM "Build the FreeCAD BIM module" ON)
     option(BUILD_DRAFT "Build the FreeCAD draft module" ON)
     option(BUILD_HELP "Build the FreeCAD help module" ON)

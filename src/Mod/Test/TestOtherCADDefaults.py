@@ -467,21 +467,3 @@ class TestNaviCubeDefaults(unittest.TestCase):
         base = int(values["BaseColor"])
         brightest = max((base >> 24) & 0xFF, (base >> 16) & 0xFF, (base >> 8) & 0xFF)
         self.assertLess(brightest, 80, "the cube faces are not dark: BaseColor %08x" % base)
-
-
-class TestNoAddonManager(unittest.TestCase):
-    """OtherCAD builds without FreeCAD's Addon Manager: the add-ons it wants are built in rather
-    than installed by the user. Nothing may still be loading it or offering it."""
-
-    def test_the_addon_manager_is_not_loaded(self):
-        import sys
-
-        self.assertNotIn("AddonManager", sys.modules, "the Addon Manager was imported at start-up")
-        self.assertNotIn("Std_AddonMgr", FreeCADGui.listCommands())
-
-    def test_the_tools_menu_does_not_offer_it(self):
-        window = FreeCADGui.getMainWindow()
-        if window is None:
-            self.skipTest("no main window")
-        texts = [action.text().replace("&", "") for action in window.findChildren(QtGui.QAction)]
-        self.assertNotIn("Addon Manager", texts)
