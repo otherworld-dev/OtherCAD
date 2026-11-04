@@ -146,6 +146,12 @@ done in this fork.
   mouse. Drag it to see the part as it was earlier in its history.
 - A long body name on the timeline is cut short with "…", leaving the room for markers,
   and given in full when you hover over it.
+- Orbiting and hovering over big models is much smoother. Under the default "Auto"
+  render cache no object ever cached its drawing, so every frame sent every face of every
+  object to the graphics card again. Objects now cache as "Distributed" does, as the viewer
+  already intended; on a 1600-object model a frame takes about a sixth of the work. The
+  first draw after opening takes a little longer while the caches are built. The corner
+  axis cross also stopped rebuilding its letter textures on every frame.
 - Big sketches solve much faster. Every solve checks the sketch for redundant and
   conflicting constraints, and in sketches over about 250 lines that check took around a
   second. It now takes a few milliseconds. On a 576-line test sketch a solve drops from

@@ -1140,8 +1140,11 @@ void ViewProvider::beforeDelete()
 
 void ViewProvider::setRenderCacheMode(int mode)
 {
-    pcRoot->renderCaching = mode == 0 ? SoSeparator::AUTO
-                                      : (mode == 1 ? SoSeparator::ON : SoSeparator::OFF);
+    // "Auto" leaves caching to Coin's own heuristics, but the viewer switches those off
+    // (COIN_AUTO_CACHING=0, see View3DInventorViewer::setRenderCache) and falls back to
+    // "Distributed" for its own separators. A root left on AUTO then never cached at all,
+    // so every object's faces were sent again on every frame. Fall back the same way.
+    pcRoot->renderCaching = mode == 2 ? SoSeparator::OFF : SoSeparator::ON;
 }
 
 void ViewProvider::toggleVisibility()

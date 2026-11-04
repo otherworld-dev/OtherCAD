@@ -36,6 +36,7 @@ SET(Test_SRCS
     TestView3DFramebufferCapture.py
     TestSelectionVisual.py
     TestCornerAxisCrossVisual.py
+    TestRenderCaching.py
     TestViewProviderLink.py
     TestOriginPlaneHover.py
     TestNavigationBarIcons.py
