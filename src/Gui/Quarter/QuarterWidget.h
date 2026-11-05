@@ -134,6 +134,7 @@ public:
   void setNavigationModeFile(const QUrl & url = QUrl(QString::fromLatin1(DEFAULT_NAVIGATIONFILE)));
   const QUrl & navigationModeFile() const;
   void setupDefaultCursors();
+  void renderNow();
 
   void setContextMenuEnabled(bool yes);
   bool contextMenuEnabled() const;
