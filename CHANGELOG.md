@@ -152,6 +152,9 @@ done in this fork.
   already intended; on a 1600-object model a frame takes about a sixth of the work. The
   first draw after opening takes a little longer while the caches are built. The corner
   axis cross also stopped rebuilding its letter textures on every frame.
+- Saving is about 30% faster. Shapes are now saved in OpenCASCADE's binary format rather than
+  as text, which took most of the time; files are no bigger, FreeCAD reads them, and
+  autosave already used it. Set Document/SaveBinaryBrep to false to save text again.
 - Recomputes with long booleans are faster again. While an operation shows its progress, the
   window was repainted every 100 ms, and in a big window with overlay panels that took a
   third of the operation; repaints are now spaced to take at most about a tenth. Refine
