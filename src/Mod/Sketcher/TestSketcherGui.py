@@ -9,6 +9,7 @@ from SketcherTests.TestExternalFacePreselection import TestExternalFacePreselect
 from SketcherTests.TestSketchDimensionBox import TestSketchDimensionBox
 from SketcherTests.TestVisualLayerListGui import TestVisualLayerListGui
 from SketcherTests.TestCarbonCopyModelTreeDragging import TestCarbonCopyModelTreeDragging
+from SketcherTests.TestConvertToNURBSGui import TestConvertToNURBSGui
 
 # Use the module so that code checkers don't complain (flake8)
 (
@@ -23,5 +24,6 @@ from SketcherTests.TestCarbonCopyModelTreeDragging import TestCarbonCopyModelTre
     and TestSketchDimensionBox
     and TestVisualLayerListGui
     and TestCarbonCopyModelTreeDragging
+    and TestConvertToNURBSGui
     else False
 )
