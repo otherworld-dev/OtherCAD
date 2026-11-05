@@ -189,9 +189,13 @@ public:
     // \endcode
     void paintGL() override
     {
+        // grabFramebuffer() binds this widget's framebuffer, calls paintGL() and reads the
+        // framebuffer straight back, so the scene has to be drawn here and now. redraw() only
+        // asks for a frame later, which left the grab black on Windows, and with it the
+        // frozen image the lasso selection draws over.
         QuarterWidget* qw = qobject_cast<QuarterWidget*>(parentWidget());
         if (qw) {
-            qw->redraw();
+            qw->renderNow();
         }
     }
 
@@ -970,6 +974,18 @@ bool QuarterWidget::viewportEvent(QEvent* event)
   when the scene is rendered yourself, you can turn off autoredraw in the
   render manager and render the scene by calling this method.
 */
+/*!
+  Renders the scene into the OpenGL framebuffer that is bound now, at once. Unlike
+  redraw(), which asks for a frame to be drawn later, this is for a caller that reads the
+  framebuffer straight back.
+*/
+void
+QuarterWidget::renderNow()
+{
+  getSoRenderManager()->activate();
+  this->actualRedraw();
+}
+
 void
 QuarterWidget::redraw()
 {

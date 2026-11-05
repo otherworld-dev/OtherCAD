@@ -224,12 +224,7 @@ class TestSelectionVisual(unittest.TestCase):
         path.getTail().getField("preselectionMode").set(mode)
 
     def _rendered_center_color(self):
-        """The centre pixel of an offscreen render of the view.
-
-        grabFramebuffer() comes back all black in this build - the capture contract
-        in TestView3DFramebufferCapture fails the same way - so this renders the
-        scene offscreen instead.
-        """
+        """The centre pixel of an offscreen render of the view."""
         image = self.viewer.renderToImage(width=400, height=300, samples=0)
         color = image.pixelColor(image.width() // 2, image.height() // 2)
         return (color.redF(), color.greenF(), color.blueF())

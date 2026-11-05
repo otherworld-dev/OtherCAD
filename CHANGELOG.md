@@ -224,6 +224,10 @@ done in this fork.
 
 ### Fixed
 
+- Drawing a lasso or polygon selection (polygon pick, freehand, mesh and points clip) no
+  longer turns the 3D view black on Windows while you draw, and grabFramebuffer() returns
+  the picture of the view instead of a black image. The view was only asked to draw itself
+  later, after the image had already been read back.
 - When a long history scrolled, the timeline's scroll bar covered the bottom of the
   feature icons. The strip is now a little taller and the bar sits below them.
 - `doc.recompute()` called while the document is already recomputing returns -1, and
