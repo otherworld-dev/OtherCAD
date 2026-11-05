@@ -467,3 +467,50 @@ class TestNaviCubeDefaults(unittest.TestCase):
         base = int(values["BaseColor"])
         brightest = max((base >> 24) & 0xFF, (base >> 16) & 0xFF, (base >> 8) & 0xFF)
         self.assertLess(brightest, 80, "the cube faces are not dark: BaseColor %08x" % base)
+
+
+class TestSaveBinaryBrep(unittest.TestCase):
+    """OtherCAD saves shapes as binary BREP unless told otherwise: writing them as text took
+    about 70% of saving a big model, and the binary form is no bigger once zipped."""
+
+    DOCUMENT_PARAMS = "User parameter:BaseApp/Preferences/Document"
+
+    def setUp(self):
+        self.params = FreeCAD.ParamGet(self.DOCUMENT_PARAMS)
+        self._had_value = "SaveBinaryBrep" in self.params.GetBools()
+        self._saved_value = self.params.GetBool("SaveBinaryBrep", True)
+        self.params.RemBool("SaveBinaryBrep")
+        self.tempdir = tempfile.mkdtemp(prefix="TestSaveBinaryBrep")
+        self.docs = []
+
+    def tearDown(self):
+        for name in self.docs:
+            if name in FreeCAD.listDocuments():
+                FreeCAD.closeDocument(name)
+        if self._had_value:
+            self.params.SetBool("SaveBinaryBrep", self._saved_value)
+        import shutil
+
+        shutil.rmtree(self.tempdir, ignore_errors=True)
+
+    def test_shapes_are_saved_binary_and_read_back(self):
+        import zipfile
+
+        doc = FreeCAD.newDocument("TestSaveBinaryBrep")
+        self.docs.append(doc.Name)
+        box = doc.addObject("Part::Box", "Box")
+        doc.recompute()
+        volume = box.Shape.Volume
+        path = os.path.join(self.tempdir, "binary.FCStd")
+        doc.saveAs(path)
+        FreeCAD.closeDocument(doc.Name)
+
+        names = zipfile.ZipFile(path).namelist()
+        self.assertTrue([n for n in names if n.endswith(".bin")], "no binary shape in %s" % names)
+        self.assertFalse([n for n in names if n.endswith(".brp")], "a shape was saved as text")
+
+        reopened = FreeCAD.openDocument(path)
+        self.docs.append(reopened.Name)
+        shape = reopened.getObject("Box").Shape
+        self.assertFalse(shape.isNull())
+        self.assertAlmostEqual(shape.Volume, volume, places=6)

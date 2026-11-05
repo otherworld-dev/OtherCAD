@@ -2042,7 +2042,9 @@ bool Document::saveToFile(const char* filename) const
         writer.setLevel(compression);
         writer.putNextEntry("Document.xml");
 
-        if (hGrp->GetBool("SaveBinaryBrep", false)) {
+        // Binary by default in OtherCAD: writing shapes as text BREP took about 70% of a save,
+        // and the binary form is no bigger once zipped. Autosave and recovery write binary too.
+        if (hGrp->GetBool("SaveBinaryBrep", true)) {
             writer.setMode("BinaryBrep");
         }
 
