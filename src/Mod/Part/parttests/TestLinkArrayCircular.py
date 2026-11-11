@@ -104,21 +104,11 @@ class TestLinkArrayCircular(unittest.TestCase):
                     self.assertAlmostEqual(getattr(placement.Base, coordinate), 0)
 
     def testObjectAxesSurviveSaveRestore(self):
-        source = self.doc.getObject("Source")
-        linear = self.doc.addObject("Part::LinkArrayLinear", "Linear")
-        polar = self.doc.addObject("Part::LinkArrayPolar", "Polar")
-        linear.LinkedObject = source
-        polar.LinkedObject = source
-        linear.ShowElement = polar.ShowElement = False
-        linear.Direction = (None, ["Z_Axis"])
-        linear.Direction2 = (None, ["X_Axis"])
-        linear.Occurrences2 = 3
-        polar.Axis = (None, ["Y_Axis"])
+        # Upstream checks its linear and polar link arrays here too; this tree only has the
+        # circular one
         self.array.Axis = (None, ["X_Axis"])
         self.doc.recompute()
         references = {
-            "Linear": {"Direction": linear.Direction, "Direction2": linear.Direction2},
-            "Polar": {"Axis": polar.Axis},
             "Array": {"Axis": self.array.Axis},
         }
         placements = {name: list(self.doc.getObject(name).PlacementList) for name in references}

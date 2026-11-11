@@ -371,8 +371,15 @@ class TestCore(AssemblyTestBase):
         box.Placement = placement
         return box
 
+    def _new_array(self, type_name):
+        # Upstream's linear, polar, path and point link arrays are not in this tree; only the
+        # circular one is
+        if App.Base.TypeId.fromName(type_name).isBad():
+            self.skipTest("{} is not available".format(type_name))
+        return self.assembly.newObject(type_name, "Array")
+
     def _linear_array(self, linked, occurrences, offset, spacing=False):
-        array = self.assembly.newObject("Part::LinkArrayLinear", "Array")
+        array = self._new_array("Part::LinkArrayLinear")
         array.LinkedObject = linked
         array.Occurrences = occurrences
         array.Offset = offset
@@ -598,12 +605,13 @@ class TestCore(AssemblyTestBase):
         inner = self._box(
             sub, "InnerBox", 10, 10, 10, App.Placement(App.Vector(0, 30, 15), rotation)
         )
-        array = self.assembly.newObject("Part::LinkArray" + kind, "Array")
+        array = self._new_array("Part::LinkArray" + kind)
         array.LinkedObject = sub
         array.ShowElement = True
         if kind == "Circular":
             array.Axis = (None, ["Z_Axis"])
-            array.BinormalAxis = (None, ["Y_Axis"])
+            if hasattr(array, "BinormalAxis"):  # not on this tree's circular array
+                array.BinormalAxis = (None, ["Y_Axis"])
         elif kind in ("Path", "Point"):
             pattern = self.doc.addObject("Part::Feature", "Pattern")
             pattern.Shape = Part.makePolygon([App.Vector(), App.Vector(120, 0, 0)])
