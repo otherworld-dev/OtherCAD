@@ -289,7 +289,7 @@ private:
                     );
                 }
                 catch (const Base::Exception& e) {
-                    Base::Console().error("{}\n", e.what());
+                    Base::Console().error("%s\n", e.what());
                 }
             }
             ++i;
