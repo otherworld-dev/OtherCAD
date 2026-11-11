@@ -127,6 +127,10 @@ def isLink(obj):
     return (obj.TypeId == "App::Link" and obj.ElementCount == 0) or obj.TypeId == "App::LinkElement"
 
 
+def isLinkArray(obj):
+    return obj is not None and obj.isDerivedFrom("Part::LinkArray")
+
+
 def isLinkGroup(obj):
     return obj.TypeId == "App::Link" and obj.ElementCount > 0
 
