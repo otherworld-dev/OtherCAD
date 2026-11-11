@@ -1718,7 +1718,7 @@ bool ViewProviderSketch::mouseButtonPressed(int Button, bool pressed, const SbVe
                         preselectToSelection(ss, selectionPoint, false);
                     }
                     setSketchMode(STATUS_NONE);
-                    generateContextMenu();
+                    generateContextMenu(viewer);
                     return true;
                 case STATUS_SELECT_Cross:
                     if (hasSelectionPoint) {
