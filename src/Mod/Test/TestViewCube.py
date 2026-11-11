@@ -223,6 +223,8 @@ class TestHoverFade(ViewCubeTestBase):
         north = self.QtCore.QPoint(centre.x(), round(centre.y() - size / 2 + 0.15 * size))
         self._move(centre)
         self._move(north)
+        # The viewer coalesces a burst of moves, so the second one lands when its timer flushes
+        self._wait_for(lambda: self.cube_node().hiliteId.getValue() == 27)
         self.assertEqual(
             self.cube_node().hiliteId.getValue(), 27, "the North triangle is not under the pointer"
         )
