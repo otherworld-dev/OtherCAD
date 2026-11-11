@@ -2321,6 +2321,7 @@ void setCategoryFilterRules()
     stream << "qt.qpa.mime.warning=false\n";
     stream << "qt.qpa.wayland.warning=false\n";
     stream << "qt.qpa.wayland.*.warning=false\n";
+    stream << "qt.accessibility.table.warning=false\n";
     stream << "qt.svg.warning=false\n";
     stream << "qt.xkb.compose.warning=false\n";
     stream << "kf.*.warning=false\n";
@@ -2858,6 +2859,9 @@ void Application::setStatus(Status pos, bool on)
 
 void Application::setStyleSheet(const QString& qssFile, bool tiledBackground)
 {
+    // Warning: any use of setStyleSheet will stop propagation of the system palette
+    // Breaking the light/dark switch from the system and themes from it.
+
     Gui::MainWindow* mw = getMainWindow();
     auto mdi = mw->findChild<QMdiArea*>();
     mdi->setProperty("showImage", tiledBackground);
@@ -2940,8 +2944,8 @@ void Application::setStyleSheet(const QString& qssFile, bool tiledBackground)
                 QLabel l1, l2;
                 l2.setProperty("haslink", QByteArray("true"));
 
-                l1.show();
-                l2.show();
+                l1.ensurePolished();
+                l2.ensurePolished();
                 QColor text = l1.palette().color(QPalette::Text);
                 QColor link = l2.palette().color(QPalette::Text);
 
@@ -2955,13 +2959,13 @@ void Application::setStyleSheet(const QString& qssFile, bool tiledBackground)
     }
     else {
         if (tiledBackground) {
-            qApp->setStyleSheet(defaultStyleSheet);
+            qApp->setStyleSheet(QString());
             ActionStyleEvent e(ActionStyleEvent::Restore);
             qApp->sendEvent(getMainWindow(), &e);
             mdi->setBackground(QPixmap(QLatin1String("images:background.png")));
         }
         else {
-            qApp->setStyleSheet(defaultStyleSheet);
+            qApp->setStyleSheet(QString());
             ActionStyleEvent e(ActionStyleEvent::Restore);
             qApp->sendEvent(getMainWindow(), &e);
             mdi->setBackground(QBrush(QColor(160, 160, 160)));

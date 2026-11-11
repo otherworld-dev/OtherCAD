@@ -450,7 +450,13 @@ void CmdPartDesignSubShapeBinder::activated(int iMsg)
     }
 
     std::string FeatName;
-    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(false, true, true, &parent, &parentSub);
+    PartDesign::Body* pcActiveBody = PartDesignGui::getBody(
+        /*messageIfNot=*/false,
+        /*autoActivate=*/false,
+        /*assertModern=*/true,
+        &parent,
+        &parentSub
+    );
     FeatName = getUniqueObjectName("Binder", pcActiveBody);
     if (parent) {
         decltype(values) links;
@@ -558,6 +564,15 @@ void CmdPartDesignClone::activated(int iMsg)
             obj,
             std::stringstream() << "addObject('PartDesign::Body','" << bodyName << "')"
         );
+
+        App::Part* actPart = PartDesignGui::getActivePart();
+        if (actPart && actPart->getDocument() == obj->getDocument()) {
+            Gui::cmdAppDocument(
+                obj,
+                std::stringstream() << actPart->getNameInDocument() << ".addObject(App.getDocument('"
+                                    << obj->getDocument()->getName() << "')." << bodyName << ")"
+            );
+        }
         Gui::cmdAppDocument(
             obj,
             std::stringstream() << "addObject('PartDesign::FeatureBase','" << cloneName << "')"

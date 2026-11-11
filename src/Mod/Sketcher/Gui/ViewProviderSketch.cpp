@@ -1473,6 +1473,13 @@ bool ViewProviderSketch::mouseButtonPressed(int Button, bool pressed, const SbVe
             }
         }
         else {// Button 1 released
+            if (Mode == STATUS_SKETCH_Drag || Mode == STATUS_SKETCH_DragConstraint) {
+                // Use the actual cursor position instead of the picked geometry position.
+                if (!getCoordsOnSketchPlane(
+                        point, normal, snapHandle->cursorPos.x, snapHandle->cursorPos.y)) {
+                    return false;
+                }
+            }
             // Do things depending on the mode of the user interaction
             switch (Mode) {
                 case STATUS_SELECT_Point:
@@ -1675,7 +1682,7 @@ bool ViewProviderSketch::mouseButtonPressed(int Button, bool pressed, const SbVe
                     sketchHandler->pressRightButton(Base::Vector2d(x, y));
                     return true;
                 case STATUS_NONE:
-                    generateContextMenu();
+                    generateContextMenu(viewer);
                     return true;
                 case STATUS_SELECT_Point:
                     if (hasSelectionPoint) {
@@ -1686,7 +1693,7 @@ bool ViewProviderSketch::mouseButtonPressed(int Button, bool pressed, const SbVe
                         preselectToSelection(ss, selectionPoint, false);
                     }
                     setSketchMode(STATUS_NONE);
-                    generateContextMenu();
+                    generateContextMenu(viewer);
                     return true;
                 case STATUS_SELECT_Edge:
                     if (hasSelectionPoint) {
@@ -1701,7 +1708,7 @@ bool ViewProviderSketch::mouseButtonPressed(int Button, bool pressed, const SbVe
                         preselectToSelection(ss, selectionPoint, false);
                     }
                     setSketchMode(STATUS_NONE);
-                    generateContextMenu();
+                    generateContextMenu(viewer);
                     return true;
                 case STATUS_SELECT_Face:
                     if (hasSelectionPoint && preselection.isFacePreselected()) {
@@ -1711,7 +1718,7 @@ bool ViewProviderSketch::mouseButtonPressed(int Button, bool pressed, const SbVe
                         preselectToSelection(ss, selectionPoint, false);
                     }
                     setSketchMode(STATUS_NONE);
-                    generateContextMenu();
+                    generateContextMenu(viewer);
                     return true;
                 case STATUS_SELECT_Cross:
                     if (hasSelectionPoint) {
@@ -1733,7 +1740,7 @@ bool ViewProviderSketch::mouseButtonPressed(int Button, bool pressed, const SbVe
                         preselectToSelection(ss, selectionPoint, false);
                     }
                     setSketchMode(STATUS_NONE);
-                    generateContextMenu();
+                    generateContextMenu(viewer);
                     return true;
                 case STATUS_SELECT_Constraint: {
                     if (hasSelectionPoint) {
@@ -1746,7 +1753,7 @@ bool ViewProviderSketch::mouseButtonPressed(int Button, bool pressed, const SbVe
                         }
                     }
                     setSketchMode(STATUS_NONE);
-                    generateContextMenu();
+                    generateContextMenu(viewer);
                     return true;
                 }
                 case STATUS_SKETCH_Drag:
@@ -1800,7 +1807,7 @@ void ViewProviderSketch::editDoubleClicked()
         }
 
         if (textConstrId != -1) {
-            EditTextDialog editTextDialog(this, textConstrId);
+            EditTextDialog editTextDialog(this, textConstrId, Gui::getMainWindow());
             editTextDialog.exec();
             setSketchMode(STATUS_NONE);
         }
@@ -1831,7 +1838,7 @@ void ViewProviderSketch::editDoubleClicked()
                 }
             }
             else if (Constr->Type == Sketcher::Text) {
-                EditTextDialog editTextDialog(this, id);
+                EditTextDialog editTextDialog(this, id, Gui::getMainWindow());
                 editTextDialog.exec();
             }
         }
@@ -2876,7 +2883,7 @@ Base::BoundBox3d ViewProviderSketch::_getBoundingBox(
 
     // Apply the accumulated transformation
     if (bbox.IsValid()) {
-        bbox.Transformed(m);
+        bbox = bbox.Transformed(m);
     }
 
     return bbox;
@@ -4155,10 +4162,12 @@ void ViewProviderSketch::slotSolverUpdate()
             + getSketchObject()->getHighestCurveIndex() + 1
         == getSolvedSketch().getGeometrySize()) {
 
+        draw(false, true);
+
         Gui::MDIView* mdi =
             Gui::Application::Instance->editViewOfNode(editCoinManager->getRootEditNode());
         if (mdi && mdi->isDerivedFrom<Gui::View3DInventor>()) {
-            draw(false, true);
+            static_cast<Gui::View3DInventor*>(mdi)->getViewer()->redraw();
         }
 
         signalConstraintsChanged();
@@ -4594,24 +4603,19 @@ bool ViewProviderSketch::setEdit(int ModNum)
         Base::Console().error("ViewProviderSketch::setEdit: %s\n", e.GetMessageString());
     }
 
-    // intercept del key press from main app
-    listener = std::make_unique<ShortcutListener>(this);
-
-    Gui::getMainWindow()->installEventFilter(listener.get());
-    if (editDoc && editDoc->isActive()) {
-        setupActiveAndInEdit();
-    }
+    setupActiveAndInEdit();
 
     return true;
 }
 void ViewProviderSketch::setupActiveAndInEdit()
 {
-    if (!listener) {
-        // intercept del key press from main app
-        listener = std::make_unique<ShortcutListener>(this);
-
-        Gui::getMainWindow()->installEventFilter(listener.get());
+    if (listener) {
+        return;
     }
+
+    // intercept del key press from main app
+    listener = std::make_unique<ShortcutListener>(this);
+    Gui::getMainWindow()->installEventFilter(listener.get());
     attachSelection();
 
     Workbench::enterEditMode();
@@ -4622,10 +4626,12 @@ void ViewProviderSketch::setupActiveAndInEdit()
 }
 void ViewProviderSketch::unsetupActiveAndInEdit()
 {
-    if (listener) {
-        Gui::getMainWindow()->removeEventFilter(listener.get());
-        listener.reset();
+    if (!listener) {
+        return;
     }
+
+    Gui::getMainWindow()->removeEventFilter(listener.get());
+    listener.reset();
     detachSelection();
 
     Workbench::leaveEditMode();
@@ -4789,11 +4795,6 @@ void ViewProviderSketch::unsetEdit(int ModNum)
     setGridEnabled(nullptr);
     auto gridnode = getGridNode();
     pcRoot->removeChild(gridnode);
-
-    if (listener) {
-        Gui::getMainWindow()->removeEventFilter(listener.get());
-        listener.reset();
-    }
 
     if (isInEditMode()) {
         if (sketchHandler) {
@@ -5690,7 +5691,7 @@ bool ViewProviderSketch::isInEditMode() const
 {
     return editCoinManager != nullptr;
 }
-void ViewProviderSketch::generateContextMenu()
+void ViewProviderSketch::generateContextMenu(const Gui::View3DInventorViewer* viewer)
 {
     if (blockContextMenu) return;
 
@@ -5951,8 +5952,7 @@ void ViewProviderSketch::generateContextMenu()
     }
     // create context menu
     Gui::Application::Instance->setupContextMenu("Sketch", &menu);
-    QMenu contextMenu(
-        qobject_cast<Gui::View3DInventor*>(this->getActiveView())->getViewer()->getGLWidget());
+    QMenu contextMenu(viewer->getGLWidget());
     Gui::MenuManager::getInstance()->setupContextMenu(&menu, contextMenu);
     contextMenu.exec(QCursor::pos());
 }

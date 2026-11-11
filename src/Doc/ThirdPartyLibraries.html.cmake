@@ -49,7 +49,7 @@
       </tr>
 
       <tr>
-         <th align = 'left' > <a href = 'https://eigen.tuxfamily.org' > Eigen </a> </th>
+         <th align = 'left' > <a href = 'https://libeigen.gitlab.io/' > Eigen </a> </th>
          <td> <code> ${EIGEN3_VERSION} </code> </td>
          <th colspan = '5' ></th>
          <th align = 'left' > <a href = 'https://freetype.org' > FreeType </a> </th>
@@ -57,10 +57,10 @@
       </tr>     
 
       <tr>
-         <th align = 'left' > <a href = 'https://opencascade.com/open-cascade-technology' > Open CASCADE </a> </th>
+         <th align = 'left' > <a href = 'https://www.occt3d.com/open-cascade-technology/' > Open CASCADE </a> </th>
          <td> <code> ${OCC_VERSION_STRING} </code> </td>
          <th colspan = '5' ></th>
-         <th align = 'left' > <a href = 'https://pointclouds.or' > PCL </a> </th>
+         <th align = 'left' > <a href = 'https://pointclouds.org' > PCL </a> </th>
          <td> <code> ${PCL_VERSION} </code> </td>
       </tr>
 

@@ -553,7 +553,7 @@ TEST_F(SchemaTest, imperial_building_special_function_length)
     GTEST_SKIP() << "QuantityParser::yyparse() is crashing on the >>1' 2\" + 1/4\"<< input, "
                     "so disable this test";
     constexpr auto val {360.6};
-    const auto result = set("ImperialBuilding", Unit::Length, val);
+    const auto result = setWithDenominator("ImperialBuilding", val, Unit::Length, 8);
     const auto expect = Tools::escapeQuotesFromString("1' 2\" + 1/4\"");
 
     EXPECT_EQ(result, expect);
@@ -653,7 +653,7 @@ TEST_F(SchemaTest, round_trip_test)
         Unit::Work,
         Unit::Power,
         Unit::Moment,
-        Unit::Inertia,
+        Unit::MassMomentOfInertia,
         Unit::SpecificEnergy,
         Unit::ThermalConductivity,
         Unit::ThermalExpansionCoefficient,
@@ -824,7 +824,7 @@ TEST_F(SchemaTest, sweep_internal)
          "1000 m^2",
          "1 km^2",
          /* default */ "1e+06 km^2"},
-        // Inertia
+        // MassMomentOfInertia
         {"1 kg*mm^2", "10 kg*mm^2", "100 kg*mm^2"},
         // Volume
         {"1 mm^3",
@@ -1252,7 +1252,7 @@ TEST_F(SchemaTest, sweep_mks)
          "100 mF",
          "1 F",
          /* default */ "1e+06 F"},
-        // Inertia
+        // MassMomentOfInertia
         {"1 kg*m^2", "10 kg*m^2", "100 kg*m^2"},
     });
 }
@@ -1298,7 +1298,7 @@ TEST_F(SchemaTest, sweep_imperial)
          "100 psi",
          "1 ksi",
          /* default */ "1e+06 psi"},
-        // Inertia
+        // MassMomentOfInertia
         {"1 lb*in^2", "10 lb*in^2", "100 lb*in^2"},
     });
 }

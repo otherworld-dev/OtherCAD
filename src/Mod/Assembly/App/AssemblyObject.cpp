@@ -312,6 +312,9 @@ void AssemblyObject::onChanged(const App::Property* prop)
 
 int AssemblyObject::solve(bool enableRedo)
 {
+    // updateSolveStatus() solves on demand; suppress that while a solve is running.
+    Base::StateLocker lock(solveInProgress);
+
     ensureIdentityPlacements();
 
     syncGroundedJoints();
@@ -386,7 +389,9 @@ void AssemblyObject::updateSolveStatus()
     // +1 because the assembly origin is also represented by a solver body.
     lastDoF = (1 + numberOfSolverBodies) * 6;
 
-    if (!mbdAssembly || !mbdAssembly->mbdSystem) {
+    // Solve on demand when queried before the system is solved, but not from within
+    // a solve: solve() calls this, so a failed solve would recurse indefinitely.
+    if (!solveInProgress && (!mbdAssembly || !mbdAssembly->mbdSystem)) {
         solve();
     }
 
@@ -1035,6 +1040,24 @@ void AssemblyObject::updateRigidPlacementCache()
     });
 }
 
+namespace
+{
+// A singular solve can return NaN or infinite placements. NaN coordinates defeat
+// the bounding-box rejection in SoRayPickAction, so writing one into the document
+// makes every ray pick hit everything; reject them at the solver/document boundary.
+bool isFinitePlacement(const Base::Placement& plc)
+{
+    const Base::Vector3d& pos = plc.getPosition();
+    double q0 {};
+    double q1 {};
+    double q2 {};
+    double q3 {};
+    plc.getRotation().getValue(q0, q1, q2, q3);
+    return std::isfinite(pos.x) && std::isfinite(pos.y) && std::isfinite(pos.z) && std::isfinite(q0)
+        && std::isfinite(q1) && std::isfinite(q2) && std::isfinite(q3);
+}
+}  // namespace
+
 void AssemblyObject::setNewPlacements()
 {
     for (auto& pair : objectPartMap) {
@@ -1055,6 +1078,14 @@ void AssemblyObject::setNewPlacements()
         Base::Placement newPlacement = getMbdPlacement(mbdPart);
         if (!pair.second.offsetPlc.isIdentity()) {
             newPlacement = newPlacement * pair.second.offsetPlc;
+        }
+        if (!isFinitePlacement(newPlacement)) {
+            Base::Console().warning(
+                "Assembly: solver returned a non-finite placement for '%s'; keeping its "
+                "previous position.\n",
+                obj->getFullName().c_str()
+            );
+            continue;
         }
         if (!propPlacement->getValue().isSame(newPlacement)) {
             propPlacement->setValue(newPlacement);
@@ -1082,25 +1113,32 @@ void AssemblyObject::redrawJointPlacement(App::DocumentObject* joint)
 
     Base::PyGILStateLocker lock;
 
-    App::PropertyPythonObject* proxy = joint
-        ? dynamic_cast<App::PropertyPythonObject*>(joint->getPropertyByName("Proxy"))
-        : nullptr;
+    try {
+        auto* proxy = dynamic_cast<App::PropertyPythonObject*>(joint->getPropertyByName("Proxy"));
 
-    if (!proxy) {
-        return;
+        if (!proxy) {
+            return;
+        }
+
+        Py::Object jointPy = proxy->getValue();
+
+        if (!jointPy.hasAttr("redrawJointPlacements")) {
+            return;
+        }
+
+        Py::Object attr = jointPy.getAttr("redrawJointPlacements");
+        if (attr.ptr() && attr.isCallable()) {
+            Py::Tuple args(1);
+            args.setItem(0, Py::asObject(joint->getPyObject()));
+            Py::Callable(attr).apply(args);
+        }
     }
-
-    Py::Object jointPy = proxy->getValue();
-
-    if (!jointPy.hasAttr("redrawJointPlacements")) {
-        return;
-    }
-
-    Py::Object attr = jointPy.getAttr("redrawJointPlacements");
-    if (attr.ptr() && attr.isCallable()) {
-        Py::Tuple args(1);
-        args.setItem(0, Py::asObject(joint->getPyObject()));
-        Py::Callable(attr).apply(args);
+    catch (Py::Exception&) {
+        // Callers run inside Qt event handlers, which cannot propagate C++ exceptions
+        // out of the joint's Python callback. Report the error and keep redrawing the
+        // remaining joints.
+        Base::PyException e;
+        e.reportException();
     }
 }
 
@@ -2376,7 +2414,7 @@ void AssemblyObject::getRackPinionMarkers(
     Base::Rotation yawRotation(currentZAxis, yawAdjustment);
 
     // Combine the initial rotation with the yaw adjustment
-    Base::Rotation adjustedRotation = rot * yawRotation;
+    Base::Rotation adjustedRotation = yawRotation * rot;
     plc1.setRotation(adjustedRotation);
 
     // Then end of processing similar to handleOneSideOfJoint :
@@ -2403,14 +2441,12 @@ void AssemblyObject::getRackPinionMarkers(
 int AssemblyObject::slidingPartIndex(App::DocumentObject* joint)
 {
     App::DocumentObject* part1 = getMovingPartFromRef(joint, "Reference1");
-    App::DocumentObject* obj1 = getObjFromJointRef(joint, "Reference1");
-    boost::ignore_unused(obj1);
-    Base::Placement plc1 = getPlacementFromProp(joint, "Placement1");
-
     App::DocumentObject* part2 = getMovingPartFromRef(joint, "Reference2");
-    App::DocumentObject* obj2 = getObjFromJointRef(joint, "Reference2");
-    boost::ignore_unused(obj2);
-    Base::Placement plc2 = getPlacementFromProp(joint, "Placement2");
+
+    // Compare the JCS in global coordinates: the slider and this joint may reference
+    // different sub-objects of the same part.
+    Base::Placement plc1 = getJointSideGlobalPlacement(joint, "Reference1", "Placement1");
+    Base::Placement plc2 = getJointSideGlobalPlacement(joint, "Reference2", "Placement2");
 
     int slidingFound = 0;
     for (auto* jt : getJoints()) {
@@ -2422,21 +2458,22 @@ int AssemblyObject::slidingPartIndex(App::DocumentObject* joint)
             if (jpart1 == part1 || jpart1 == part2) {
                 found = (jpart1 == part1) ? 1 : 2;
                 plci = (jpart1 == part1) ? plc1 : plc2;
-                plcjt = getPlacementFromProp(jt, "Placement1");
+                plcjt = getJointSideGlobalPlacement(jt, "Reference1", "Placement1");
             }
             else if (jpart2 == part1 || jpart2 == part2) {
                 found = (jpart2 == part1) ? 1 : 2;
                 plci = (jpart2 == part1) ? plc1 : plc2;
-                plcjt = getPlacementFromProp(jt, "Placement2");
+                plcjt = getJointSideGlobalPlacement(jt, "Reference2", "Placement2");
             }
 
             if (found != 0) {
-                // check the placements plcjt and (jcs1 or jcs2 depending on found value) Z axis are
-                // colinear ie if their pitch and roll are the same.
-                double y1, p1, r1, y2, p2, r2;
-                plcjt.getRotation().getYawPitchRoll(y1, p1, r1);
-                plci.getRotation().getYawPitchRoll(y2, p2, r2);
-                if (fabs(p1 - p2) < Precision::Confusion() && fabs(r1 - r2) < Precision::Confusion()) {
+                // Check that the Z axes of plcjt and plci are parallel. Do not compare
+                // pitch/roll: a yaw offset on the slider JCS (e.g. to align the rack) rotates
+                // about its local Z axis, which keeps the axis but changes pitch and roll
+                // whenever that axis is not the global Z.
+                Base::Vector3d axisjt = plcjt.getRotation().multVec(Base::Vector3d(0, 0, 1));
+                Base::Vector3d axisi = plci.getRotation().multVec(Base::Vector3d(0, 0, 1));
+                if (axisjt.Cross(axisi).Length() < Precision::Confusion()) {
                     slidingFound = found;
                 }
             }

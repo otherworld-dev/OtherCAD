@@ -437,7 +437,23 @@ void QuantitySpinBox::evaluateExpression()
 
 void Gui::QuantitySpinBox::setNumberExpression(App::NumberExpression* expr)
 {
-    updateEdit(getUserString(expr->getQuantity()));
+    Q_D(QuantitySpinBox);
+    Base::Quantity quantity = expr->getQuantity();
+    // A dimensionless expression result inherits the widget's required unit
+    // without rescaling, matching expression/property assignment semantics.
+    // The displayed input unit may use a different scale.
+    // see: https://github.com/FreeCAD/FreeCAD/issues/32968
+    if (d->unit != Base::Unit::One) {
+        if (quantity.isDimensionless()) {
+            quantity.setUnit(d->unit);
+        }
+        else if (quantity.getUnit() != d->unit) {
+            // showValidExpression() turns this into an invalid-expression marker and leaves
+            // the value alone
+            throw Base::UnitsMismatchError(tr("Incompatible unit").toStdString());
+        }
+    }
+    updateEdit(getUserString(quantity));
     handlePendingEmit();
 }
 
@@ -763,6 +779,8 @@ void QuantitySpinBox::openFormulaDialog()
 {
     Q_ASSERT(isBound());
 
+    Q_EMIT showFormulaDialog(true);
+
     Q_D(const QuantitySpinBox);
     auto box = new Gui::Dialog::DlgExpressionInput(getPath(), getExpression(), d->unit, this);
     if (d->checkRangeInExpression) {
@@ -785,8 +803,6 @@ void QuantitySpinBox::openFormulaDialog()
     QPoint pos = mapToGlobal(QPoint(0, 0));
     box->move(pos - box->expressionPosition());
     Gui::adjustDialogPosition(box);
-
-    Q_EMIT showFormulaDialog(true);
 }
 
 void QuantitySpinBox::handlePendingEmit(bool updateUnit /* = true */)

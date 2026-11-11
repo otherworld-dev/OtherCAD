@@ -268,7 +268,11 @@ protected:
     ) const;
 
     void onChanged(const App::Property* prop) override;
-    void onBaseFeatureRerouted(App::DocumentObject* oldBase, App::DocumentObject* newBase) override;
+    void onBaseFeatureRerouted(
+        App::DocumentObject* oldBase,
+        App::DocumentObject* newBase,
+        BaseFeatureChange change
+    ) override;
 
 private:
     TopoShape makeVerifiedFace(

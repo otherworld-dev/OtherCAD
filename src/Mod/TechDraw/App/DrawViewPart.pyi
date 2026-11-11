@@ -129,6 +129,22 @@ class DrawViewPart(DrawView):
         """clearCosmeticEdges() - remove all CosmeticLines from the View. Returns None."""
         ...
 
+    def refreshCosmeticEdges(self) -> Any:
+        """refreshCosmeticEdges() - update display of all cosmetic edges. Returns None."""
+        ...
+
+    def refreshCosmeticVertexes(self) -> Any:
+        """refreshCosmeticVertexes() -  supdate display of all cosmetic Vertexes. Returns None."""
+        ...
+
+    def refreshCenterlines(self) -> Any:
+        """refreshCenterlines - update display of all centerlines. Returns None."""
+        ...
+
+    def refreshAllCosmetic(self) -> Any:
+        """refreshAllCosmetic - update display of all cosmetic elements (vertexes, edge, centerlines). Returns None."""
+        ...
+
     def clearCenterLines(self) -> Any:
         """clearCenterLines() - remove all CenterLines from the View. Returns None."""
         ...
@@ -139,6 +155,12 @@ class DrawViewPart(DrawView):
 
     def formatGeometricEdge(self) -> Any:
         """formatGeometricEdge(index, style, weight, color, visible). Returns None."""
+        ...
+
+    def decorateLine(self) -> Any:
+        """decorateLine(edgeName, lineNumber, weight, color, visible). Applies appearance attributes
+        to geometric edge edgeName ("Edge1"). Handles standard line numbers (0-15 (ISO) or 1-17
+        (ASME)). Returns None."""
         ...
 
     def getEdgeByIndex(self) -> Any:

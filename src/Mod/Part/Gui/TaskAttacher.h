@@ -88,6 +88,14 @@ public:
 
     bool getFlip() const;
 
+    /// Resolve a reference relative to the attaching object's coordinate-system container.
+    /// Set rootObj to nullptr if the reference points to a shared container itself.
+    static void resolveAttachmentSupportInContext(
+        App::DocumentObject* context,
+        App::DocumentObject*& rootObj,
+        std::string& sub
+    );
+
     /**
      * @brief setSingleReferenceMode restricts picking to one reference.
      * Attaching a sketch to a plane or face needs exactly one reference, but the
@@ -139,6 +147,7 @@ protected:
 private:
     void objectDeleted(const Gui::ViewProviderDocumentObject&);
     void documentDeleted(const Gui::Document&);
+    void forgetViewProvider();
     void onSelectionChanged(const Gui::SelectionChanges& msg) override;
     void updateReferencesUI();
 
@@ -155,6 +164,11 @@ private:
     void updateRefButton(int idx);
     void updateAttachmentOffsetUI();
 
+    void removeSketchFeatureNesting(
+        App::DocumentObject*& rootObj,
+        std::string& sub,
+        App::DocumentObject* supportObj
+    );
     void findCorrectObjAndSubInThisContext(App::DocumentObject*& obj, std::string& sub);
     void handleInitialSelection();
     struct SubAndObjName
@@ -270,6 +284,7 @@ private:
     // Double-click accept
     static void handleMouseButtonCB(void* userdata, SoEventCallback* cb);
     QPointer<Gui::View3DInventorViewer> dblClickViewer;
+    fastsignals::scoped_connection connectDelObject;
     SbTime lastClickTime;
     SbVec2s lastClickPos = SbVec2s(-16000, -16000);
 };

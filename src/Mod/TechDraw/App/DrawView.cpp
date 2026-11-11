@@ -37,6 +37,7 @@
 #include <Base/Tools.h>
 #include <Mod/TechDraw/App/DrawViewPy.h>  // generated from DrawViewPy.xml
 
+#include <App/FeaturePythonPyImp.h>
 #include "DrawView.h"
 #include "DrawLeaderLine.h"
 #include "DrawPage.h"
@@ -80,6 +81,12 @@ const char* DrawView::ScaleTypeEnums[]= {"Page",
                                          "Automatic",
                                          "Custom",
                                          nullptr};
+const char* DrawView::CaptionSnapEnums[] = {"Top",
+                                                "Bottom",
+                                                "Left",
+                                                "Right",
+                                                "NoSnap",
+                                                nullptr};
 const double SCALEINCREMENT(0.1);
 App::PropertyFloatConstraint::Constraints DrawView::scaleRange = {Precision::Confusion(),
                                                                   std::numeric_limits<double>::max(),
@@ -105,7 +112,9 @@ DrawView::DrawView():
     Scale.setConstraints(&scaleRange);
 
     ADD_PROPERTY_TYPE(Caption, (""), group, App::Prop_Output, "Short text about the view");
-
+    ADD_PROPERTY_TYPE(CaptionLocation, (Base::Vector3d(0.0, 0.0, 0.0)), group, App::Prop_Output, "Location of the caption relative to the view");
+    CaptionSnap.setEnums(CaptionSnapEnums);
+    ADD_PROPERTY_TYPE(CaptionSnap, ("Bottom"), group, App::Prop_Hidden, "Snap the caption to the view's top, bottom, left or right edge");
     setScaleAttribute();
 }
 
@@ -753,6 +762,15 @@ namespace App {
 PROPERTY_SOURCE_TEMPLATE(TechDraw::DrawViewPython, TechDraw::DrawView)
 template<> const char* TechDraw::DrawViewPython::getViewProviderName() const {
     return "TechDrawGui::ViewProviderDrawingView";
+}
+template<>
+PyObject* TechDraw::DrawViewPython::getPyObject()
+{
+    if (PythonObject.is(Py::_None())) {
+        // ref counter is set to 1
+        PythonObject = Py::asObject(new FeaturePythonPyT<TechDraw::DrawViewPy>(this));
+    }
+    return Py::new_reference_to(PythonObject);
 }
 /// @endcond
 

@@ -34,11 +34,16 @@ if(BUILD_GUI)
     list (APPEND Sketcher_TestScripts
           SketcherTests/TestConstraintPreselectionGui.py
           SketcherTests/TestDistanceLabelExtensionGui.py
+          SketcherTests/TestConstraintCommandsGui.py
+          SketcherTests/TestCoincidentCommandGui.py
           SketcherTests/GuiTestCase.py
           SketcherTests/TestPlacementUpdate.py
           SketcherTests/TestOnViewParameterGui.py
           SketcherTests/TestExternalFacePreselection.py
           SketcherTests/TestSketchDimensionBox.py
+          SketcherTests/TestVisualLayerListGui.py
+          SketcherTests/TestCarbonCopyModelTreeDragging.py
+          SketcherTests/TestConvertToNURBSGui.py
     )
 endif(BUILD_GUI)
 

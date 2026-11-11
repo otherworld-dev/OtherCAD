@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <map>
 #include <numbers>
+#include <set>
 #include <string>
 
 namespace ClipperLib
@@ -1497,7 +1498,8 @@ std::pair<double, double> Adaptive2d::CalcCutArea(IntPoint c1, IntPoint c2, Clea
         std::sort(
             ys.begin(),
             ys.end(),
-            [](std::tuple<double, int, int> a, std::tuple<double, int, int> b) {
+            [](const std::tuple<double, size_t, size_t>& a,
+               const std::tuple<double, size_t, size_t>& b) {
                 return std::get<0>(a) < std::get<0>(b);
             }
         );
@@ -2283,16 +2285,16 @@ std::list<AdaptiveOutput> Adaptive2d::Execute(
             );
 
             // Prepare for the final reassembly process by collecting all points from the
-            // intersection result. Also remove duplicate representations of the start/end point,
-            // since we will switch back to the clipper default of implicitly-closed paths
+            // intersection result and filtering out duplicates. Note that the start/end point is an
+            // expected duplicate, but other points may appear twice if they are present in both
+            // indexedPath and nonclearedPaths.
             std::vector<IntPoint> nonclearedPoints;
-            bool hasZ1 = false;
+            std::set<int64_t> seenZ;
             for (const auto& nonclearedPath : nonclearedInputs) {
                 for (const auto& pt : nonclearedPath) {
-                    if (pt.z != 1 || !hasZ1) {
+                    if (seenZ.insert(pt.z).second) {
                         nonclearedPoints.push_back({pt.x, pt.y, pt.z});
                     }
-                    hasZ1 |= pt.z == 1;
                 }
             }
             indexedPath.pop_back();  // remove duplicate start point from the input

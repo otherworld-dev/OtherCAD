@@ -667,6 +667,13 @@ void ToolBarManager::setupToolBarIconSize()
 
 void ToolBarManager::setToolBarIconSize(QToolBar* toolbar)
 {
+    // Toolbars registered as status-bar items are direct children of QStatusBar,
+    // and own their icon size. Toolbars hosted in statusBarAreaWidget still use
+    // the StatusBarIconSize preference through toolBarIconSize().
+    if (toolbar->parentWidget() == getMainWindow()->statusBar()) {
+        return;
+    }
+
     int s = toolBarIconSize(toolbar);
     toolbar->setIconSize(QSize(s, s));
     if (toolbar->parentWidget() == menuBarLeftAreaWidget) {
@@ -1338,7 +1345,8 @@ void ToolBarManager::setState(const QString& name, State state)
             tb->toggleViewAction()->setVisible(false);  // not visible in context menus
             tb->hide();                                 // toolbar not visible
         }
-        else if (state == State::SaveState) {
+        else if (state == State::SaveState && tb->toggleViewAction()->isVisible()) {
+            // Unavailable toolbars are hidden by the context, not by the user.
             auto show = tb->isVisible();
             saveVisibility(show, policy);
         }

@@ -21,6 +21,8 @@
 #   Suite 330, Boston, MA 02111-1307, USA
 # ***************************************************************************
 
+import os
+import tempfile
 import unittest
 
 import FreeCAD as App
@@ -77,3 +79,49 @@ class TestLinkArrayCircular(unittest.TestCase):
 
         # The selected edge supplies the center as well as the axis direction.
         self.assertAlmostEqual(self.array.PlacementList[2].Base.x, -5)
+
+    def testSketchEdgeOrientsTheCircles(self):
+        # Part2DObject is the base of Sketcher::SketchObject; it must not force
+        # an explicit edge reference to use the sketch normal.
+        sketch = self.doc.addObject("Part::Part2DObject", "Sketch")
+        sketch.Shape = Part.makeLine(App.Vector(5, 0, 0), App.Vector(5, 10, 0))
+        self.array.Axis = (sketch, ["Edge1"])
+        self.doc.recompute()
+
+        self.assertEqual(self.array.getStatusString(), "Valid")
+        for placement in self.array.PlacementList:
+            self.assertAlmostEqual(placement.Base.y, 0)
+        self.assertAlmostEqual(self.array.PlacementList[2].Base.x, -5)
+
+    def testSketchNamedAxesStillOrientTheCircles(self):
+        sketch = self.doc.addObject("Part::Part2DObject", "Sketch")
+        for axis, coordinate in (("H_Axis", "x"), ("V_Axis", "y"), ("N_Axis", "z")):
+            with self.subTest(axis=axis):
+                self.array.Axis = (sketch, [axis])
+                self.doc.recompute()
+                self.assertEqual(self.array.getStatusString(), "Valid")
+                for placement in self.array.PlacementList:
+                    self.assertAlmostEqual(getattr(placement.Base, coordinate), 0)
+
+    def testObjectAxesSurviveSaveRestore(self):
+        # Upstream checks its linear and polar link arrays here too; this tree only has the
+        # circular one
+        self.array.Axis = (None, ["X_Axis"])
+        self.doc.recompute()
+        references = {
+            "Array": {"Axis": self.array.Axis},
+        }
+        placements = {name: list(self.doc.getObject(name).PlacementList) for name in references}
+        with tempfile.TemporaryDirectory() as directory:
+            filename = os.path.join(directory, "ObjectAxes.FCStd")
+            self.doc.saveAs(filename)
+            App.closeDocument(self.doc.Name)
+            self.doc = App.openDocument(filename)
+            self.doc.recompute()
+            for name, properties in references.items():
+                with self.subTest(array=name):
+                    array = self.doc.getObject(name)
+                    self.assertEqual(array.getStatusString(), "Valid")
+                    for prop, reference in properties.items():
+                        self.assertEqual(getattr(array, prop), reference)
+                    self.assertEqual(list(array.PlacementList), placements[name])

@@ -501,6 +501,8 @@ def getCutVolume(cutplane, shapes, clip=False, depth=None):
         return None, None, None
     if not cutplane.Faces:
         return None, None, None
+    limit_depth = depth is not None and depth > 0
+
     import Part
 
     if not isinstance(shapes, list):
@@ -525,7 +527,7 @@ def getCutVolume(cutplane, shapes, clip=False, depth=None):
     prm_range = p.ParameterRange  # (uMin, uMax, vMin, vMax)
     u = p.valueAt(prm_range[0], 0).sub(p.valueAt(prm_range[1], 0)).normalize()
     v = u.cross(ax)
-    if not bb.isCutPlane(ce, ax):
+    if not bb.isCutPlane(ce, ax) and not clip and not limit_depth:
         # FreeCAD.Console.PrintMessage(translate("Arch","No objects are cut by the plane)+"\n")
         return None, None, None
     else:
@@ -745,7 +747,7 @@ def removeShape(objs, mark=True):
                     import Arch
 
                     place.move(place.Rotation.multVec(Vector(-length / 2, 0, 0)))
-                    line = Draft.makeLine(Vector(0, 0, 0), Vector(length, 0, 0))
+                    line = Draft.make_line(Vector(0, 0, 0), Vector(length, 0, 0))
                     line.Placement = place
                     wall = Arch.makeWall(
                         line, width=width, height=height, align="Center", name=name

@@ -199,6 +199,13 @@ class ToolBit(Asset, ABC):
         params = attrs.get("parameter", {})
         attr = attrs.get("attribute", {})
 
+        # Add parameters the file predates, before derived ones overwrite their sources.
+        # A new bit has none and keeps the shape's defaults.
+        if params and isinstance(params, dict):
+            migrating = {"name": attrs.get("name"), "shape-type": tool_bit_shape.name}
+            migrating["parameter"] = params = dict(params)
+            migrate_parameters(ParameterAccessor(migrating))
+
         # Filter parameters if method exists
         if (
             hasattr(tool_bit_shape.__class__, "filter_parameters")
@@ -1038,6 +1045,12 @@ class ToolBit(Asset, ABC):
             presets = _get_presets(self.obj)
             if presets:
                 attrs["presets"] = presets
+            else:
+                # _extra_attrs snapshots every key of the source .fctb,
+                # "presets" included, and the merge above reinstates it.
+                # Dropping the last preset has to survive that, or the
+                # stale list is written straight back out.
+                attrs.pop("presets", None)
         except Exception as e:
             Path.Log.warning(
                 f"ToolBit.to_dict: failed to serialize presets for "

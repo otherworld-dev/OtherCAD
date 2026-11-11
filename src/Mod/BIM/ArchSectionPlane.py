@@ -690,11 +690,11 @@ def getSVG(
 
     # add additional edge symbols from windows
     cutwindows = []
-    if cutface and windows and BoundBoxValid(cutface.BoundBox):
+    if cutface and windows and cutface.BoundBox.isValid():
         cutwindows = [
             w.Name
             for w in windows
-            if BoundBoxValid(w.Shape.BoundBox) and w.Shape.BoundBox.intersect(cutface.BoundBox)
+            if w.Shape.BoundBox.isValid() and w.Shape.BoundBox.intersect(cutface.BoundBox)
         ]
     if windows:
         sh = []
@@ -728,11 +728,6 @@ def getSVG(
                 svg += "</g>"
 
     return svg
-
-
-def BoundBoxValid(boundBox) -> bool:
-    """Return true if boundBox has a non-zero volume"""
-    return boundBox.XLength > 0 and boundBox.YLength > 0 and boundBox.ZLength > 0
 
 
 def getDXF(obj):
@@ -1222,14 +1217,6 @@ class _ViewProviderSectionPlane:
                 locked=True,
             )
             vobj.LineWidth = 1
-        if not "CutDistance" in pl:
-            vobj.addProperty(
-                "App::PropertyLength",
-                "CutDistance",
-                "SectionPlane",
-                QT_TRANSLATE_NOOP("App::Property", "Show the cut in the 3D view"),
-                locked=True,
-            )
         if not "LineColor" in pl:
             vobj.addProperty(
                 "App::PropertyColor",
@@ -1291,6 +1278,13 @@ class _ViewProviderSectionPlane:
     def onDocumentRestored(self, vobj):
 
         self.setProperties(vobj)
+
+    def finishRestoring(self):
+        """Remove CutDistance from older documents."""
+        vobj = self.Object.ViewObject
+        if "CutDistance" in vobj.PropertiesList:
+            vobj.setPropertyStatus("CutDistance", "-LockDynamic")
+            vobj.removeProperty("CutDistance")
 
     def getIcon(self):
 

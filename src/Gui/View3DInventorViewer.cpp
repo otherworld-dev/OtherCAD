@@ -272,6 +272,7 @@ void setOverlayCacheContext(SoGLRenderAction& action, const View3DInventorViewer
 
     if (auto* glra = viewer->getSoRenderManager()->getGLRenderAction()) {
         action.setCacheContext(glra->getCacheContext());
+        action.setSmoothing(glra->isSmoothing());
     }
 }
 
@@ -3210,7 +3211,6 @@ bool View3DInventorViewer::renderToFramebuffer(QOpenGLFramebufferObject* fbo, bo
     int height = fbo->size().height();
 
     glEnable(GL_DEPTH_TEST);
-    glEnable(GL_LINE_SMOOTH);
 
     const QColor col = this->backgroundColor();
     glViewport(0, 0, width, height);
@@ -3220,8 +3220,9 @@ bool View3DInventorViewer::renderToFramebuffer(QOpenGLFramebufferObject* fbo, bo
     SoBoxSelectionRenderAction gl(SbViewportRegion(width, height));
     // When creating a new GL render action we have to copy over the cache context id
     // For further details see init().
-    uint32_t id = this->getSoRenderManager()->getGLRenderAction()->getCacheContext();
-    gl.setCacheContext(id);
+    auto* glra = this->getSoRenderManager()->getGLRenderAction();
+    gl.setCacheContext(glra->getCacheContext());
+    gl.setSmoothing(glra->isSmoothing());
     gl.setTransparencyType(SoGLRenderAction::SORTED_OBJECT_SORTED_TRIANGLE_BLEND);
 
     if (!this->shading) {
@@ -4360,7 +4361,8 @@ void View3DInventorViewer::moveCameraTo(const SbRotation& orientation, const SbV
         return;
     }
 
-    if (isAnimationEnabled()) {
+    // A duration of 0 means no animation, the camera is set directly below
+    if (isAnimationEnabled() && duration != 0) {
         startAnimation(
             orientation,
             camera->position.getValue(),

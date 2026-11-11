@@ -87,6 +87,8 @@
 #include <Base/ExceptionFactory.h>
 #include <Base/FileInfo.h>
 #include <Base/GeometryPyCXX.h>
+#include <Base/CrashReporter/CrashFramePy.h>
+#include <Base/CrashReporter/CrashReportPy.h>
 #include <Base/Interpreter.h>
 #include <Base/MatrixPy.h>
 #include <Base/QuantityPy.h>
@@ -473,6 +475,8 @@ void Application::setupPythonTypes()
     Base::InterpreterSingleton::addType(&Base::PlacementPy::Type, pAppModule, "Placement");
     Base::InterpreterSingleton::addType(&Base::RotationPy::Type, pAppModule, "Rotation");
     Base::InterpreterSingleton::addType(&Base::AxisPy::Type, pAppModule, "Axis");
+    Base::InterpreterSingleton::addType(&Base::CrashReportPy::Type, pAppModule, "CrashReport");
+    Base::InterpreterSingleton::addType(&Base::CrashFramePy::Type, pAppModule, "CrashFrame");
 
     // Note: Create an own module 'Base' which should provide the python
     // binding classes from the base module. At a later stage we should
@@ -1278,7 +1282,7 @@ std::vector<Document*> Application::openDocuments(const std::vector<std::string>
         Base::Console().log("%s restore time: %f\n", doc.getDocumentName(), timing.d1.count());
         Base::Console().log("%s postprocess time: %f\n", doc.getDocumentName(), timing.d2.count());
     }
-    PropertyLinkBase::updateAllElementReferences();
+    PropertyLinkBase::updateAllElementReferences(openedDocs);
     _isRestoring = false;
 
     signalFinishOpenDocument();
@@ -1822,10 +1826,17 @@ namespace {
     // entries so that their addition can be "replayed" when the language changes (after removing
     // the originals).
 
+    // Given a description string and a list of extensions, construct a type string that Qt's file
+    // dialogs will recognize
+    void appendTypeString(std::string &description, const std::vector<std::string> &extensions) {
+        description = fmt::format("{} (*.{})", description, fmt::join(extensions, " *."));
+    }
+
     struct TranslatableTypeCacheEntry {
         std::string description;
         const std::vector<std::string> extensions;
         std::string moduleName;
+        std::string filter;  // the translated filter as it was registered
     };
 
     class TranslatableTypeCache {
@@ -1841,17 +1852,29 @@ namespace {
         {
             _cache.clear();
         }
+        // Change the module of the entry with the given filter, which may be either translated or
+        // untranslated, so that replaying the entry keeps the change. Returns the translated filter
+        // of the changed entry, or an empty string if there is no such entry.
+        std::string changeModule(const std::string &filter,
+                                 const std::string &oldModuleName,
+                                 const std::string &newModuleName)
+        {
+            for (auto &entry : _cache) {
+                std::string untranslatedFilter = entry.description;
+                appendTypeString(untranslatedFilter, entry.extensions);
+                if ((entry.filter == filter || untranslatedFilter == filter)
+                    && entry.moduleName == oldModuleName) {
+                    entry.moduleName = newModuleName;
+                    return entry.filter;
+                }
+            }
+            return {};
+        }
     private:
         std::vector<TranslatableTypeCacheEntry> _cache;
     };
 
     TranslatableTypeCache translatableExportTypeCache;
-
-    // Given a description string and a list of extensions, construct a type string that Qt's file
-    // dialogs will recognize
-    void appendTypeString(std::string &description, const std::vector<std::string> &extensions) {
-        description = fmt::format("{} (*.{})", description, fmt::join(extensions, " *."));
-    }
 }
 
 void Application::addTranslatableExportType(const std::string &description,
@@ -1872,10 +1895,10 @@ void Application::addTranslatableExportType(const std::string &description,
         return false;  // Did NOT contain the app name
     };
 
-    translatableExportTypeCache.addCacheEntry({description, extensions, moduleName});
     auto translatedDescription = QCoreApplication::translate("FileFormat", description.c_str()).toStdString();
     bool containsAppName = replaceFreeCAD(translatedDescription);  // Run *AFTER* translation
     appendTypeString(translatedDescription, extensions);
+    translatableExportTypeCache.addCacheEntry({description, extensions, moduleName, translatedDescription});
 
     FileTypeItem item;
     item.filter = translatedDescription;
@@ -1906,8 +1929,13 @@ void Application::retranslateExportTypes()
 
 void Application::changeExportModule(const char* filter, const char* oldModuleName, const char* newModuleName)
 {
+    // A translatable type is re-added from the cache when the language changes, so change the
+    // module there as well. This also finds the type by its untranslated filter, which callers pass
+    // regardless of the current language.
+    std::string translatedFilter = translatableExportTypeCache.changeModule(filter, oldModuleName, newModuleName);
     for (auto& it : _mExportTypes) {
-        if (it.filter == filter && it.module == oldModuleName) {
+        if ((it.filter == filter || (!translatedFilter.empty() && it.filter == translatedFilter))
+            && it.module == oldModuleName) {
             it.module = newModuleName;
             break;
         }
@@ -2368,6 +2396,8 @@ void Application::initTypes()
     App::PropertyFrequency                  ::init();
     App::PropertyForce                      ::init();
     App::PropertyHeatFlux                   ::init();
+    App::PropertyMassMomentOfInertia        ::init();
+    App::PropertyAreaMomentOfInertia        ::init();
     App::PropertyInverseArea                ::init();
     App::PropertyInverseLength              ::init();
     App::PropertyInverseVolume              ::init();
@@ -3133,7 +3163,10 @@ void Application::initCrashReporter()
         const std::string crashReportsDirectory {getUserAppDataDir() + "CrashReports"};
         Base::CrashReporter::Writer::prewarm();
         Base::CrashReporter::Writer::install(crashReportsDirectory);
-        Base::CrashReporter::Manager::scan(crashReportsDirectory);
+        Base::CrashReporter::Manager::scan(
+            crashReportsDirectory,
+            {},
+            App::ProgramInformation::prettyProductInfoWrapper());
     } catch (Base::Exception &e) {
         Base::Console().warning("Crash reporting failed during startup:\n%s\n", e.getMessage());
     } catch (std::exception &e) {
@@ -3443,9 +3476,9 @@ void Application::LoadParameters()
         if (_pcUserParamMngr->LoadOrCreateDocument() && mConfig["Verbose"] != "Strict") {
             // The user parameter file doesn't exist. When an alternative parameter file is offered
             // this will be used.
-            const char* userParamPath = getUserParameterTemplatePath();
-            if (userParamPath) {
-                _pcUserParamMngr->LoadDocument(userParamPath);
+            const std::string userParamPath = getUserParameterTemplatePath();
+            if (!userParamPath.empty()) {
+                _pcUserParamMngr->LoadDocument(userParamPath.c_str());
             }
 
             // Configuration file optional when using as Python module
@@ -3466,7 +3499,7 @@ void Application::LoadParameters()
     }
 }
 
-const char* Application::getUserParameterTemplatePath()
+std::string Application::getUserParameterTemplatePath()
 {
     const auto it = mConfig.find("UserParameterTemplate");
     if (it != mConfig.end()) {
@@ -3477,11 +3510,10 @@ const char* Application::getUserParameterTemplatePath()
         }
         const QFileInfo fi(path);
         if (fi.exists()) {
-            const char* templatePath = path.toUtf8().constData();
-            return templatePath;
+            return path.toStdString();
         }
     }
-    return nullptr;
+    return {};
 }
 
 #if defined(_MSC_VER) && BOOST_VERSION < 108200
