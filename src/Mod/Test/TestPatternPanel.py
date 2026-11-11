@@ -11,8 +11,11 @@ To run tests:
     FreeCAD -t TestPatternPanel
 """
 
+import io
 import os
+import re
 import unittest
+import zipfile
 
 import FreeCAD
 import FreeCADGui
@@ -991,6 +994,20 @@ class TestCountBoxes(PatternPanelCase):
     _value_labels_off = gizmo_labels.GizmoLabelCase._value_labels_off
     _labels = gizmo_labels.GizmoLabelCase._labels
 
+    def _load_count(self, prop_name, value):
+        """Put a count into the pattern the way opening a saved document does. Assigning
+        one is clamped to the occurrence cap (Part::PatternConstants); restoring is not,
+        which is how a document saved before the cap still carries a higher count."""
+        data = bytes(self.pattern.dumpPropertyContent(prop_name))
+        with zipfile.ZipFile(io.BytesIO(data)) as source:
+            members = [(info, source.read(info.filename)) for info in source.infolist()]
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as target:
+            for info, content in members:
+                target.writestr(info, re.sub(rb'value="-?\d+"', b'value="%d"' % value, content, 1))
+        self.pattern.restorePropertyContent(prop_name, buffer.getvalue())
+        self.assertEqual(getattr(self.pattern, prop_name), value)
+
     def setUp(self):
         super().setUp()
         self._run("PartDesign_LinearPattern")
@@ -1212,7 +1229,7 @@ class TestCountBoxes(PatternPanelCase):
         self.pattern.Mode2 = "Extent"
 
         def check_widened(number, prop_name):
-            setattr(self.pattern, prop_name, 1200)
+            self._load_count(prop_name, 1200)
             self.pattern.purgeTouched()
             self.assertEqual(
                 self.pattern.getStatusString(),
@@ -1283,7 +1300,7 @@ class TestCountBoxes(PatternPanelCase):
 
         self.doc.RecomputesFrozen = True
         self.addCleanup(unfreeze)
-        self.pattern.Occurrences = 1200
+        self._load_count("Occurrences", 1200)
         self.pattern.purgeTouched()
         self.assertEqual(
             self.pattern.getStatusString(),
