@@ -32,6 +32,7 @@ using PyObject = struct _object;
 
 namespace Base
 {
+class UnitsSchemas;
 class BaseExport UnitsApi
 {
     friend class UnitsModulePy;
